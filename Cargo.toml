@@ -1,0 +1,12 @@
+[package]
+name = "avers-oxy"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+axum = "0.6.20"
+firestore = "0.37.2"
+serde = { version = "1.0.189", features = ["derive"] }
+tokio = { version = "1.33.0", features = ["full", "macros", "rt-multi-thread"] }
+tracing = "0.1.39"
+tracing-subscriber = "0.3.17"
