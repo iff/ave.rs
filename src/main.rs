@@ -3,6 +3,8 @@ use firestore::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+mod otp;
+
 #[derive(Serialize, Deserialize, Clone)]
 struct BoulderStat {
     set_on: u32,
