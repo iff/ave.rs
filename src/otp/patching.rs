@@ -1,7 +1,7 @@
 // Apply the given op on the value. Can throw an exception if the operation
 //   is invalid.
 
-use crate::otp::types::{Operation, Path};
+use crate::otp::types::{Object, Operation, Path};
 
 #[derive(Debug)]
 pub enum Error {
@@ -19,6 +19,7 @@ pub enum Error {
 //     }
 // }
 
+/// Apply the given op on the value. Can throw an exception if the operation is invalid.
 pub fn apply<T, U>(op_value: T, operation: Operation<U>) -> Result<T, Error> {
     match operation {
         Operation::Set { path, value } => {
@@ -26,9 +27,10 @@ pub fn apply<T, U>(op_value: T, operation: Operation<U>) -> Result<T, Error> {
                 return Ok(op_value);
             }
 
+            // if op_value is Nothing delete the key, otherwise insert
             let _ = change_object(value, path, |key| ());
-            //     | otherwise = changeObject value opPath $ \key ->
-            //         maybe (M.delete key) (M.insert key) opValue
+            // otherwise = changeObject value opPath $ \key ->
+            //    maybe (M.delete key) (M.insert key) opValue
             Err(Error::Failed())
         }
         Operation::Splice {
@@ -105,48 +107,75 @@ pub fn apply<T, U>(op_value: T, operation: Operation<U>) -> Result<T, Error> {
 // hasObjectId :: Value -> Bool
 // hasObjectId (Object o) = M.member "id" o
 // hasObjectId _          = False
-//
-// pathElements :: Path -> [Text]
-// pathElements = T.split ('.' ==) . unPath
 
-fn change_object<T>(value: T, path: Path, f: impl FnOnce(String)) -> Result<T, Error> {
+// pathElements :: Path -> [Text]
+fn path_elements(path: Path) -> Vec<String> {
+    path.split(".").collect()
+}
+
+fn change_object<T>(value: T, path: Path, f: F) -> Result<T, Error>
+where
+    F: Fn(String, Object) -> Object,
+{
+    let mut paths = path_elements(path);
+    let last = paths.pop();
+    match change_object_at(value, paths) {
+        Ok(o) => Ok(f(last, o)),
+        Err(e) => Err(e), // FIXME: cannot change non-object
+    }
+}
+
+fn change_object_at<T>(value: T, path: Vec<String>) -> Result<T, Error> {
     todo!()
 }
 
-// changeObject :: Value -> Path -> (Text -> Object -> Object) -> PatchM Value
-// changeObject value path f = changeObjectAt value (init (pathElements path)) $ \x ->
-//     case x of
-//         Object o -> Right $ Object $ f (last (pathElements path)) o
-//         _        -> Left $ UnknownPatchError "Can not change a non-object"
-//
+// FIXME handle array
 // changeArray :: Value -> Path -> (Array -> PatchM Array) -> PatchM Value
 // changeArray value path f = changeObjectAt value (pathElements path) $ \x ->
 //     case x of
 //         Array a -> fmap Array $ f a
 //         _       -> Left $ UnknownPatchError "Can not change a non-array"
-//
-//
+
 // changeObjectAt :: Value -> [Text] -> (Value -> PatchM Value) -> PatchM Value
 // changeObjectAt container [] f = f container
-//
+pub fn change_object_at<T>(value: T, path: Vec<String>, f: F) -> Result<T, Error>
+where
+    F: Fn(T) -> Result<T, Error>,
+{
+    if path.length() == 0 {
+        f(value)
+    }
+
+    // changeObjectAt _ _ _ = Left $ UnknownPatchError "Can not descend into primitive values"
+    Err(Error) // FIXME not handled values
+}
+
 // changeObjectAt (Object o) (x:xs) f =
 //     case parse (const $ o .: x) o of
 //         Error   _ -> Left $ UnknownPatchError $ "Key '" <> T.pack (show x) <> "' does not exist inside the object"
 //         Success a -> do
 //             new <- changeObjectAt a xs f
 //             return $ Object $ M.insert x new o
-//
-//
+pub fn change_object_at(value: Object, path: Vec<String>, f: F) -> Result<Object, Error>
+where
+    F: Fn(Object) -> Result<Object, Error>,
+{
+    todo!()
+    // try to access the first path in paths for the object
+    // that means we have untyped data in Object I guess.. need to make sure how that works with serde
+    // error if it does not exist
+    // new = change_object_at object_at_key rest_op_path f
+    // and at the end: return insert new
+}
+
+// FIXME handle array
 // changeObjectAt (Array a) (x:xs) f =
 //     case V.findIndex (matchObjectId x) a of
 //         Nothing    -> Left $ UnknownPatchError $ "Can not find item with id " <> T.pack (show x) <> " in the array"
 //         Just index -> do
 //             new <- changeObjectAt (a V.! index) xs f
 //             return $ Array $ a V.// [(index, new)]
-//
-// changeObjectAt _ _ _ = Left $ UnknownPatchError "Can not descend into primitive values"
-//
-//
+
 // matchObjectId :: Text -> Value -> Bool
 // matchObjectId itemId (Object o) = Just (String itemId) == M.lookup "id" o
 // matchObjectId _      _          = False
