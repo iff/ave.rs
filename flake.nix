@@ -1,5 +1,5 @@
 {
-  description = "roam research related tools and libs";
+  description = "generic rust env";
 
   inputs = {
     flake-utils.url = "github:numtide/flake-utils";

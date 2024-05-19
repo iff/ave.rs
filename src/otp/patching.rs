@@ -109,7 +109,7 @@ pub fn apply<T, U>(op_value: T, operation: Operation<U>) -> Result<T, Error> {
 // hasObjectId _          = False
 
 // pathElements :: Path -> [Text]
-fn path_elements(path: Path) -> Vec<String> {
+fn path_elements(path: Path) -> Vec<&str> {
     path.split(".").collect()
 }
 
@@ -125,9 +125,9 @@ where
     }
 }
 
-fn change_object_at<T>(value: T, path: Vec<String>) -> Result<T, Error> {
-    todo!()
-}
+// fn change_object_at<T>(value: T, path: Vec<&str>) -> Result<T, Error> {
+//     todo!()
+// }
 
 // FIXME handle array
 // changeArray :: Value -> Path -> (Array -> PatchM Array) -> PatchM Value
@@ -138,12 +138,12 @@ fn change_object_at<T>(value: T, path: Vec<String>) -> Result<T, Error> {
 
 // changeObjectAt :: Value -> [Text] -> (Value -> PatchM Value) -> PatchM Value
 // changeObjectAt container [] f = f container
-pub fn change_object_at<T>(value: T, path: Vec<String>, f: F) -> Result<T, Error>
+pub fn change_object_at<T, F>(value: T, path: Vec<&str>, f: F) -> Result<T, Error>
 where
     F: Fn(T) -> Result<T, Error>,
 {
-    if path.length() == 0 {
-        f(value)
+    if path.len() == 0 {
+        return f(value);
     }
 
     // changeObjectAt _ _ _ = Left $ UnknownPatchError "Can not descend into primitive values"
@@ -156,7 +156,7 @@ where
 //         Success a -> do
 //             new <- changeObjectAt a xs f
 //             return $ Object $ M.insert x new o
-pub fn change_object_at(value: Object, path: Vec<String>, f: F) -> Result<Object, Error>
+pub fn change_object_at<F>(value: Object, path: Vec<&str>, f: F) -> Result<Object, Error>
 where
     F: Fn(Object) -> Result<Object, Error>,
 {
@@ -289,7 +289,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::otp::types::{Operation, Path, ROOT_PATH};
+    use crate::otp::types::{Operation, ROOT_PATH};
 
     #[test]
     fn apply_set_op_root_path() {
