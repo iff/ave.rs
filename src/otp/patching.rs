@@ -20,14 +20,13 @@ pub enum Error {
 // }
 
 /// Apply the given op on the value. Can throw an exception if the operation is invalid.
-pub fn apply<T, U>(op_value: T, operation: Operation<U>) -> Result<T, Error> {
+pub fn apply<T, U: Change>(op_value: T, operation: Operation<U>) -> Result<T, Error> {
     match operation {
         Operation::Set { path, value } => {
             if path.is_empty() {
                 return Ok(op_value);
             }
 
-            // if op_value is Nothing delete the key, otherwise insert
             let _ = change_object(value, path, |key| ());
             // otherwise = changeObject value opPath $ \key ->
             //    maybe (M.delete key) (M.insert key) opValue
@@ -109,17 +108,17 @@ pub fn apply<T, U>(op_value: T, operation: Operation<U>) -> Result<T, Error> {
 // hasObjectId _          = False
 
 // pathElements :: Path -> [Text]
-fn path_elements(path: Path) -> Vec<&str> {
+fn path_elements(path: Path) -> Vec<&'static str> {
     path.split(".").collect()
 }
 
-fn change_object<T>(value: T, path: Path, f: F) -> Result<T, Error>
+fn change_object<T: Change, F>(value: T, path: Path, f: F) -> Result<T, Error>
 where
-    F: Fn(String, Object) -> Object,
+    F: Fn(&str, T) -> T,
 {
     let mut paths = path_elements(path);
     let last = paths.pop();
-    match change_object_at(value, paths) {
+    match T::change_object_at(&value, paths, f) {
         Ok(o) => Ok(f(last, o)),
         Err(e) => Err(e), // FIXME: cannot change non-object
     }
@@ -136,36 +135,18 @@ where
 //         Array a -> fmap Array $ f a
 //         _       -> Left $ UnknownPatchError "Can not change a non-array"
 
-// changeObjectAt :: Value -> [Text] -> (Value -> PatchM Value) -> PatchM Value
-// changeObjectAt container [] f = f container
-pub fn change_object_at<T, F>(value: T, path: Vec<&str>, f: F) -> Result<T, Error>
-where
-    F: Fn(T) -> Result<T, Error>,
-{
-    if path.len() == 0 {
-        return f(value);
+trait Change {
+    fn change_object_at<F>(value: &Self, path: Vec<&str>, f: F) -> Result<Object, Error>
+    where
+        F: Fn(Object) -> Result<Object, Error>,
+    {
+        todo!()
+        // try to access the first path in paths for the object
+        // that means we have untyped data in Object I guess.. need to make sure how that works with serde
+        // error if it does not exist
+        // new = change_object_at object_at_key rest_op_path f
+        // and at the end: return insert new
     }
-
-    // changeObjectAt _ _ _ = Left $ UnknownPatchError "Can not descend into primitive values"
-    Err(Error) // FIXME not handled values
-}
-
-// changeObjectAt (Object o) (x:xs) f =
-//     case parse (const $ o .: x) o of
-//         Error   _ -> Left $ UnknownPatchError $ "Key '" <> T.pack (show x) <> "' does not exist inside the object"
-//         Success a -> do
-//             new <- changeObjectAt a xs f
-//             return $ Object $ M.insert x new o
-pub fn change_object_at<F>(value: Object, path: Vec<&str>, f: F) -> Result<Object, Error>
-where
-    F: Fn(Object) -> Result<Object, Error>,
-{
-    todo!()
-    // try to access the first path in paths for the object
-    // that means we have untyped data in Object I guess.. need to make sure how that works with serde
-    // error if it does not exist
-    // new = change_object_at object_at_key rest_op_path f
-    // and at the end: return insert new
 }
 
 // FIXME handle array
