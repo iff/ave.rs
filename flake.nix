@@ -44,7 +44,7 @@
           cargo-edit
           cargo-watch
           rust-analyzer
-        ] ++ lib.optionals pkgs.stdenv.isDarwin [ darwin.apple_sdk.frameworks.Security ];
+        ] ++ lib.optionals pkgs.stdenv.isDarwin [ darwin.apple_sdk.frameworks.Security darwin.apple_sdk.frameworks.SystemConfiguration ];
 
         shellHook = ''
           ${pkgs.rustToolchain}/bin/cargo --version

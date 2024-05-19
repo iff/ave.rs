@@ -1,5 +1,6 @@
 use firestore::FirestoreTimestamp;
 use serde::{Deserialize, Serialize};
+use serde_json;
 use std::vec::Vec;
 
 /// converts to database primary key
@@ -131,5 +132,33 @@ pub struct Snapshot<T> {
 impl<T> Pk for Snapshot<T> {
     fn to_pk(&self) -> String {
         self.object_id.to_pk() + "@" + &self.revision_id.to_string()[..]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn serde_additional_fields() {
+        let json = r#"
+        {
+            "id": "fa21ea12c",
+            "object_type": "value",
+            "created_at": 
+            "created_by": "deadbeef"
+        }
+        "#;
+
+        match serde_json::from_str::<Object>(json) {
+            Ok(o) => {
+                println!("o {:#?}", o.id);
+            }
+            Err(e) => {
+                println!("Error {:#?}", e);
+                assert!(false);
+            }
+        }
+        // assert!(false);
     }
 }
