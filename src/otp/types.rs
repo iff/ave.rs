@@ -93,7 +93,7 @@ pub struct Object {
 
     // data - is there a better way to map?
     #[serde(flatten)]
-    extra: Option<HashMap<String, Value>>,
+    content: Option<HashMap<String, Value>>,
 }
 
 impl Pk for Object {
@@ -153,7 +153,7 @@ mod tests {
             created_at: firestore::FirestoreTimestamp(chrono::Utc::now()),
             created_by: String::from("deadbeef"),
             deleted: None,
-            extra: None,
+            content: None,
         };
 
         let json = to_string(&object).unwrap();
@@ -165,10 +165,10 @@ mod tests {
         // ?
         match from_str::<Value>(&json[..]) {
             Ok(o) => {
-                println!("o {:#?}", o["id"]);
+                println!("id: {:#?}", o["id"].as_str());
                 match o.get("grade") {
-                    Some(g) => println!("grade {:#?}", g),
-                    None => println!("no grade"),
+                    Some(g) => println!("grade: {:#?}", g),
+                    None => println!("grade: none"),
                 }
             }
             Err(e) => {
@@ -189,7 +189,7 @@ mod tests {
             created_at,
             created_by: String::from("deadbeef"),
             deleted: None,
-            extra: Some(extra),
+            content: Some(extra),
         };
 
         let json = to_string(&object).unwrap();
@@ -197,10 +197,9 @@ mod tests {
 
         match serde_json::from_str::<Object>(&json[..]) {
             Ok(o) => {
-                println!("o {:#?}", o.id);
-                // Some(g) => println!("grade {:#?}", g["grade"].as_str()),
-                match o.extra {
-                    Some(extra) => println!("{}", extra["grade"].as_str().expect("no grade")),
+                println!("id: {:#?}", o.id);
+                match o.content {
+                    Some(content) => println!("grade: {}", content["grade"].as_str().expect("none")),
                     None => println!("no extra fields"),
                 }
             }
