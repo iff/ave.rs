@@ -1,6 +1,7 @@
 use firestore::FirestoreTimestamp;
 use serde::{Deserialize, Serialize};
-use serde_json;
+use serde_json::{from_str, json, Error, Value};
+use std::collections::HashMap;
 use std::vec::Vec;
 
 /// converts to database primary key
@@ -89,6 +90,10 @@ pub struct Object {
     created_at: firestore::FirestoreTimestamp,
     created_by: ObjId,
     deleted: Option<bool>,
+
+    // data - is there a better way to map?
+    #[serde(flatten)]
+    extra: Option<HashMap<String, Value>>,
 }
 
 impl Pk for Object {
@@ -138,27 +143,71 @@ impl<T> Pk for Snapshot<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::{from_str, json, to_string, Error, Value};
 
     #[test]
-    fn serde_additional_fields() {
-        let json = r#"
-        {
-            "id": "fa21ea12c",
-            "object_type": "value",
-            "created_at": 
-            "created_by": "deadbeef"
-        }
-        "#;
+    fn object_additional_fields_as_value() {
+        let object = Object {
+            id: String::from("fa21ea12c"),
+            object_type: String::from("value"),
+            created_at: firestore::FirestoreTimestamp(chrono::Utc::now()),
+            created_by: String::from("deadbeef"),
+            deleted: None,
+            extra: None,
+        };
 
-        match serde_json::from_str::<Object>(json) {
+        let json = to_string(&object).unwrap();
+
+        // I think the only way to handle custom keys on the Object is to actually parse it as a
+        // Value..
+        // but I'm pretty sure we need to have this in a typed manner, eg as
+        //   Either<Vec, key/value tuple>
+        // ?
+        match from_str::<Value>(&json[..]) {
             Ok(o) => {
-                println!("o {:#?}", o.id);
+                println!("o {:#?}", o["id"]);
+                match o.get("grade") {
+                    Some(g) => println!("grade {:#?}", g),
+                    None => println!("no grade"),
+                }
             }
             Err(e) => {
                 println!("Error {:#?}", e);
-                assert!(false);
+                panic!();
             }
         }
-        // assert!(false);
+    }
+
+    #[test]
+    fn object_additional_fields_using_extra() {
+        let created_at = firestore::FirestoreTimestamp(chrono::Utc::now());
+        let mut extra = HashMap::new();
+        extra.insert(String::from("grade"), Value::String(String::from("blue")));
+        let object = Object {
+            id: String::from("fa21ea12c"),
+            object_type: String::from("value"),
+            created_at,
+            created_by: String::from("deadbeef"),
+            deleted: None,
+            extra: Some(extra),
+        };
+
+        let json = to_string(&object).unwrap();
+        println!("{}", json);
+
+        match serde_json::from_str::<Object>(&json[..]) {
+            Ok(o) => {
+                println!("o {:#?}", o.id);
+                // Some(g) => println!("grade {:#?}", g["grade"].as_str()),
+                match o.extra {
+                    Some(extra) => println!("{}", extra["grade"].as_str().expect("no grade")),
+                    None => println!("no extra fields"),
+                }
+            }
+            Err(e) => {
+                println!("Error {:#?}", e);
+                panic!();
+            }
+        }
     }
 }
