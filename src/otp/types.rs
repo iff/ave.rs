@@ -19,12 +19,12 @@ type ObjId = String;
 
 // The root object id is used for object created internally or when there
 // is no applicable creator.
-const ROOT_OBJ_ID: &str = "";
+pub const ROOT_OBJ_ID: &str = "";
 
 type RevId = i64;
 
 // The 'RevId' which is used for the initial snapshot.
-const ZERO_REV_ID: RevId = 0;
+pub const ZERO_REV_ID: RevId = 0;
 
 // #[derive(Serialize, Deserialize, Clone)]
 // pub enum RevId {
@@ -74,7 +74,7 @@ pub enum Operation<T> {
     /// applied to objects for adding, updating and inserting multiple elements in a single op
     Set { path: Path, value: Option<T> },
 
-    /// manipulate arrays (remove, insert multiple elements in a single op
+    /// manipulate arrays (remove, insert multiple elements in a single op)
     Splice {
         path: Path,
         index: u32,
@@ -92,8 +92,9 @@ pub struct Object {
     deleted: Option<bool>,
 
     // data - is there a better way to map?
+    // we know its a value or an array?
     #[serde(flatten)]
-    content: Option<HashMap<String, Value>>,
+    pub content: Option<HashMap<String, Value>>,
 }
 
 impl Pk for Object {
@@ -199,7 +200,9 @@ mod tests {
             Ok(o) => {
                 println!("id: {:#?}", o.id);
                 match o.content {
-                    Some(content) => println!("grade: {}", content["grade"].as_str().expect("none")),
+                    Some(content) => {
+                        println!("grade: {}", content["grade"].as_str().expect("none"))
+                    }
                     None => println!("no extra fields"),
                 }
             }

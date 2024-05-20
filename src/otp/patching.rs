@@ -2,10 +2,11 @@
 //   is invalid.
 
 use crate::otp::types::{Object, Operation, Path};
+use serde_json::Value;
 
 #[derive(Debug)]
 pub enum Error {
-    Failed(),
+    KeyError(String),
 }
 
 // impl fmt::Display for Error {
@@ -20,17 +21,22 @@ pub enum Error {
 // }
 
 /// Apply the given op on the value. Can throw an exception if the operation is invalid.
-pub fn apply<T, U: Change>(op_value: T, operation: Operation<U>) -> Result<T, Error> {
+pub fn apply<U>(op_value: Value, operation: Operation<U>) -> Result<Value, Error> {
     match operation {
         Operation::Set { path, value } => {
             if path.is_empty() {
                 return Ok(op_value);
             }
 
-            let _ = change_object(value, path, |key| ());
-            // otherwise = changeObject value opPath $ \key ->
-            //    maybe (M.delete key) (M.insert key) opValue
-            Err(Error::Failed())
+            // delete key (path) if op_Value is empty
+            // else insert key (path)
+            return change_object(value, path, |map, key| {
+                if let v = Some(op_value) {
+                    map.insert(key, v);
+                } else {
+                    map.remove(key)
+                }
+            });
         }
         Operation::Splice {
             path,
@@ -59,50 +65,16 @@ pub fn apply<T, U: Change>(op_value: T, operation: Operation<U>) -> Result<T, Er
             //         Left $ UnknownPatchError "Array doesn't match structure"
             //
             //     return $ V.take opIndex a V.++ V.fromList opInsert V.++ V.drop (opIndex + opRemove) a
+            //   where
+            //     isStructurallyEquivalent :: [Value] -> V.Vector Value -> Bool
+            //     isStructurallyEquivalent a b = strings a b || validObjects a b
+            //
+            //     strings      a b = all isString    a && V.all isString    b
+            //     validObjects a b = all hasObjectId a && V.all hasObjectId b
         }
     }
 }
 
-// applyOperation :: Value -> Operation -> PatchM Value
-// applyOperation value Set{..}
-//     | opPath == "", Just val <- opValue = return val
-//     | otherwise = changeObject value opPath $ \key ->
-//         maybe (M.delete key) (M.insert key) opValue
-//
-// applyOperation value Splice{..} = changeArray value opPath $ \a -> do
-//
-//     // Check if the indices are within the allowed range.
-//     when (V.length a < opIndex + opRemove) $
-//         Left $ UnknownPatchError $ mconcat
-//             [ "Index out of range ("
-//             , T.pack (show $ V.length a)
-//             , ","
-//             , T.pack (show opIndex)
-//             , ","
-//             , T.pack (show opRemove)
-//             , ")"
-//             ]
-//
-//     // The existing array and the elements we want to insert must match
-//     // structurally (have the same type). Furthermore, if the array consists
-//     // of objects, each object is required to have an "id" field.
-//     unless (isStructurallyEquivalent opInsert a) $
-//         Left $ UnknownPatchError "Array doesn't match structure"
-//
-//     return $ V.take opIndex a V.++ V.fromList opInsert V.++ V.drop (opIndex + opRemove) a
-//
-//   where
-//     isStructurallyEquivalent :: [Value] -> V.Vector Value -> Bool
-//     isStructurallyEquivalent a b = strings a b || validObjects a b
-//
-//     strings      a b = all isString    a && V.all isString    b
-//     validObjects a b = all hasObjectId a && V.all hasObjectId b
-//
-//
-// isString :: Value -> Bool
-// isString (String _) = True
-// isString _          = False
-//
 // hasObjectId :: Value -> Bool
 // hasObjectId (Object o) = M.member "id" o
 // hasObjectId _          = False
@@ -112,42 +84,58 @@ fn path_elements(path: Path) -> Vec<&'static str> {
     path.split(".").collect()
 }
 
-fn change_object<T: Change, F>(value: T, path: Path, f: F) -> Result<T, Error>
+fn change_object<F>(value: Value, path: Path, f: F) -> Result<Value, Error>
 where
-    F: Fn(&str, T) -> T,
+    F: Fn(&mut Value, &Value) -> Value,
 {
     let mut paths = path_elements(path);
     let last = paths.pop();
-    match T::change_object_at(&value, paths, f) {
+    match change_object_at(&value, paths, f) {
         Ok(o) => Ok(f(last, o)),
         Err(e) => Err(e), // FIXME: cannot change non-object
     }
 }
 
-// fn change_object_at<T>(value: T, path: Vec<&str>) -> Result<T, Error> {
-//     todo!()
-// }
-
 // FIXME handle array
+// we can use value.is_array() to check at runtime
 // changeArray :: Value -> Path -> (Array -> PatchM Array) -> PatchM Value
 // changeArray value path f = changeObjectAt value (pathElements path) $ \x ->
 //     case x of
 //         Array a -> fmap Array $ f a
 //         _       -> Left $ UnknownPatchError "Can not change a non-array"
 
-trait Change {
-    fn change_object_at<F>(value: &Self, path: Vec<&str>, f: F) -> Result<Object, Error>
-    where
-        F: Fn(Object) -> Result<Object, Error>,
-    {
-        todo!()
-        // try to access the first path in paths for the object
-        // that means we have untyped data in Object I guess.. need to make sure how that works with serde
-        // error if it does not exist
-        // new = change_object_at object_at_key rest_op_path f
-        // and at the end: return insert new
+// TODO just for Value at the moment
+/// travers the path and then either insert or delete at the very end
+fn change_object_at<F>(value: Value, path: Vec<&str>, f: F) -> Result<Value, Error>
+where
+    F: Fn(&mut Value, &Value) -> Result<Value, Error>,
+{
+    let mut content = value.content?;
+
+    for key in path {
+        match content.get(key) {
+            Some(value) => content = value,
+            None => return Err(KeyError(key)),
+        }
     }
+
+    f(content, value);
+    return Ok(value);
 }
+
+// trait Change {
+//     fn change_object_at<F>(value: &Self, path: Vec<&str>, f: F) -> Result<Object, Error>
+//     where
+//         F: Fn(&str) -> Result<Object, Error>,
+//     {
+//         todo!()
+//         // try to access the first path in paths for the object
+//         // that means we have untyped data in Object I guess.. need to make sure how that works with serde
+//         // error if it does not exist
+//         // new = change_object_at object_at_key rest_op_path f
+//         // and at the end: return insert new
+//     }
+// }
 
 // FIXME handle array
 // changeObjectAt (Array a) (x:xs) f =
@@ -267,30 +255,30 @@ trait Change {
 //         Nothing  -> Nothing
 //         Just op' -> rebaseOperation newContent op' xs
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::otp::types::{Operation, ROOT_PATH};
-
-    #[test]
-    fn apply_set_op_root_path() {
-        let op = Operation::Set {
-            path: ROOT_PATH.to_string(),
-            value: Some(2),
-        };
-
-        let res = apply(3, op);
-        assert_eq!(res.ok(), Some(3));
-    }
-
-    #[test]
-    fn apply_set_op_path() {
-        let op = Operation::Set {
-            path: String::from("x.y"),
-            value: Some(2),
-        };
-
-        let _res = apply(3, op);
-        assert!(false);
-    }
-}
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+//     use crate::otp::types::{Operation, ROOT_PATH};
+//
+//     #[test]
+//     fn apply_set_op_root_path() {
+//         let op = Operation::Set {
+//             path: ROOT_PATH.to_string(),
+//             value: Some(2),
+//         };
+//
+//         let res = apply(3, op);
+//         assert_eq!(res.ok(), Some(3));
+//     }
+//
+//     #[test]
+//     fn apply_set_op_path() {
+//         let op = Operation::Set {
+//             path: String::from("x.y"),
+//             value: Some(2),
+//         };
+//
+//         let _res = apply(3, op);
+//         assert!(false);
+//     }
+// }
