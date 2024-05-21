@@ -70,16 +70,16 @@ impl Pk for ObjectId {
 // } ''Operation)
 
 #[derive(Serialize, Deserialize, Clone)]
-pub enum Operation<T> {
+pub enum Operation {
     /// applied to objects for adding, updating and inserting multiple elements in a single op
-    Set { path: Path, value: Option<T> },
+    Set { path: Path, value: Option<Value> },
 
     /// manipulate arrays (remove, insert multiple elements in a single op)
     Splice {
         path: Path,
         index: u32,
         remove: u32,
-        insert: Vec<T>,
+        insert: Vec<Value>,
     },
 }
 
@@ -104,15 +104,15 @@ impl Pk for Object {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
-pub struct Patch<T> {
+pub struct Patch {
     pub object_id: ObjectId,
     pub revision_id: RevId,
     pub author_id: ObjId,
     pub created_at: firestore::FirestoreTimestamp,
-    pub operation: Operation<T>,
+    pub operation: Operation,
 }
 
-impl<T> Pk for Patch<T> {
+impl Pk for Patch {
     fn to_pk(&self) -> String {
         self.object_id.to_pk() + "@" + &self.revision_id.to_string()[..]
     }

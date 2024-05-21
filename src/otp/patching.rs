@@ -7,6 +7,7 @@ use serde_json::Value;
 #[derive(Debug)]
 pub enum Error {
     KeyError(String),
+    NotAObject(),
 }
 
 // impl fmt::Display for Error {
@@ -21,21 +22,21 @@ pub enum Error {
 // }
 
 /// Apply the given op on the value. Can throw an exception if the operation is invalid.
-pub fn apply<U>(op_value: Value, operation: Operation<U>) -> Result<Value, Error> {
+pub fn apply(value: Value, operation: Operation) -> Result<Value, Error> {
     match operation {
-        Operation::Set { path, value } => {
+        Operation::Set {
+            path,
+            value: op_value,
+        } => {
             if path.is_empty() {
-                return Ok(op_value);
+                return Ok(value);
             }
 
             // delete key (path) if op_Value is empty
             // else insert key (path)
-            return change_object(value, path, |map, key| {
-                if let v = Some(op_value) {
-                    map.insert(key, v);
-                } else {
-                    map.remove(key)
-                }
+            return change_object(value, path, |key, map| match (op_value) {
+                Some(v) => map.content.expect("maybe remove option").insert(key, v),
+                None => map.content.expect("maybe remove option").remove(&key),
             });
         }
         Operation::Splice {
@@ -86,14 +87,15 @@ fn path_elements(path: Path) -> Vec<&'static str> {
 
 fn change_object<F>(value: Value, path: Path, f: F) -> Result<Value, Error>
 where
-    F: Fn(&mut Value, &Value) -> Value,
+    F: Fn(String, Object) -> Object,
 {
     let mut paths = path_elements(path);
-    let last = paths.pop();
-    match change_object_at(&value, paths, f) {
-        Ok(o) => Ok(f(last, o)),
-        Err(e) => Err(e), // FIXME: cannot change non-object
-    }
+    let last = paths.pop().expect("paths is non-empty");
+    let k = |x| match (x) {
+        Object(o) => f(last.to_string(), &o),
+        Err(e) => Err(Error::NotAObject),
+    };
+    change_object_at(value, paths, x)
 }
 
 // FIXME handle array
@@ -110,16 +112,16 @@ fn change_object_at<F>(value: Value, path: Vec<&str>, f: F) -> Result<Value, Err
 where
     F: Fn(&mut Value, &Value) -> Result<Value, Error>,
 {
-    let mut content = value.content?;
+    let mut content = value;
 
     for key in path {
-        match content.get(key) {
+        match content.get_mut(key) {
             Some(value) => content = value,
             None => return Err(KeyError(key)),
         }
     }
 
-    f(content, value);
+    f(&mut content, &value);
     return Ok(value);
 }
 
