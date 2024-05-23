@@ -11,7 +11,7 @@ type Object = serde_json::Map<String, Value>;
 #[derive(Debug)]
 pub enum PatchingError {
     KeyError(String),
-    NotAnObject(),
+    Unknown(),
 }
 
 impl std::error::Error for PatchingError {
@@ -46,10 +46,11 @@ pub fn apply(value: Value, operation: Operation) -> Result<Value, PatchingError>
 
             // delete key (path) if op_Value is empty
             // else insert key (path)
-            return change_object(value, path, |key, map: Object| match op_value {
+            let ins_or_del = |key: String, map: &mut Object| match op_value {
                 Some(v) => map.insert(key, v),
                 None => map.remove(&key),
-            });
+            };
+            return change_object(value, path, ins_or_del);
         }
         Operation::Splice {
             path,
@@ -93,21 +94,48 @@ pub fn apply(value: Value, operation: Operation) -> Result<Value, PatchingError>
 // hasObjectId _          = False
 
 // pathElements :: Path -> [Text]
-fn path_elements(path: Path) -> Vec<&'static str> {
-    path.split(".").collect()
-}
+// fn path_elements(path: Path) -> Vec<&'static str> {
+//     path.split(".").collect()
+// }
 
-fn change_object<F>(value: Value, path: Path, f: F) -> Result<Value, PatchingError>
+// fn change_object<F>(value: Value, path: Path, f: F) -> Result<Value, PatchingError>
+// where
+//     F: FnOnce(String, &mut Object) -> Option<Value>,
+// {
+//     let mut paths = path_elements(path);
+//     let last = paths.pop().expect("paths is non-empty");
+//     let update_map = |&mut x| match x {
+//         Value::Object(o) => Ok(Value::from(f(last.to_string(), &mut o))),
+//         _ => Err(PatchingError::Unknown()),
+//     };
+//     change_object_at(value, paths, update_map)
+// }
+
+fn change_object<F>(mut value: Value, path: Path, f: F) -> Result<Value, PatchingError>
 where
-    F: Fn(String, Object) -> Object,
+    F: FnOnce(String, &mut Object) -> Option<Value>,
 {
-    let mut paths = path_elements(path);
-    let last = paths.pop().expect("paths is non-empty");
-    let k = |x| match x {
-        Value::Object(o) => f(last.to_string(), o),
-        _ => Err(PatchingError),
+    // let paths = path_elements(path);
+    let paths: Vec<&str> = path.split(".").collect();
+    let len = paths.len();
+    let key_to_change = paths[len - 1]; //paths.pop().expect("paths is non-empty");
+
+    let mut content = &mut value;
+
+    for key in &paths[..len - 2] {
+        match content.get_mut(key) {
+            Some(value) => content = value,
+            None => return Err(PatchingError::KeyError(key.to_string())),
+        }
+    }
+
+    let _ = match content {
+        Value::Object(o) => Ok(Value::from(f(key_to_change.to_string(), o))),
+        _ => Err(PatchingError::Unknown()),
     };
-    change_object_at(value, paths, k)
+
+    // FIXME new object?
+    return Ok(value);
 }
 
 // FIXME handle array
@@ -119,23 +147,25 @@ where
 //         _       -> Left $ UnknownPatchError "Can not change a non-array"
 
 // TODO just for Value at the moment
-/// travers the path and then either insert or delete at the very end
-fn change_object_at<F>(value: Value, path: Vec<&str>, f: F) -> Result<Value, PatchingError>
-where
-    F: Fn(&mut Value, &Value) -> Result<Value, PatchingError>,
-{
-    let mut content = &value;
-
-    for key in path {
-        match content.get(key) {
-            Some(value) => content = value,
-            None => return Err(PatchingError::KeyError(key.to_string())),
-        }
-    }
-
-    f(&mut content, &value);
-    return Ok(value);
-}
+// travers the path and then either insert or delete at the very end
+// fn change_object_at<F>(value: Value, path: Vec<&str>, f: F) -> Result<Value, PatchingError>
+// where
+//     F: Fn(&mut Value) -> Result<Value, PatchingError>,
+// {
+//     let mut content = &value;
+//
+//     for key in path {
+//         match content.get(key) {
+//             Some(value) => content = value,
+//             None => return Err(PatchingError::KeyError(key.to_string())),
+//         }
+//     }
+//
+//     f(&mut content);
+//
+//     // FIXME new object?
+//     return Ok(value);
+// }
 
 // trait Change {
 //     fn change_object_at<F>(value: &Self, path: Vec<&str>, f: F) -> Result<Object, Error>
