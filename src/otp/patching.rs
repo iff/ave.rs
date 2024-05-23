@@ -50,7 +50,7 @@ pub fn apply(value: Value, operation: Operation) -> Result<Value, PatchingError>
                 Some(v) => map.insert(key, v),
                 None => map.remove(&key),
             };
-            return change_object(value, path, ins_or_del);
+            change_object(value, path, ins_or_del)
         }
         Operation::Splice {
             path,
@@ -98,31 +98,20 @@ pub fn apply(value: Value, operation: Operation) -> Result<Value, PatchingError>
 //     path.split(".").collect()
 // }
 
-// fn change_object<F>(value: Value, path: Path, f: F) -> Result<Value, PatchingError>
-// where
-//     F: FnOnce(String, &mut Object) -> Option<Value>,
-// {
-//     let mut paths = path_elements(path);
-//     let last = paths.pop().expect("paths is non-empty");
-//     let update_map = |&mut x| match x {
-//         Value::Object(o) => Ok(Value::from(f(last.to_string(), &mut o))),
-//         _ => Err(PatchingError::Unknown()),
-//     };
-//     change_object_at(value, paths, update_map)
-// }
-
+/// travers the path and then either insert or delete at the very end
 fn change_object<F>(mut value: Value, path: Path, f: F) -> Result<Value, PatchingError>
 where
     F: FnOnce(String, &mut Object) -> Option<Value>,
 {
     // let paths = path_elements(path);
-    let paths: Vec<&str> = path.split(".").collect();
+    let mut paths: Vec<&str> = path.split(".").collect();
     let len = paths.len();
-    let key_to_change = paths[len - 1]; //paths.pop().expect("paths is non-empty");
+    // let key_to_change = paths[len - 1]; //paths.pop().expect("paths is non-empty");
+    let key_to_change = paths.pop().expect("paths is non-empty");
 
     let mut content = &mut value;
 
-    for key in &paths[..len - 2] {
+    for key in &paths {
         match content.get_mut(key) {
             Some(value) => content = value,
             None => return Err(PatchingError::KeyError(key.to_string())),
@@ -145,41 +134,6 @@ where
 //     case x of
 //         Array a -> fmap Array $ f a
 //         _       -> Left $ UnknownPatchError "Can not change a non-array"
-
-// TODO just for Value at the moment
-// travers the path and then either insert or delete at the very end
-// fn change_object_at<F>(value: Value, path: Vec<&str>, f: F) -> Result<Value, PatchingError>
-// where
-//     F: Fn(&mut Value) -> Result<Value, PatchingError>,
-// {
-//     let mut content = &value;
-//
-//     for key in path {
-//         match content.get(key) {
-//             Some(value) => content = value,
-//             None => return Err(PatchingError::KeyError(key.to_string())),
-//         }
-//     }
-//
-//     f(&mut content);
-//
-//     // FIXME new object?
-//     return Ok(value);
-// }
-
-// trait Change {
-//     fn change_object_at<F>(value: &Self, path: Vec<&str>, f: F) -> Result<Object, Error>
-//     where
-//         F: Fn(&str) -> Result<Object, Error>,
-//     {
-//         todo!()
-//         // try to access the first path in paths for the object
-//         // that means we have untyped data in Object I guess.. need to make sure how that works with serde
-//         // error if it does not exist
-//         // new = change_object_at object_at_key rest_op_path f
-//         // and at the end: return insert new
-//     }
-// }
 
 // FIXME handle array
 // changeObjectAt (Array a) (x:xs) f =
@@ -299,30 +253,60 @@ where
 //         Nothing  -> Nothing
 //         Just op' -> rebaseOperation newContent op' xs
 
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-//     use crate::otp::types::{Operation, ROOT_PATH};
-//
-//     #[test]
-//     fn apply_set_op_root_path() {
-//         let op = Operation::Set {
-//             path: ROOT_PATH.to_string(),
-//             value: Some(2),
-//         };
-//
-//         let res = apply(3, op);
-//         assert_eq!(res.ok(), Some(3));
-//     }
-//
-//     #[test]
-//     fn apply_set_op_path() {
-//         let op = Operation::Set {
-//             path: String::from("x.y"),
-//             value: Some(2),
-//         };
-//
-//         let _res = apply(3, op);
-//         assert!(false);
-//     }
-// }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::otp::types::{Operation, ROOT_PATH};
+    use serde_json::json;
+
+    #[test]
+    fn apply_set_op_root_path() {
+        let op = Operation::Set {
+            path: ROOT_PATH.to_string(),
+            value: None,
+        };
+
+        let val = json!({ "meaning of life": 42});
+        let res = apply(val.clone(), op);
+        assert_eq!(res.ok(), Some(val));
+    }
+
+    #[test]
+    fn apply_set_op_path_overwrite() {
+        let op = Operation::Set {
+            path: "x".to_string(),
+            value: Some(json!({"y": 7})),
+        };
+
+        let val = json!({ "x": {"a": 42}, "z": "z"});
+        let res = apply(val, op);
+        let exp = json!({ "x": {"y": 7}, "z": "z"});
+        assert_eq!(res.ok(), Some(exp));
+    }
+
+    #[test]
+    fn apply_set_op_path_insert() {
+        let op = Operation::Set {
+            path: "x.y".to_string(),
+            value: Some(json!({"z": 7})),
+        };
+
+        let val = json!({ "x": {"a": 42, "y": {}}, "z": "z"});
+        let res = apply(val, op);
+        let exp = json!({ "x": {"a": 42, "y": {"z": 7}}, "z": "z"});
+        assert_eq!(res.ok(), Some(exp));
+    }
+
+    #[test]
+    fn apply_set_op_path_delete() {
+        let op = Operation::Set {
+            path: "x.a".to_string(),
+            value: None,
+        };
+
+        let val = json!({ "x": {"a": 42}, "z": "z"});
+        let res = apply(val, op);
+        let exp = json!({ "x": {}, "z": "z"});
+        assert_eq!(res.ok(), Some(exp));
+    }
+}
