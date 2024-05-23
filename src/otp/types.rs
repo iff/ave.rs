@@ -93,8 +93,9 @@ pub struct Object {
 
     // data - is there a better way to map?
     // we know its a value or an array?
-    #[serde(flatten)]
-    pub content: Option<HashMap<String, Value>>,
+    // #[serde(flatten)]
+    pub content: HashMap<String, Value>,
+    // pub content: Option<HashMap<String, Value>>,
 }
 
 impl Pk for Object {
@@ -154,7 +155,7 @@ mod tests {
             created_at: firestore::FirestoreTimestamp(chrono::Utc::now()),
             created_by: String::from("deadbeef"),
             deleted: None,
-            content: None,
+            content: HashMap::new(),
         };
 
         let json = to_string(&object).unwrap();
@@ -190,7 +191,7 @@ mod tests {
             created_at,
             created_by: String::from("deadbeef"),
             deleted: None,
-            content: Some(extra),
+            content: extra,
         };
 
         let json = to_string(&object).unwrap();
@@ -199,12 +200,7 @@ mod tests {
         match serde_json::from_str::<Object>(&json[..]) {
             Ok(o) => {
                 println!("id: {:#?}", o.id);
-                match o.content {
-                    Some(content) => {
-                        println!("grade: {}", content["grade"].as_str().expect("none"))
-                    }
-                    None => println!("no extra fields"),
-                }
+                println!("grade: {}", o.content["grade"].as_str().expect("none"))
             }
             Err(e) => {
                 println!("Error {:#?}", e);

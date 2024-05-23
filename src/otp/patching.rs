@@ -1,28 +1,40 @@
 // Apply the given op on the value. Can throw an exception if the operation
 //   is invalid.
 
-use crate::otp::types::{Object, Operation, Path};
+use crate::otp::types::{Operation, Path};
 use serde_json::Value;
+use std::collections::HashMap;
+use std::fmt;
+
+type Object = serde_json::Map<String, Value>;
 
 #[derive(Debug)]
-pub enum Error {
+pub enum PatchingError {
     KeyError(String),
-    NotAObject(),
+    NotAnObject(),
 }
 
-// impl fmt::Display for Error {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         match f.align() {
-//             None => match self {
-//                 Error::Failed() => write!(f, "Failed"),
-//             },
-//             Some(_) => f.pad("!"), // &self.to_string()),
-//         }
-//     }
-// }
+impl std::error::Error for PatchingError {
+    //     fn provide<'a>(&'a self, request: &mut Request<'a>) {
+    //         request
+    //             .provide_ref::<MyBacktrace>(&self.backtrace);
+    //     }
+}
+
+impl fmt::Display for PatchingError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        todo!()
+        //         match f.align() {
+        //             None => match self {
+        //                 Error::Failed() => write!(f, "Failed"),
+        //             },
+        //             Some(_) => f.pad("!"), // &self.to_string()),
+        //         }
+    }
+}
 
 /// Apply the given op on the value. Can throw an exception if the operation is invalid.
-pub fn apply(value: Value, operation: Operation) -> Result<Value, Error> {
+pub fn apply(value: Value, operation: Operation) -> Result<Value, PatchingError> {
     match operation {
         Operation::Set {
             path,
@@ -34,9 +46,9 @@ pub fn apply(value: Value, operation: Operation) -> Result<Value, Error> {
 
             // delete key (path) if op_Value is empty
             // else insert key (path)
-            return change_object(value, path, |key, map| match (op_value) {
-                Some(v) => map.content.expect("maybe remove option").insert(key, v),
-                None => map.content.expect("maybe remove option").remove(&key),
+            return change_object(value, path, |key, map: Object| match op_value {
+                Some(v) => map.insert(key, v),
+                None => map.remove(&key),
             });
         }
         Operation::Splice {
@@ -85,17 +97,17 @@ fn path_elements(path: Path) -> Vec<&'static str> {
     path.split(".").collect()
 }
 
-fn change_object<F>(value: Value, path: Path, f: F) -> Result<Value, Error>
+fn change_object<F>(value: Value, path: Path, f: F) -> Result<Value, PatchingError>
 where
     F: Fn(String, Object) -> Object,
 {
     let mut paths = path_elements(path);
     let last = paths.pop().expect("paths is non-empty");
-    let k = |x| match (x) {
-        Object(o) => f(last.to_string(), &o),
-        Err(e) => Err(Error::NotAObject),
+    let k = |x| match x {
+        Value::Object(o) => f(last.to_string(), o),
+        _ => Err(PatchingError),
     };
-    change_object_at(value, paths, x)
+    change_object_at(value, paths, k)
 }
 
 // FIXME handle array
@@ -108,16 +120,16 @@ where
 
 // TODO just for Value at the moment
 /// travers the path and then either insert or delete at the very end
-fn change_object_at<F>(value: Value, path: Vec<&str>, f: F) -> Result<Value, Error>
+fn change_object_at<F>(value: Value, path: Vec<&str>, f: F) -> Result<Value, PatchingError>
 where
-    F: Fn(&mut Value, &Value) -> Result<Value, Error>,
+    F: Fn(&mut Value, &Value) -> Result<Value, PatchingError>,
 {
-    let mut content = value;
+    let mut content = &value;
 
     for key in path {
-        match content.get_mut(key) {
+        match content.get(key) {
             Some(value) => content = value,
-            None => return Err(KeyError(key)),
+            None => return Err(PatchingError::KeyError(key.to_string())),
         }
     }
 
