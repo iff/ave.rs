@@ -1,41 +1,38 @@
-// Apply the given op on the value. Can throw an exception if the operation
-//   is invalid.
-
+/**
+ * Implementing a subset of OT operations to patch serde_json::Value::Objects and serde_json::Value::Array.
+ */
 use crate::otp::types::{Operation, Path};
 use serde_json::Value;
-use std::collections::HashMap;
+use std::error::Error;
 use std::fmt;
 
 type Object = serde_json::Map<String, Value>;
 
 #[derive(Debug)]
-pub enum PatchingError {
+pub enum PatchError {
     IndexError(String),
     KeyError(String),
     Unknown(),
 }
 
-impl std::error::Error for PatchingError {
-    //     fn provide<'a>(&'a self, request: &mut Request<'a>) {
-    //         request
-    //             .provide_ref::<MyBacktrace>(&self.backtrace);
-    //     }
+impl Error for PatchError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        todo!()
+    }
 }
 
-impl fmt::Display for PatchingError {
+impl fmt::Display for PatchError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        todo!()
-        //         match f.align() {
-        //             None => match self {
-        //                 Error::Failed() => write!(f, "Failed"),
-        //             },
-        //             Some(_) => f.pad("!"), // &self.to_string()),
-        //         }
+        match self {
+            Self::IndexError(e) => write!(f, "IndexError: {}", e),
+            Self::KeyError(e) => write!(f, "KeyError: {}", e),
+            Self::Unknown() => write!(f, "UnknownError"),
+        }
     }
 }
 
 /// Apply the given op on the value. Can throw an exception if the operation is invalid.
-pub fn apply(value: Value, operation: Operation) -> Result<Value, PatchingError> {
+pub fn apply(value: Value, operation: Operation) -> Result<Value, PatchError> {
     match operation {
         Operation::Set {
             path,
@@ -45,8 +42,8 @@ pub fn apply(value: Value, operation: Operation) -> Result<Value, PatchingError>
                 return Ok(value);
             }
 
-            // delete key (path) if op_Value is empty
-            // else insert key (path)
+            // delete key (path) if op_Value is empty else insert key (path)
+            // TODO do we want mut?
             let ins_or_del = |key: String, map: &mut Object| match op_value {
                 Some(v) => map.insert(key, v),
                 None => map.remove(&key),
@@ -55,58 +52,48 @@ pub fn apply(value: Value, operation: Operation) -> Result<Value, PatchingError>
         }
         Operation::Splice {
             path,
-            index: opIndex,
-            remove: opRemove,
-            insert: opInsert,
+            index: op_index,
+            remove: op_remove,
+            insert: op_insert,
         } => {
-            let f = |a: Vec<Value>| {
+            // TODO do we want mut?
+            let f = |mut a: Vec<Value>| {
                 // check if the indices are within the allowed range.
-                if a.len() < opIndex + opRemove {
-                    return Err(PatchingError::IndexError(format!(
+                if a.len() < op_index + op_remove {
+                    return Err(PatchError::IndexError(format!(
                         "len: {}, index: {}, remove: {}",
                         a.len(),
-                        opIndex,
-                        opRemove
+                        op_index,
+                        op_remove
                     )));
                 };
 
-                // The existing array and the elements we want to insert must match
-                // structurally (have the same type). Furthermore, if the array consists
-                // of objects, each object is required to have an "id" field.
-                // a: Vec<Value>
-                // opInsert: Vec<Value>
-                let structural_equivalent = match (a[0], opInsert[0]) {
-                    (Value::String(_), Value::String(_)) => Ok(()),
-                    (Object(x), Object(y)) => {
+                // The existing array and the elements we want to insert must have the same type.
+                // Furthermore, if the array consists of objects, each object is required to have an "id" field.
+
+                match (a.first(), op_insert.first()) {
+                    (Some(Value::String(_)), Some(Value::String(_))) => {
+                        // TODO check all elements of both to be strings only
+                        ()
+                    }
+                    (Some(Value::Object(x)), Some(Value::Object(y))) => {
+                        // TODO check all elements of both to be strings only
                         if !x.contains_key("id") || y.contains_key("id") {
-                            Err(PatchingError::Unknown())
+                            return Err(PatchError::Unknown());
                         }
                     }
-                    _ => Err(PatchingError::Unknown()),
+                    _ => return Err(PatchError::Unknown()),
                 };
 
-                let _ = a.splice(opIndex..opIndex + opRemove, opInsert.iter().cloned());
+                // TODO check that is indeed the same operation
+                // V.take opIndex a V.++ V.fromList opInsert V.++ V.drop (opIndex + opRemove) a
+                let _ = a.splice(op_index..op_index + op_remove, op_insert.iter().cloned());
                 Ok(a)
             };
             change_array(value, path, f)
-
-            //     unless (isStructurallyEquivalent opInsert a) $
-            //         Left $ UnknownPatchError "Array doesn't match structure"
-            //
-            //     return $ V.take opIndex a V.++ V.fromList opInsert V.++ V.drop (opIndex + opRemove) a
-            //   where
-            //     isStructurallyEquivalent :: [Value] -> V.Vector Value -> Bool
-            //     isStructurallyEquivalent a b = strings a b || validObjects a b
-            //
-            //     strings      a b = all isString    a && V.all isString    b
-            //     validObjects a b = all hasObjectId a && V.all hasObjectId b
         }
     }
 }
-
-// hasObjectId :: Value -> Bool
-// hasObjectId (Object o) = M.member "id" o
-// hasObjectId _          = False
 
 // pathElements :: Path -> [Text]
 // fn path_elements(path: Path) -> Vec<&'static str> {
@@ -114,7 +101,7 @@ pub fn apply(value: Value, operation: Operation) -> Result<Value, PatchingError>
 // }
 
 /// travers the path and then either insert or delete at the very end
-fn change_object<F>(mut value: Value, path: Path, f: F) -> Result<Value, PatchingError>
+fn change_object<F>(mut value: Value, path: Path, f: F) -> Result<Value, PatchError>
 where
     F: FnOnce(String, &mut Object) -> Option<Value>,
 {
@@ -129,30 +116,25 @@ where
     for key in &paths {
         match content.get_mut(key) {
             Some(value) => content = value,
-            None => return Err(PatchingError::KeyError(key.to_string())),
+            None => return Err(PatchError::KeyError(key.to_string())),
         }
     }
 
     let _ = match content {
         Value::Object(o) => Ok(Value::from(f(key_to_change.to_string(), o))),
-        _ => Err(PatchingError::Unknown()),
+        _ => Err(PatchError::Unknown()),
     };
 
     // FIXME new object?
     Ok(value)
 }
 
-// we can use value.is_array() to check at runtime
-// changeArray :: Value -> Path -> (Array -> PatchM Array) -> PatchM Value
-// changeArray value path f = changeObjectAt value (pathElements path) $ \x ->
-//     case x of
-//         Array a -> fmap Array $ f a
-//         _       -> Left $ UnknownPatchError "Can not change a non-array"
-
-fn change_array<F>(mut value: Value, path: Path, f: F) -> Result<Value, PatchingError>
+fn change_array<F>(mut value: Value, path: Path, f: F) -> Result<Value, PatchError>
 where
-    F: FnOnce(Vec<Value>) -> Result<Vec<Value>, PatchingError>,
+    F: FnOnce(Vec<Value>) -> Result<Vec<Value>, PatchError>,
 {
+    // FIXME almost like change_object - combine as trait?
+    // resolving path and then depending on the Value::Array | Object do something different
     let mut paths: Vec<&str> = path.split(".").collect();
     let key_to_change = paths.pop().expect("paths is non-empty");
 
@@ -161,25 +143,18 @@ where
     for key in &paths {
         match content.get_mut(key) {
             Some(value) => content = value,
-            None => return Err(PatchingError::KeyError(key.to_string())),
+            None => return Err(PatchError::KeyError(key.to_string())),
         }
     }
 
-    let _ = match content {
-        Value::Array(a) => Ok(Value::from(a.into_iter().map(f).collect())),
-        _ => Err(PatchingError::Unknown()),
+    return match content {
+        Value::Array(a) => match f(a.to_vec()) {
+            Ok(v) => Ok(Value::from(v)),
+            Err(e) => Err(e),
+        },
+        _ => Err(PatchError::Unknown()),
     };
-
-    Ok(value)
 }
-
-// FIXME handle array
-// changeObjectAt (Array a) (x:xs) f =
-//     case V.findIndex (matchObjectId x) a of
-//         Nothing    -> Left $ UnknownPatchError $ "Can not find item with id " <> T.pack (show x) <> " in the array"
-//         Just index -> do
-//             new <- changeObjectAt (a V.! index) xs f
-//             return $ Array $ a V.// [(index, new)]
 
 // matchObjectId :: Text -> Value -> Bool
 // matchObjectId itemId (Object o) = Just (String itemId) == M.lookup "id" o
