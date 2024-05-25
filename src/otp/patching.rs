@@ -1,7 +1,7 @@
 /**
  * Implementing a subset of OT operations to patch serde_json::Value::Objects and serde_json::Value::Array.
  */
-use crate::otp::types::{Operation, Path};
+use crate::otp::types::{Operation, Patch, Path};
 use serde_json::Value;
 use std::error::Error;
 use std::fmt;
@@ -183,6 +183,126 @@ where
     Ok(value)
 }
 
+// Set (foo)        -> Set (foo)        = ok
+// Set (foo)        -> Set (foo.bar)    = drop
+// Set (foo.bar)    -> Set (foo)        = ok
+// Set (foo)        -> Set (bar)        = ok
+//
+// Set (foo)        -> Splice (foo)     = drop
+// Set (foo)        -> Splice (foo.bar) = drop
+// Set (foo.bar)    -> Splice (foo)     = ok
+// Set (foo)        -> Splice (bar)     = ok
+//
+// Splice (foo)     -> Set (foo)        = ok
+// Splice (foo)     -> Set (foo.bar)    = ok if foo.bar exists
+// Splice (foo.bar) -> Set (foo)        = ok
+// Splice (foo)     -> Set (bar)        = ok
+//
+// Splice (foo)     -> Splice (foo)     = drop -- todo: ok (adjust)
+// Splice (foo)     -> Splice (foo.bar) = ok if foo.bar exists
+// Splice (foo.bar) -> Splice (foo)     = ok
+// Splice (foo)     -> Splice (bar)     = ok
+
+fn op_ot(content: Value, base: Operation, op: Operation) -> Option(Operation) {
+    // drop duplicates
+    // TODO needs EQ
+    if base == op {
+        None
+    }
+
+    // if neither is a prefix of the other (they touch distinct parts of the object) then it's safe to accept the op
+    if !(base.path.starts_with(op.path) || op.path.starts_with(base.path)) {
+        Ok(op);
+    }
+
+    match (base, op) {
+        (
+            Operation::Set {
+                path: base_path,
+                value: base_value,
+            },
+            Operation::Set {
+                path: op_path,
+                value: op_value,
+            },
+        ) => {
+            if base_path == op_path {
+                Ok(op)
+            }
+            if base_path.starts_with(op_path) {
+                None
+            }
+            Ok(op)
+        }
+        (
+            Operation::Set {
+                path: base_path,
+                value: base_value,
+            },
+            Operation::Splice {
+                path: op_path,
+                index: op_index,
+                remove: op_remove,
+                insert: op_insert,
+            },
+        ) => {
+            if base_path == op_path {
+                None
+            }
+            if base_path.starts_with(op_path) {
+                None
+            }
+            Ok(op)
+        }
+        (
+            Operation::Splice {
+                path: base_path,
+                index: base_index,
+                remove: base_remove,
+                insert: base_insert,
+            },
+            Operation::Set {
+                path: op_path,
+                value: op_value,
+            },
+        ) => {
+            if base_path == op_path {
+                Ok(op)
+            }
+            if base_path.starts_with(op_path) {
+                todo!()
+                //onlyIfPresent op_path
+            }
+            Ok(op)
+        }
+        (
+            Operation::Splice {
+                path: base_path,
+                index: base_index,
+                remove: base_remove,
+                insert: base_insert,
+            },
+            Operation::Splice {
+                path: op_path,
+                index: op_index,
+                remove: op_remove,
+                insert: op_insert,
+            },
+        ) => {
+            if base_path == op_path {
+                todo!()
+                // spliceOnSplice base op
+            }
+            if base_path.starts_with(op_path) {
+                todo!()
+                //onlyIfPresent op_path
+            }
+            None
+        }
+        _ => (),
+    }
+}
+
 // matchObjectId :: Text -> Value -> Bool
 // matchObjectId itemId (Object o) = Just (String itemId) == M.lookup "id" o
 // matchObjectId _      _          = False
@@ -204,94 +324,39 @@ where
 //
 //     go _      _          = Nothing
 
-// Set (foo)        -> Set (foo)        = ok
-// Set (foo)        -> Set (foo.bar)    = drop
-// Set (foo.bar)    -> Set (foo)        = ok
-// Set (foo)        -> Set (bar)        = ok
+// onlyIfPresent path = case resolvePathIn path content of
+//     Nothing -> Nothing
+//     Just _  -> Just op
 //
-// Set (foo)        -> Splice (foo)     = drop
-// Set (foo)        -> Splice (foo.bar) = drop
-// Set (foo.bar)    -> Splice (foo)     = ok
-// Set (foo)        -> Splice (bar)     = ok
+// // Both ops are 'Splice' on the same path.
+// spliceOnSplice op1 op2
+//     | opIndex op1 + opRemove op1 <= opIndex op2
+//         = Just $ op2 { opIndex = opIndex op2 + (length $ opInsert op1) - opRemove op2 }
 //
-// Splice (foo)     -> Set (foo)        = ok
-// Splice (foo)     -> Set (foo.bar)    = ok if foo.bar exists
-// Splice (foo.bar) -> Set (foo)        = ok
-// Splice (foo)     -> Set (bar)        = ok
+//     | opIndex op2 + opRemove op2 < opIndex op1
+//         = Just op2
 //
-// Splice (foo)     -> Splice (foo)     = drop -- todo: ok (adjust)
-// Splice (foo)     -> Splice (foo.bar) = ok if foo.bar exists
-// Splice (foo.bar) -> Splice (foo)     = ok
-// Splice (foo)     -> Splice (bar)     = ok
+//     | otherwise = Nothing
 
-// opOT :: Value -> Operation -> Operation -> Maybe Operation
-// opOT content base op
-//
-//     // Duplicate ops are dropped.
-//     | base == op = Nothing
-//
-//     // If neither is a prefix of the other (they touch distinct parts of the
-//     // object) then it's safe to accept the op.
-//     | not ((opPath base `isPrefixOf` opPath op) || (opPath op `isPrefixOf` opPath base)) =
-//         Just op
-//
-//     | otherwise = case base of
-//         Set{..}    -> setOT opPath
-//         Splice{..} -> spliceOT opPath
-//
-//   where
-//     setOT path = case op of
-//         Set{..} -- Set -> Set
-//             | path == opPath             -> Just op
-//             | path `isPrefixOf` opPath   -> Nothing
-//             | otherwise                  -> Just op
-//
-//         Splice{..} -- Set -> Splice
-//             | path == opPath             -> Nothing
-//             | path `isPrefixOf` opPath   -> Nothing
-//             | otherwise                  -> Just op
-//
-//     spliceOT path = case op of
-//         Set{..} -- Splice -> Set
-//             | path == opPath             -> Just op
-//             | path `isPrefixOf` opPath   -> onlyIfPresent opPath
-//             | otherwise                  -> Just op
-//
-//         Splice{..} -- Splice -> Splice
-//             | path == opPath             -> spliceOnSplice base op
-//             | path `isPrefixOf` opPath   -> onlyIfPresent opPath
-//             | otherwise                  -> Nothing
-//
-//     onlyIfPresent path = case resolvePathIn path content of
-//         Nothing -> Nothing
-//         Just _  -> Just op
-//
-//     (Path a) `isPrefixOf` (Path b) = a `T.isPrefixOf` b
-//
-//     // Both ops are 'Splice' on the same path.
-//     spliceOnSplice op1 op2
-//         | opIndex op1 + opRemove op1 <= opIndex op2
-//             = Just $ op2 { opIndex = opIndex op2 + (length $ opInsert op1) - opRemove op2 }
-//
-//         | opIndex op2 + opRemove op2 < opIndex op1
-//             = Just op2
-//
-//         | otherwise = Nothing
+/// Given an 'Operation' which was created against a particular 'Value'
+/// (content), rebase it on top of patches which were created against the very
+/// same content in parallel.
+///
+/// This function assumes that the patches apply cleanly to the content.
+/// Failure to do so results in a fatal error.
+fn rebase(content: Value, op: Operation, patches: Vec<Patch>) -> Option(Operation) {
+    op = Some(op);
+    for p in patches {
+        match apply(content, p.patch_operation) {
+            Ok(value) => {
+                op = op_ot(value, p.patch_operation, op);
+            }
+            Err(e) => panic!("unexpected failure: {}", e),
+        }
+    }
 
-// | Given an 'Operation' which was created against a particular 'Value'
-// (content), rebase it on top of patches which were created against the very
-// same content in parallel.
-//
-// This function assumes that the patches apply cleanly to the content.
-// Failure to do so results in a fatal error.
-
-// rebaseOperation :: Value -> Operation -> [Patch] -> Maybe Operation
-// rebaseOperation _       op []     = Just op
-// rebaseOperation content op (x:xs) = case applyOperation content (patchOperation x) of
-//     Left e -> error $ "Unexpected failure: " ++ (show e)
-//     Right newContent -> case opOT newContent (patchOperation x) op of
-//         Nothing  -> Nothing
-//         Just op' -> rebaseOperation newContent op' xs
+    op;
+}
 
 #[cfg(test)]
 mod tests {
