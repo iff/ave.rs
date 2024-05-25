@@ -70,7 +70,6 @@ pub fn apply(value: Value, operation: Operation) -> Result<Value, PatchError> {
 
                 // The existing array and the elements we want to insert must have the same type.
                 // Furthermore, if the array consists of objects, each object is required to have an "id" field.
-
                 match (a.first(), op_insert.first()) {
                     (Some(Value::String(_)), Some(Value::String(_))) => {
                         // TODO check all elements of both to be strings only
@@ -106,6 +105,9 @@ where
     F: FnOnce(String, &mut Object) -> Option<Value>,
 {
     // let paths = path_elements(path);
+    // TODO use splits iterator somehow (stop before last element?) maybe not possible
+    // in a sense we want a traverse that returns the last object of the path and returns that plus
+    // a key
     let mut paths: Vec<&str> = path.split(".").collect();
     // let len = paths.len();
     // let key_to_change = paths[len - 1]; //paths.pop().expect("paths is non-empty");
@@ -321,5 +323,23 @@ mod tests {
         let res = apply(val, op);
         let exp = json!({ "x": {}, "z": "z"});
         assert_eq!(res.ok(), Some(exp));
+    }
+
+    #[test]
+    fn apply_splice_op_path() {
+        let op = Operation::Splice {
+            path: "x".to_string(),
+            index: 1,
+            remove: 0,
+            insert: vec![json!({"x": [42, 43]})],
+        };
+
+        let val = json!({ "x": [1,2,3,4], "z": "z"});
+        let res = apply(val, op);
+        let exp = json!({ "x": [1, 42, 43, 2, 3, 4], "z": "z"});
+        match res {
+            Ok(v) => assert_eq!(v, exp),
+            Err(e) => panic!("{}", e),
+        }
     }
 }
