@@ -10,9 +10,12 @@ type Object = serde_json::Map<String, Value>;
 
 #[derive(Debug)]
 pub enum PatchError {
+    InconsistentTypes(),
     IndexError(String),
     KeyError(String),
+    NoId(),
     Unknown(),
+    ValueIsNotArray(),
 }
 
 impl Error for PatchError {
@@ -24,9 +27,12 @@ impl Error for PatchError {
 impl fmt::Display for PatchError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::InconsistentTypes() => write!(f, "InconsistentTypes"),
             Self::IndexError(e) => write!(f, "IndexError: {}", e),
             Self::KeyError(e) => write!(f, "KeyError: {}", e),
+            Self::NoId() => write!(f, "NoId"),
             Self::Unknown() => write!(f, "UnknownError"),
+            Self::ValueIsNotArray() => write!(f, "ValueIsNotArray"),
         }
     }
 }
@@ -70,21 +76,26 @@ pub fn apply(value: Value, operation: Operation) -> Result<Value, PatchError> {
 
                 // The existing array and the elements we want to insert must have the same type.
                 // Furthermore, if the array consists of objects, each object is required to have an "id" field.
-                match (a.first(), op_insert.first()) {
-                    (Some(Value::String(_)), Some(Value::String(_))) => {
-                        // TODO check all elements of both to be strings only
-                        ()
-                    }
-                    (Some(Value::Object(x)), Some(Value::Object(y))) => {
-                        // TODO check all elements of both to be strings only
-                        if !x.contains_key("id") || y.contains_key("id") {
-                            return Err(PatchError::Unknown());
-                        }
-                    }
-                    _ => return Err(PatchError::Unknown()),
-                };
+                // match (a.first(), op_insert.first()) {
+                //     (Some(Value::String(_)), Some(Value::String(_))) => {
+                //         // TODO check all elements of both to be strings only
+                //         ()
+                //     }
+                //     (Some(Value::Number(_)), Some(Value::Number(_))) => {
+                //         // TODO check all elements of both to be strings only
+                //         ()
+                //     }
+                //     (Some(Value::Object(x)), Some(Value::Object(y))) => {
+                //         // TODO check all elements of both to be strings only
+                //         if !x.contains_key("id") || y.contains_key("id") {
+                //             return Err(PatchError::NoId());
+                //         }
+                //     }
+                //     _ => return Err(PatchError::InconsistentTypes()),
+                // };
 
                 // TODO check that is indeed the same operation
+                // TODO flatten op_insert to flat
                 // V.take opIndex a V.++ V.fromList opInsert V.++ V.drop (opIndex + opRemove) a
                 let _ = a.splice(op_index..op_index + op_remove, op_insert.iter().cloned());
                 Ok(a)
@@ -108,7 +119,7 @@ where
     // TODO use splits iterator somehow (stop before last element?) maybe not possible
     // in a sense we want a traverse that returns the last object of the path and returns that plus
     // a key
-    let mut paths: Vec<&str> = path.split(".").collect();
+    let mut paths: Vec<&str> = path.split('.').collect();
     // let len = paths.len();
     // let key_to_change = paths[len - 1]; //paths.pop().expect("paths is non-empty");
     let key_to_change = paths.pop().expect("paths is non-empty");
@@ -122,10 +133,10 @@ where
         }
     }
 
-    let _ = match content {
+    match content {
         Value::Object(o) => Ok(Value::from(f(key_to_change.to_string(), o))),
         _ => Err(PatchError::Unknown()),
-    };
+    }?;
 
     // FIXME new object?
     Ok(value)
@@ -137,7 +148,7 @@ where
 {
     // FIXME almost like change_object - combine as trait?
     // resolving path and then depending on the Value::Array | Object do something different
-    let mut paths: Vec<&str> = path.split(".").collect();
+    let mut paths: Vec<&str> = path.split('.').collect();
     let key_to_change = paths.pop().expect("paths is non-empty");
 
     let mut content = &mut value;
@@ -149,13 +160,22 @@ where
         }
     }
 
-    return match content {
-        Value::Array(a) => match f(a.to_vec()) {
-            Ok(v) => Ok(Value::from(v)),
-            Err(e) => Err(e),
+    let new_array = match content.get_mut(key_to_change) {
+        Some(value) => match value {
+            Value::Array(array) => Ok(Value::from(f(array.to_vec())?)),
+            _ => Err(PatchError::ValueIsNotArray()),
         },
+        None => Err(PatchError::KeyError(key_to_change.to_string())),
+    }?;
+
+    // println!("{}", new_array);
+
+    match content {
+        Value::Object(o) => Ok(o.insert(key_to_change.to_string(), new_array)),
         _ => Err(PatchError::Unknown()),
-    };
+    }?;
+
+    Ok(value)
 }
 
 // matchObjectId :: Text -> Value -> Bool
@@ -331,7 +351,7 @@ mod tests {
             path: "x".to_string(),
             index: 1,
             remove: 0,
-            insert: vec![json!({"x": [42, 43]})],
+            insert: vec![json!([42, 43])],
         };
 
         let val = json!({ "x": [1,2,3,4], "z": "z"});

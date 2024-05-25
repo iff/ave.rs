@@ -166,16 +166,12 @@ mod tests {
         //   Either<Vec, key/value tuple>
         // ?
         match from_str::<Value>(&json[..]) {
-            Ok(o) => {
-                println!("id: {:#?}", o["id"].as_str());
-                match o.get("grade") {
-                    Some(g) => println!("grade: {:#?}", g),
-                    None => println!("grade: none"),
-                }
-            }
+            Ok(o) => match o.get("grade") {
+                Some(g) => panic!("grade should be none"),
+                None => (),
+            },
             Err(e) => {
-                println!("Error {:#?}", e);
-                panic!();
+                panic!("{}", e);
             }
         }
     }
@@ -195,16 +191,15 @@ mod tests {
         };
 
         let json = to_string(&object).unwrap();
-        println!("{}", json);
+        // println!("{}", json);
 
         match serde_json::from_str::<Object>(&json[..]) {
             Ok(o) => {
-                println!("id: {:#?}", o.id);
-                println!("grade: {}", o.content["grade"].as_str().expect("none"))
+                // println!("id: {:#?}", o.id);
+                // println!("grade: {}", o.content["grade"].as_str().expect("none"))
             }
             Err(e) => {
-                println!("Error {:#?}", e);
-                panic!();
+                panic!("{}", e);
             }
         }
     }
