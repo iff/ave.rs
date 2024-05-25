@@ -95,9 +95,12 @@ pub fn apply(value: Value, operation: Operation) -> Result<Value, PatchError> {
                 // };
 
                 // TODO check that is indeed the same operation
-                // TODO flatten op_insert to flat
+                // wereHamster tells me it should act like js splice
                 // V.take opIndex a V.++ V.fromList opInsert V.++ V.drop (opIndex + opRemove) a
-                let _ = a.splice(op_index..op_index + op_remove, op_insert.iter().cloned());
+                let _ = a.splice(
+                    op_index..op_index + op_remove,
+                    op_insert.as_array().expect("is vec").iter().cloned(),
+                );
                 Ok(a)
             };
             change_array(value, path, f)
@@ -167,8 +170,6 @@ where
         },
         None => Err(PatchError::KeyError(key_to_change.to_string())),
     }?;
-
-    // println!("{}", new_array);
 
     match content {
         Value::Object(o) => Ok(o.insert(key_to_change.to_string(), new_array)),
@@ -351,7 +352,7 @@ mod tests {
             path: "x".to_string(),
             index: 1,
             remove: 0,
-            insert: vec![json!([42, 43])],
+            insert: json!([42, 43]),
         };
 
         let val = json!({ "x": [1,2,3,4], "z": "z"});

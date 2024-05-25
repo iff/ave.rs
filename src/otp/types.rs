@@ -79,7 +79,7 @@ pub enum Operation {
         path: Path,
         index: usize,
         remove: usize,
-        insert: Vec<Value>,
+        insert: Value,
     },
 }
 
