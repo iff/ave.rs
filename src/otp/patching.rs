@@ -380,7 +380,7 @@ mod tests {
         let val = json!({ "x": [1,2,3,4], "z": "z"});
         let res = apply(val, op);
         match res {
-            Ok(v) => panic!(),
+            Ok(_) => panic!(),
             Err(e) => match e {
                 PatchError::InconsistentTypes() => (),
                 _ => panic!(),
@@ -388,6 +388,7 @@ mod tests {
         }
     }
 
+    // TODO test bool and Object with id
     #[test]
     fn apply_splice_op_str() {
         let op = Operation::Splice {

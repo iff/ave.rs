@@ -1,4 +1,5 @@
-use axum::{extract::Path, extract::State, response::Json, routing::get, Router};
+// use axum::{extract::Path, extract::State, response::Json, routing::get, Router};
+use axum::{extract::State, routing::get, Router};
 use firestore::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;

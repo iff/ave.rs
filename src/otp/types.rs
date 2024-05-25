@@ -1,8 +1,7 @@
 use firestore::FirestoreTimestamp;
 use serde::{Deserialize, Serialize};
-use serde_json::{from_str, json, Error, Value};
+use serde_json::Value;
 use std::collections::HashMap;
-use std::vec::Vec;
 
 /// converts to database primary key
 trait Pk {
@@ -87,7 +86,7 @@ pub enum Operation {
 pub struct Object {
     id: ObjId,
     object_type: String,
-    created_at: firestore::FirestoreTimestamp,
+    created_at: FirestoreTimestamp,
     created_by: ObjId,
     deleted: Option<bool>,
 
@@ -109,7 +108,7 @@ pub struct Patch {
     pub object_id: ObjectId,
     pub revision_id: RevId,
     pub author_id: ObjId,
-    pub created_at: firestore::FirestoreTimestamp,
+    pub created_at: FirestoreTimestamp,
     pub operation: Operation,
 }
 
@@ -145,14 +144,14 @@ impl<T> Pk for Snapshot<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::{from_str, json, to_string, Error, Value};
+    use serde_json::{from_str, to_string, Value};
 
     #[test]
     fn object_additional_fields_as_value() {
         let object = Object {
             id: String::from("fa21ea12c"),
             object_type: String::from("value"),
-            created_at: firestore::FirestoreTimestamp(chrono::Utc::now()),
+            created_at: FirestoreTimestamp(chrono::Utc::now()),
             created_by: String::from("deadbeef"),
             deleted: None,
             content: HashMap::new(),
@@ -167,7 +166,7 @@ mod tests {
         // ?
         match from_str::<Value>(&json[..]) {
             Ok(o) => match o.get("grade") {
-                Some(g) => panic!("grade should be none"),
+                Some(_) => panic!("grade should be none"),
                 None => (),
             },
             Err(e) => {
@@ -178,7 +177,7 @@ mod tests {
 
     #[test]
     fn object_additional_fields_using_extra() {
-        let created_at = firestore::FirestoreTimestamp(chrono::Utc::now());
+        let created_at = FirestoreTimestamp(chrono::Utc::now());
         let mut extra = HashMap::new();
         extra.insert(String::from("grade"), Value::String(String::from("blue")));
         let object = Object {
@@ -191,16 +190,9 @@ mod tests {
         };
 
         let json = to_string(&object).unwrap();
-        // println!("{}", json);
-
         match serde_json::from_str::<Object>(&json[..]) {
-            Ok(o) => {
-                // println!("id: {:#?}", o.id);
-                // println!("grade: {}", o.content["grade"].as_str().expect("none"))
-            }
-            Err(e) => {
-                panic!("{}", e);
-            }
-        }
+            Ok(o) => o.content.get("grade").expect("should have grade field"),
+            Err(e) => panic!("{}", e),
+        };
     }
 }
