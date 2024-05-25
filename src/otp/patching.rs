@@ -10,6 +10,7 @@ type Object = serde_json::Map<String, Value>;
 
 #[derive(Debug)]
 pub enum PatchingError {
+    IndexError(String),
     KeyError(String),
     Unknown(),
 }
@@ -54,27 +55,41 @@ pub fn apply(value: Value, operation: Operation) -> Result<Value, PatchingError>
         }
         Operation::Splice {
             path,
-            index,
-            remove,
-            insert,
+            index: opIndex,
+            remove: opRemove,
+            insert: opInsert,
         } => {
-            todo!()
+            let f = |a: Vec<Value>| {
+                // check if the indices are within the allowed range.
+                if a.len() < opIndex + opRemove {
+                    return Err(PatchingError::IndexError(format!(
+                        "len: {}, index: {}, remove: {}",
+                        a.len(),
+                        opIndex,
+                        opRemove
+                    )));
+                };
 
-            // Check if the indices are within the allowed range.
-            //     when (V.length a < opIndex + opRemove) $
-            //         Left $ UnknownPatchError $ mconcat
-            //             [ "Index out of range ("
-            //             , T.pack (show $ V.length a)
-            //             , ","
-            //             , T.pack (show opIndex)
-            //             , ","
-            //             , T.pack (show opRemove)
-            //             , ")"
-            //             ]
+                // The existing array and the elements we want to insert must match
+                // structurally (have the same type). Furthermore, if the array consists
+                // of objects, each object is required to have an "id" field.
+                // a: Vec<Value>
+                // opInsert: Vec<Value>
+                let structural_equivalent = match (a[0], opInsert[0]) {
+                    (Value::String(_), Value::String(_)) => Ok(()),
+                    (Object(x), Object(y)) => {
+                        if !x.contains_key("id") || y.contains_key("id") {
+                            Err(PatchingError::Unknown())
+                        }
+                    }
+                    _ => Err(PatchingError::Unknown()),
+                };
 
-            // The existing array and the elements we want to insert must match
-            // structurally (have the same type). Furthermore, if the array consists
-            // of objects, each object is required to have an "id" field.
+                let _ = a.splice(opIndex..opIndex + opRemove, opInsert.iter().cloned());
+                Ok(a)
+            };
+            change_array(value, path, f)
+
             //     unless (isStructurallyEquivalent opInsert a) $
             //         Left $ UnknownPatchError "Array doesn't match structure"
             //
@@ -105,7 +120,7 @@ where
 {
     // let paths = path_elements(path);
     let mut paths: Vec<&str> = path.split(".").collect();
-    let len = paths.len();
+    // let len = paths.len();
     // let key_to_change = paths[len - 1]; //paths.pop().expect("paths is non-empty");
     let key_to_change = paths.pop().expect("paths is non-empty");
 
@@ -124,16 +139,39 @@ where
     };
 
     // FIXME new object?
-    return Ok(value);
+    Ok(value)
 }
 
-// FIXME handle array
 // we can use value.is_array() to check at runtime
 // changeArray :: Value -> Path -> (Array -> PatchM Array) -> PatchM Value
 // changeArray value path f = changeObjectAt value (pathElements path) $ \x ->
 //     case x of
 //         Array a -> fmap Array $ f a
 //         _       -> Left $ UnknownPatchError "Can not change a non-array"
+
+fn change_array<F>(mut value: Value, path: Path, f: F) -> Result<Value, PatchingError>
+where
+    F: FnOnce(Vec<Value>) -> Result<Vec<Value>, PatchingError>,
+{
+    let mut paths: Vec<&str> = path.split(".").collect();
+    let key_to_change = paths.pop().expect("paths is non-empty");
+
+    let mut content = &mut value;
+
+    for key in &paths {
+        match content.get_mut(key) {
+            Some(value) => content = value,
+            None => return Err(PatchingError::KeyError(key.to_string())),
+        }
+    }
+
+    let _ = match content {
+        Value::Array(a) => Ok(Value::from(a.into_iter().map(f).collect())),
+        _ => Err(PatchingError::Unknown()),
+    };
+
+    Ok(value)
+}
 
 // FIXME handle array
 // changeObjectAt (Array a) (x:xs) f =

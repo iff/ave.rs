@@ -77,8 +77,8 @@ pub enum Operation {
     /// manipulate arrays (remove, insert multiple elements in a single op)
     Splice {
         path: Path,
-        index: u32,
-        remove: u32,
+        index: usize,
+        remove: usize,
         insert: Vec<Value>,
     },
 }
