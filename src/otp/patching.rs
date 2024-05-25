@@ -62,9 +62,15 @@ pub fn apply(value: Value, operation: Operation) -> Result<Value, PatchError> {
             remove: op_remove,
             insert: op_insert,
         } => {
+            // convert op_insert (Value::Array) to Vec<Value>
+            let op_insert = match op_insert.as_array() {
+                Some(v) => Ok(v),
+                None => Err(PatchError::ValueIsNotArray()),
+            }?;
+
             // TODO do we want mut?
             let f = |mut a: Vec<Value>| {
-                // check if the indices are within the allowed range.
+                // check if the indices are within the allowed range
                 if a.len() < op_index + op_remove {
                     return Err(PatchError::IndexError(format!(
                         "len: {}, index: {}, remove: {}",
@@ -76,31 +82,29 @@ pub fn apply(value: Value, operation: Operation) -> Result<Value, PatchError> {
 
                 // The existing array and the elements we want to insert must have the same type.
                 // Furthermore, if the array consists of objects, each object is required to have an "id" field.
-                // match (a.first(), op_insert.first()) {
-                //     (Some(Value::String(_)), Some(Value::String(_))) => {
-                //         // TODO check all elements of both to be strings only
-                //         ()
-                //     }
-                //     (Some(Value::Number(_)), Some(Value::Number(_))) => {
-                //         // TODO check all elements of both to be strings only
-                //         ()
-                //     }
-                //     (Some(Value::Object(x)), Some(Value::Object(y))) => {
-                //         // TODO check all elements of both to be strings only
-                //         if !x.contains_key("id") || y.contains_key("id") {
-                //             return Err(PatchError::NoId());
-                //         }
-                //     }
-                //     _ => return Err(PatchError::InconsistentTypes()),
-                // };
+                match (a.first(), op_insert.first()) {
+                    (Some(Value::String(_)), Some(Value::String(_))) => {
+                        // TODO check all elements of both to be strings only
+                        ()
+                    }
+                    // TODO others??
+                    (Some(Value::Number(_)), Some(Value::Number(_))) => {
+                        // TODO check all elements of both to be strings only
+                        ()
+                    }
+                    (Some(Value::Object(x)), Some(Value::Object(y))) => {
+                        // TODO check all elements of both to be strings only
+                        if !x.contains_key("id") || y.contains_key("id") {
+                            return Err(PatchError::NoId());
+                        }
+                    }
+                    _ => return Err(PatchError::InconsistentTypes()),
+                };
 
                 // TODO check that is indeed the same operation
                 // wereHamster tells me it should act like js splice
                 // V.take opIndex a V.++ V.fromList opInsert V.++ V.drop (opIndex + opRemove) a
-                let _ = a.splice(
-                    op_index..op_index + op_remove,
-                    op_insert.as_array().expect("is vec").iter().cloned(),
-                );
+                let _ = a.splice(op_index..op_index + op_remove, op_insert.iter().cloned());
                 Ok(a)
             };
             change_array(value, path, f)
@@ -347,7 +351,7 @@ mod tests {
     }
 
     #[test]
-    fn apply_splice_op_path() {
+    fn apply_splice_op_number() {
         let op = Operation::Splice {
             path: "x".to_string(),
             index: 1,
@@ -358,6 +362,62 @@ mod tests {
         let val = json!({ "x": [1,2,3,4], "z": "z"});
         let res = apply(val, op);
         let exp = json!({ "x": [1, 42, 43, 2, 3, 4], "z": "z"});
+        match res {
+            Ok(v) => assert_eq!(v, exp),
+            Err(e) => panic!("{}", e),
+        }
+    }
+
+    #[test]
+    fn apply_splice_op_inconsistent_types() {
+        let op = Operation::Splice {
+            path: "x".to_string(),
+            index: 1,
+            remove: 0,
+            insert: json!(["42", "43"]),
+        };
+
+        let val = json!({ "x": [1,2,3,4], "z": "z"});
+        let res = apply(val, op);
+        match res {
+            Ok(v) => panic!(),
+            Err(e) => match e {
+                PatchError::InconsistentTypes() => (),
+                _ => panic!(),
+            },
+        }
+    }
+
+    #[test]
+    fn apply_splice_op_str() {
+        let op = Operation::Splice {
+            path: "x".to_string(),
+            index: 1,
+            remove: 0,
+            insert: json!(["42", "43"]),
+        };
+
+        let val = json!({ "x": ["a", "b", "c", "d"], "z": "z"});
+        let res = apply(val, op);
+        let exp = json!({ "x": ["a", "42", "43", "b", "c", "d"], "z": "z"});
+        match res {
+            Ok(v) => assert_eq!(v, exp),
+            Err(e) => panic!("{}", e),
+        }
+    }
+
+    #[test]
+    fn apply_splice_op_remove() {
+        let op = Operation::Splice {
+            path: "x".to_string(),
+            index: 1,
+            remove: 2,
+            insert: json!([42, 43]),
+        };
+
+        let val = json!({ "x": [1,2,3,4], "z": "z"});
+        let res = apply(val, op);
+        let exp = json!({ "x": [1, 42, 43, 4], "z": "z"});
         match res {
             Ok(v) => assert_eq!(v, exp),
             Err(e) => panic!("{}", e),
