@@ -203,7 +203,7 @@ where
 // Splice (foo.bar) -> Splice (foo)     = ok
 // Splice (foo)     -> Splice (bar)     = ok
 
-fn op_ot(content: Value, base: Operation, op: Operation) -> Option(Operation) {
+fn op_ot(content: Value, base: Operation, op: Operation) -> Option<Operation> {
     // drop duplicates
     // TODO needs EQ
     if base == op {
@@ -219,11 +219,11 @@ fn op_ot(content: Value, base: Operation, op: Operation) -> Option(Operation) {
         (
             Operation::Set {
                 path: base_path,
-                value: base_value,
+                value: _,
             },
             Operation::Set {
                 path: op_path,
-                value: op_value,
+                value: _,
             },
         ) => {
             if base_path == op_path {
@@ -237,13 +237,13 @@ fn op_ot(content: Value, base: Operation, op: Operation) -> Option(Operation) {
         (
             Operation::Set {
                 path: base_path,
-                value: base_value,
+                value: _,
             },
             Operation::Splice {
                 path: op_path,
-                index: op_index,
-                remove: op_remove,
-                insert: op_insert,
+                index: _,
+                remove: _,
+                insert: _,
             },
         ) => {
             if base_path == op_path {
@@ -257,50 +257,79 @@ fn op_ot(content: Value, base: Operation, op: Operation) -> Option(Operation) {
         (
             Operation::Splice {
                 path: base_path,
-                index: base_index,
-                remove: base_remove,
-                insert: base_insert,
+                index: _,
+                remove: _,
+                insert: _,
             },
             Operation::Set {
                 path: op_path,
-                value: op_value,
+                value: _,
             },
         ) => {
             if base_path == op_path {
                 Ok(op)
             }
             if base_path.starts_with(op_path) {
-                todo!()
-                //onlyIfPresent op_path
+                is_present(op_path, content, op)
             }
             Ok(op)
         }
         (
             Operation::Splice {
                 path: base_path,
-                index: base_index,
-                remove: base_remove,
-                insert: base_insert,
+                index: _,
+                remove: _,
+                insert: _,
             },
             Operation::Splice {
                 path: op_path,
-                index: op_index,
-                remove: op_remove,
-                insert: op_insert,
+                index: _,
+                remove: _,
+                insert: _,
             },
         ) => {
             if base_path == op_path {
                 todo!()
-                // spliceOnSplice base op
+                // spliceOnSplice base op contente
             }
             if base_path.starts_with(op_path) {
-                todo!()
-                //onlyIfPresent op_path
+                is_present(op_path, content, op)
             }
             None
         }
         _ => (),
     }
+}
+
+fn is_present(path: Path, value: Value, op: Operation) -> Option<Operation> {
+    let paths: Vec<&str> = path.split('.').collect();
+
+    let mut content = Some(value);
+
+    for p in paths {
+        content = match content {
+            Value::Object(o) => match content.get(p) {
+                Some(v) => Some(v),
+                None => return None, // return??
+            },
+            Value::Array(a) => {
+                // maybe Nothing (go xs) $ V.find (matchObjectId x) a
+                for element in a {
+                    match element {
+                        Value::Object(o) => {
+                            if (p == o.get("id")) {
+                                o
+                            }
+                        }
+                        _ => (),
+                    }
+                }
+            }
+            _ => return None, // return??
+        }
+    }
+
+    Ok(op)
 }
 
 // matchObjectId :: Text -> Value -> Bool
