@@ -208,11 +208,13 @@ fn op_ot(content: Value, base: Operation, op: Operation) -> Option<Operation> {
     }
 
     // if neither is a prefix of the other (they touch distinct parts of the object) then it's safe to accept the op
-    if !(base.path.starts_with(op.path) || op.path.starts_with(base.path)) {
-        return Some(op);
-    }
+    // FIXME
+    // if !(base.path.starts_with(op.path) || op.path.starts_with(base.path)) {
+    //     return Some(op);
+    // }
 
-    match (base, op) {
+    // FIXME clone
+    match (base, op.clone()) {
         (
             Operation::Set {
                 path: base_path,
@@ -294,7 +296,6 @@ fn op_ot(content: Value, base: Operation, op: Operation) -> Option<Operation> {
             }
             None
         }
-        _ => None, // FIXME error?
     }
 }
 
@@ -303,33 +304,19 @@ fn is_present(path: Path, value: Value, op: Operation) -> Option<Operation> {
 
     let mut content = Some(&value);
 
-    let res = for p in paths {
+    for p in paths {
         content = match content {
             Some(Value::Object(o)) => match content?.get(p) {
                 Some(v) => Some(v),
                 None => return None,
             },
-            Some(Value::Array(a)) => {
-                // maybe Nothing (go xs) $ V.find (matchObjectId x) a
-                let mut found = None;
-                for element in a {
-                    found = match element {
-                        Value::Object(o) => {
-                            if Some(p) == o.get("id") {
-                                break Some(o);
-                            }
-                            None
-                        }
-                        _ => None,
-                    };
-                }
-
-                v = found;
-                v
-            }
+            Some(Value::Array(a)) => a.iter().find(|element| match element {
+                Value::Object(o) => Some(&Value::String(p.to_string())) == o.get("id"),
+                _ => false,
+            }),
             _ => return None,
         }
-    };
+    }
 
     // means we reached the end of the path without bailing, so op is okay
     Some(op)
