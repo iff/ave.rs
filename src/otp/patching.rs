@@ -279,20 +279,28 @@ fn op_ot(content: Value, base: Operation, op: Operation) -> Option<Operation> {
         (
             Operation::Splice {
                 path: base_path,
-                index: _,
-                remove: _,
-                insert: _,
+                index: base_index,
+                remove: base_remove,
+                insert: base_insert,
             },
             Operation::Splice {
                 path: op_path,
-                index: _,
-                remove: _,
+                index: op_index,
+                remove: op_remove,
                 insert: _,
             },
         ) => {
             if base_path == op_path {
-                todo!()
-                // spliceOnSplice base op contente
+                if base_index + base_remove <= op_index {
+                    op.index += base_insert.len() - op_remove;
+                    return Some(op);
+                }
+
+                if op_index + op_remove < base_index {
+                    return Some(op);
+                }
+
+                return None;
             }
             if base_path.starts_with(&op_path) {
                 if is_reachable(op_path, content) {
@@ -313,7 +321,7 @@ fn is_reachable(path: Path, value: Value) -> bool {
 
     for p in paths {
         content = match content {
-            Value::Object(o) => match content.get(p) {
+            Value::Object(o) => match o.get(p) {
                 Some(v) => v,
                 None => return false,
             },
@@ -373,18 +381,20 @@ fn is_reachable(path: Path, value: Value) -> bool {
 /// This function assumes that the patches apply cleanly to the content.
 /// Failure to do so results in a fatal error.
 fn rebase(content: Value, op: Operation, patches: Vec<Patch>) -> Option<Operation> {
-    todo!()
-    // op = Some(op);
-    // for p in patches {
-    //     match apply(content, p.patch_operation) {
-    //         Ok(value) => {
-    //             op = op_ot(value, p.patch_operation, op);
-    //         }
-    //         Err(e) => panic!("unexpected failure: {}", e),
-    //     }
-    // }
-    //
-    // op;
+    let mut new_content = content;
+    let mut op = Some(op);
+
+    for patch in patches {
+        match apply(new_content, patch.operation) {
+            Ok(value) => {
+                new_content = value;
+                op = op_ot(new_content, patch.operation, op?);
+            }
+            Err(e) => panic!("unexpected failure: {}", e),
+        }
+    }
+
+    op
 }
 
 #[cfg(test)]
