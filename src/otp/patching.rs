@@ -269,7 +269,10 @@ fn op_ot(content: Value, base: Operation, op: Operation) -> Option<Operation> {
                 return Some(op);
             }
             if base_path.starts_with(&op_path) {
-                return is_present(op_path, content, op);
+                if is_reachable(op_path, content) {
+                    return Some(op);
+                }
+                return None;
             }
             Some(op)
         }
@@ -292,34 +295,40 @@ fn op_ot(content: Value, base: Operation, op: Operation) -> Option<Operation> {
                 // spliceOnSplice base op contente
             }
             if base_path.starts_with(&op_path) {
-                return is_present(op_path, content, op);
+                if is_reachable(op_path, content) {
+                    return Some(op);
+                }
+                return None;
             }
             None
         }
     }
 }
 
-fn is_present(path: Path, value: Value, op: Operation) -> Option<Operation> {
+/// check if path is reachable starting from value
+fn is_reachable(path: Path, value: Value) -> bool {
     let paths: Vec<&str> = path.split('.').collect();
 
-    let mut content = Some(&value);
+    let mut content = &value;
 
     for p in paths {
         content = match content {
-            Some(Value::Object(o)) => match content?.get(p) {
-                Some(v) => Some(v),
-                None => return None,
+            Value::Object(o) => match content.get(p) {
+                Some(v) => v,
+                None => return false,
             },
-            Some(Value::Array(a)) => a.iter().find(|element| match element {
+            Value::Array(a) => match a.iter().find(|element| match element {
                 Value::Object(o) => Some(&Value::String(p.to_string())) == o.get("id"),
                 _ => false,
-            }),
-            _ => return None,
+            }) {
+                Some(v) => v,
+                None => return false,
+            },
+            _ => return false,
         }
     }
 
-    // means we reached the end of the path without bailing, so op is okay
-    Some(op)
+    true
 }
 
 // matchObjectId :: Text -> Value -> Bool
