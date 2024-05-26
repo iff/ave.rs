@@ -1,6 +1,4 @@
-/**
- * Implementing a subset of OT operations to patch serde_json::Value::Objects and serde_json::Value::Array.
- */
+/// Implementing a subset of OT operations to patch serde_json::Value::Objects and serde_json::Value::Array.
 use crate::otp::types::{Operation, Patch, Path};
 use serde_json::Value;
 use std::error::Error;
@@ -205,14 +203,13 @@ where
 
 fn op_ot(content: Value, base: Operation, op: Operation) -> Option<Operation> {
     // drop duplicates
-    // TODO needs EQ
     if base == op {
-        None
+        return None;
     }
 
     // if neither is a prefix of the other (they touch distinct parts of the object) then it's safe to accept the op
     if !(base.path.starts_with(op.path) || op.path.starts_with(base.path)) {
-        Ok(op);
+        return Some(op);
     }
 
     match (base, op) {
@@ -227,12 +224,12 @@ fn op_ot(content: Value, base: Operation, op: Operation) -> Option<Operation> {
             },
         ) => {
             if base_path == op_path {
-                Ok(op)
+                return Some(op);
             }
-            if base_path.starts_with(op_path) {
-                None
+            if base_path.starts_with(&op_path) {
+                return None;
             }
-            Ok(op)
+            Some(op)
         }
         (
             Operation::Set {
@@ -247,12 +244,12 @@ fn op_ot(content: Value, base: Operation, op: Operation) -> Option<Operation> {
             },
         ) => {
             if base_path == op_path {
-                None
+                return None;
             }
-            if base_path.starts_with(op_path) {
-                None
+            if base_path.starts_with(&op_path) {
+                return None;
             }
-            Ok(op)
+            Some(op)
         }
         (
             Operation::Splice {
@@ -267,12 +264,12 @@ fn op_ot(content: Value, base: Operation, op: Operation) -> Option<Operation> {
             },
         ) => {
             if base_path == op_path {
-                Ok(op)
+                return Some(op);
             }
-            if base_path.starts_with(op_path) {
-                is_present(op_path, content, op)
+            if base_path.starts_with(&op_path) {
+                return is_present(op_path, content, op);
             }
-            Ok(op)
+            Some(op)
         }
         (
             Operation::Splice {
@@ -292,44 +289,50 @@ fn op_ot(content: Value, base: Operation, op: Operation) -> Option<Operation> {
                 todo!()
                 // spliceOnSplice base op contente
             }
-            if base_path.starts_with(op_path) {
-                is_present(op_path, content, op)
+            if base_path.starts_with(&op_path) {
+                return is_present(op_path, content, op);
             }
             None
         }
-        _ => (),
+        _ => None, // FIXME error?
     }
 }
 
 fn is_present(path: Path, value: Value, op: Operation) -> Option<Operation> {
     let paths: Vec<&str> = path.split('.').collect();
 
-    let mut content = Some(value);
+    let mut content = Some(&value);
 
-    for p in paths {
+    let res = for p in paths {
         content = match content {
-            Value::Object(o) => match content.get(p) {
+            Some(Value::Object(o)) => match content?.get(p) {
                 Some(v) => Some(v),
-                None => return None, // return??
+                None => return None,
             },
-            Value::Array(a) => {
+            Some(Value::Array(a)) => {
                 // maybe Nothing (go xs) $ V.find (matchObjectId x) a
+                let mut found = None;
                 for element in a {
-                    match element {
+                    found = match element {
                         Value::Object(o) => {
-                            if (p == o.get("id")) {
-                                o
+                            if Some(p) == o.get("id") {
+                                break Some(o);
                             }
+                            None
                         }
-                        _ => (),
-                    }
+                        _ => None,
+                    };
                 }
-            }
-            _ => return None, // return??
-        }
-    }
 
-    Ok(op)
+                v = found;
+                v
+            }
+            _ => return None,
+        }
+    };
+
+    // means we reached the end of the path without bailing, so op is okay
+    Some(op)
 }
 
 // matchObjectId :: Text -> Value -> Bool
@@ -373,18 +376,19 @@ fn is_present(path: Path, value: Value, op: Operation) -> Option<Operation> {
 ///
 /// This function assumes that the patches apply cleanly to the content.
 /// Failure to do so results in a fatal error.
-fn rebase(content: Value, op: Operation, patches: Vec<Patch>) -> Option(Operation) {
-    op = Some(op);
-    for p in patches {
-        match apply(content, p.patch_operation) {
-            Ok(value) => {
-                op = op_ot(value, p.patch_operation, op);
-            }
-            Err(e) => panic!("unexpected failure: {}", e),
-        }
-    }
-
-    op;
+fn rebase(content: Value, op: Operation, patches: Vec<Patch>) -> Option<Operation> {
+    todo!()
+    // op = Some(op);
+    // for p in patches {
+    //     match apply(content, p.patch_operation) {
+    //         Ok(value) => {
+    //             op = op_ot(value, p.patch_operation, op);
+    //         }
+    //         Err(e) => panic!("unexpected failure: {}", e),
+    //     }
+    // }
+    //
+    // op;
 }
 
 #[cfg(test)]

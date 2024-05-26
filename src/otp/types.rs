@@ -68,16 +68,18 @@ impl Pk for ObjectId {
 //     sumEncoding       = TaggedObject "type" "content"
 // } ''Operation)
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, PartialEq)]
 pub enum Operation {
-    /// applied to objects for adding, updating and inserting multiple elements in a single op
+    /// applied to Value::Object for adding, updating and inserting multiple elements in a single op
     Set { path: Path, value: Option<Value> },
 
-    /// manipulate arrays (remove, insert multiple elements in a single op)
+    /// manipulate Value::Array (remove, insert multiple elements in a single op) mimicing js/rust splice
+    /// implementation
     Splice {
         path: Path,
         index: usize,
         remove: usize,
+        /// this is actually a Value::Array, everything else will result in an error
         insert: Value,
     },
 }
