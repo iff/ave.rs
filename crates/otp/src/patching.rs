@@ -1,5 +1,5 @@
 /// Implementing a subset of OT operations to patch serde_json::Value::Objects and serde_json::Value::Array.
-use crate::otp::types::{Operation, Patch, Path};
+use crate::types::{Operation, Patch, Path};
 use serde_json::Value;
 use std::error::Error;
 use std::fmt;
@@ -201,9 +201,9 @@ where
 // Splice (foo.bar) -> Splice (foo)     = ok
 // Splice (foo)     -> Splice (bar)     = ok
 
-fn op_ot(content: Value, base: Operation, op: Operation) -> Option<Operation> {
+fn op_ot(content: &Value, base: &Operation, op: Operation) -> Option<Operation> {
     // drop duplicates
-    if base == op {
+    if *base == op {
         return None;
     }
 
@@ -225,10 +225,10 @@ fn op_ot(content: Value, base: Operation, op: Operation) -> Option<Operation> {
                 value: _,
             },
         ) => {
-            if base_path == op_path {
+            if *base_path == op_path {
                 return Some(op);
             }
-            if base_path.starts_with(&op_path) {
+            if (*base_path).starts_with(&op_path) {
                 return None;
             }
             Some(op)
@@ -245,10 +245,10 @@ fn op_ot(content: Value, base: Operation, op: Operation) -> Option<Operation> {
                 insert: _,
             },
         ) => {
-            if base_path == op_path {
+            if *base_path == op_path {
                 return None;
             }
-            if base_path.starts_with(&op_path) {
+            if (*base_path).starts_with(&op_path) {
                 return None;
             }
             Some(op)
@@ -265,10 +265,10 @@ fn op_ot(content: Value, base: Operation, op: Operation) -> Option<Operation> {
                 value: _,
             },
         ) => {
-            if base_path == op_path {
+            if *base_path == op_path {
                 return Some(op);
             }
-            if base_path.starts_with(&op_path) {
+            if (*base_path).starts_with(&op_path) {
                 if is_reachable(op_path, content) {
                     return Some(op);
                 }
@@ -287,16 +287,25 @@ fn op_ot(content: Value, base: Operation, op: Operation) -> Option<Operation> {
                 path: op_path,
                 index: op_index,
                 remove: op_remove,
-                insert: _,
+                insert: op_insert,
             },
         ) => {
-            if base_path == op_path {
+            if *base_path == op_path {
                 if base_index + base_remove <= op_index {
-                    op.index += base_insert.len() - op_remove;
-                    return Some(op);
+                    let base_insert_len = base_insert
+                        .as_array()
+                        .expect("ot with splice needs array")
+                        .len();
+                    //  FIXME copy/clone?
+                    return Some(Operation::Splice {
+                        path: op_path,
+                        index: op_index + base_insert_len - op_remove,
+                        remove: op_remove,
+                        insert: op_insert,
+                    });
                 }
 
-                if op_index + op_remove < base_index {
+                if op_index + op_remove < *base_index {
                     return Some(op);
                 }
 
@@ -314,10 +323,10 @@ fn op_ot(content: Value, base: Operation, op: Operation) -> Option<Operation> {
 }
 
 /// check if path is reachable starting from value
-fn is_reachable(path: Path, value: Value) -> bool {
+fn is_reachable(path: Path, value: &Value) -> bool {
     let paths: Vec<&str> = path.split('.').collect();
 
-    let mut content = &value;
+    let mut content = value;
 
     for p in paths {
         content = match content {
@@ -380,7 +389,7 @@ fn is_reachable(path: Path, value: Value) -> bool {
 ///
 /// This function assumes that the patches apply cleanly to the content.
 /// Failure to do so results in a fatal error.
-fn rebase(content: Value, op: Operation, patches: Vec<Patch>) -> Option<Operation> {
+pub fn rebase(content: Value, op: Operation, patches: Vec<Patch>) -> Option<Operation> {
     let mut new_content = content;
     let mut op = Some(op);
 
@@ -388,7 +397,7 @@ fn rebase(content: Value, op: Operation, patches: Vec<Patch>) -> Option<Operatio
         match apply(new_content, patch.operation) {
             Ok(value) => {
                 new_content = value;
-                op = op_ot(new_content, patch.operation, op?);
+                op = op_ot(&new_content, &patch.operation, op?);
             }
             Err(e) => panic!("unexpected failure: {}", e),
         }
