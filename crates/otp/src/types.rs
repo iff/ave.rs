@@ -35,22 +35,22 @@ pub const ZERO_REV_ID: RevId = 0;
 #[derive(Serialize, Deserialize, Clone)]
 pub enum ObjectId {
     /// The base object whose snapshots contain the actual content.
-    BaseObjectId(ObjId),
+    Base(ObjId),
     /// An object describing a particualar release of the base object.
-    ReleaseObjectId(ObjId, RevId),
+    Release(ObjId, RevId),
     /// Object which contains authorization rules.
-    AuthorizationObjectId(ObjId),
+    Authorization(ObjId),
 }
 
 // TODO parsing?
 impl Pk for ObjectId {
     fn to_pk(&self) -> String {
         match self {
-            ObjectId::BaseObjectId(obj_id) => obj_id.to_string(),
-            ObjectId::ReleaseObjectId(obj_id, rev_id) => {
+            ObjectId::Base(obj_id) => obj_id.to_string(),
+            ObjectId::Release(obj_id, rev_id) => {
                 obj_id.to_string() + "/release/" + &rev_id.to_string()[..]
             }
-            ObjectId::AuthorizationObjectId(obj_id) => obj_id.to_string() + "/authorization",
+            ObjectId::Authorization(obj_id) => obj_id.to_string() + "/authorization",
         }
     }
 }
@@ -167,10 +167,11 @@ mod tests {
         //   Either<Vec, key/value tuple>
         // ?
         match from_str::<Value>(&json[..]) {
-            Ok(o) => match o.get("grade") {
-                Some(_) => panic!("grade should be none"),
-                None => (),
-            },
+            Ok(o) => {
+                if o.get("grade").is_some() {
+                    panic!("grade should be none")
+                }
+            }
             Err(e) => {
                 panic!("{}", e);
             }

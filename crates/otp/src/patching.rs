@@ -184,7 +184,7 @@ where
 
 /// Apply `op` on top of `base` with values `content`.
 /// Conflict resolution:
-/// ```
+/// ```plain
 /// Set (foo)        -> Set (foo)        = ok
 /// Set (foo)        -> Set (foo.bar)    = drop
 /// Set (foo.bar)    -> Set (foo)        = ok
@@ -391,21 +391,21 @@ fn is_reachable(path: Path, value: &Value) -> bool {
 ///
 /// This function assumes that the patches apply cleanly to the content. Otherwire the function will panic.
 pub fn rebase(content: Value, op: Operation, patches: Vec<Patch>) -> Option<Operation> {
-    todo!()
-    // let mut new_content = content;
-    // let mut op = Some(op);
-    //
-    // for patch in patches {
-    //     match apply(new_content, patch.operation) {
-    //         Ok(value) => {
-    //             new_content = value;
-    //             op = op_ot(&new_content, &patch.operation, op?);
-    //         }
-    //         Err(e) => panic!("unexpected failure: {}", e),
-    //     }
-    // }
-    //
-    // op
+    let mut new_content = content;
+    let mut op = Some(op);
+
+    for patch in patches {
+        // FIXME clone
+        match apply(new_content, patch.operation.clone()) {
+            Ok(value) => {
+                new_content = value;
+                op = op_ot(&new_content, &patch.operation, op?);
+            }
+            Err(e) => panic!("unexpected failure: {}", e),
+        }
+    }
+
+    op
 }
 
 #[cfg(test)]
