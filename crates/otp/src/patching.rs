@@ -35,7 +35,8 @@ impl fmt::Display for PatchError {
     }
 }
 
-/// Apply the given op on the value. Can throw an exception if the operation is invalid.
+/// Apply `op` to `value`.
+/// Panics if the operation is invalid.
 pub fn apply(value: Value, operation: Operation) -> Result<Value, PatchError> {
     match operation {
         Operation::Set {
@@ -115,7 +116,7 @@ pub fn apply(value: Value, operation: Operation) -> Result<Value, PatchError> {
 //     path.split(".").collect()
 // }
 
-/// travers the path and then either insert or delete at the very end
+/// Travers the path and then either insert or delete at the very end
 fn change_object<F>(mut value: Value, path: Path, f: F) -> Result<Value, PatchError>
 where
     F: FnOnce(String, &mut Object) -> Option<Value>,
@@ -181,26 +182,29 @@ where
     Ok(value)
 }
 
-// Set (foo)        -> Set (foo)        = ok
-// Set (foo)        -> Set (foo.bar)    = drop
-// Set (foo.bar)    -> Set (foo)        = ok
-// Set (foo)        -> Set (bar)        = ok
-//
-// Set (foo)        -> Splice (foo)     = drop
-// Set (foo)        -> Splice (foo.bar) = drop
-// Set (foo.bar)    -> Splice (foo)     = ok
-// Set (foo)        -> Splice (bar)     = ok
-//
-// Splice (foo)     -> Set (foo)        = ok
-// Splice (foo)     -> Set (foo.bar)    = ok if foo.bar exists
-// Splice (foo.bar) -> Set (foo)        = ok
-// Splice (foo)     -> Set (bar)        = ok
-//
-// Splice (foo)     -> Splice (foo)     = drop -- todo: ok (adjust)
-// Splice (foo)     -> Splice (foo.bar) = ok if foo.bar exists
-// Splice (foo.bar) -> Splice (foo)     = ok
-// Splice (foo)     -> Splice (bar)     = ok
-
+/// Apply `op` on top of `base` with values `content`.
+/// Conflict resolution:
+/// ```
+/// Set (foo)        -> Set (foo)        = ok
+/// Set (foo)        -> Set (foo.bar)    = drop
+/// Set (foo.bar)    -> Set (foo)        = ok
+/// Set (foo)        -> Set (bar)        = ok
+///
+/// Set (foo)        -> Splice (foo)     = drop
+/// Set (foo)        -> Splice (foo.bar) = drop
+/// Set (foo.bar)    -> Splice (foo)     = ok
+/// Set (foo)        -> Splice (bar)     = ok
+///
+/// Splice (foo)     -> Set (foo)        = ok
+/// Splice (foo)     -> Set (foo.bar)    = ok if foo.bar exists
+/// Splice (foo.bar) -> Set (foo)        = ok
+/// Splice (foo)     -> Set (bar)        = ok
+///
+/// Splice (foo)     -> Splice (foo)     = drop -- todo: ok (adjust)
+/// Splice (foo)     -> Splice (foo.bar) = ok if foo.bar exists
+/// Splice (foo.bar) -> Splice (foo)     = ok
+/// Splice (foo)     -> Splice (bar)     = ok
+/// ```
 fn op_ot(content: &Value, base: &Operation, op: Operation) -> Option<Operation> {
     // drop duplicates
     if *base == op {
@@ -322,7 +326,7 @@ fn op_ot(content: &Value, base: &Operation, op: Operation) -> Option<Operation> 
     }
 }
 
-/// check if path is reachable starting from value
+/// Check if path is reachable starting from value
 fn is_reachable(path: Path, value: &Value) -> bool {
     let paths: Vec<&str> = path.split('.').collect();
 
@@ -383,33 +387,31 @@ fn is_reachable(path: Path, value: &Value) -> bool {
 //
 //     | otherwise = Nothing
 
-/// Given an 'Operation' which was created against a particular 'Value'
-/// (content), rebase it on top of patches which were created against the very
-/// same content in parallel.
+/// Given an `op` which was created against a particular `content`, rebase it on top of patches which were created against the very same content in parallel.
 ///
-/// This function assumes that the patches apply cleanly to the content.
-/// Failure to do so results in a fatal error.
+/// This function assumes that the patches apply cleanly to the content. Otherwire the function will panic.
 pub fn rebase(content: Value, op: Operation, patches: Vec<Patch>) -> Option<Operation> {
-    let mut new_content = content;
-    let mut op = Some(op);
-
-    for patch in patches {
-        match apply(new_content, patch.operation) {
-            Ok(value) => {
-                new_content = value;
-                op = op_ot(&new_content, &patch.operation, op?);
-            }
-            Err(e) => panic!("unexpected failure: {}", e),
-        }
-    }
-
-    op
+    todo!()
+    // let mut new_content = content;
+    // let mut op = Some(op);
+    //
+    // for patch in patches {
+    //     match apply(new_content, patch.operation) {
+    //         Ok(value) => {
+    //             new_content = value;
+    //             op = op_ot(&new_content, &patch.operation, op?);
+    //         }
+    //         Err(e) => panic!("unexpected failure: {}", e),
+    //     }
+    // }
+    //
+    // op
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::otp::types::{Operation, ROOT_PATH};
+    use crate::types::{Operation, ROOT_PATH};
     use serde_json::json;
 
     #[test]
