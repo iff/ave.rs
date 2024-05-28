@@ -504,4 +504,43 @@ mod tests {
             Err(e) => panic!("{}", e),
         }
     }
+
+    #[test]
+    fn is_reachable_empty_path() {
+        let value = json!(null);
+        assert!(is_reachable(Path::from(""), &value));
+    }
+
+    #[test]
+    fn is_reachable_for_primitive_values() {
+        let value = json!(null);
+        assert!(!is_reachable(Path::from("x"), &value));
+
+        let value = json!("");
+        assert!(!is_reachable(Path::from("x"), &value));
+
+        let value = json!(1);
+        assert!(!is_reachable(Path::from("x"), &value));
+
+        let value = json!(true);
+        assert!(!is_reachable(Path::from("x"), &value));
+    }
+
+    #[test]
+    fn is_reachable_for_object() {
+        let value = json!({"id": "foo", "bar": "baz"});
+        assert!(is_reachable(Path::from("bar"), &value));
+    }
+
+    #[test]
+    fn is_reachable_for_array() {
+        let value = json!([]);
+        assert!(!is_reachable(Path::from("foo.bar"), &value));
+
+        let value = json!([{}]);
+        assert!(!is_reachable(Path::from("foo.bar"), &value));
+
+        let value = json!([{"id": "foo", "bar": "baz"}]);
+        assert!(is_reachable(Path::from("foo.bar"), &value));
+    }
 }
