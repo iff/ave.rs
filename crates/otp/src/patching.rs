@@ -352,41 +352,6 @@ fn is_reachable(path: Path, value: &Value) -> bool {
     true
 }
 
-// matchObjectId :: Text -> Value -> Bool
-// matchObjectId itemId (Object o) = Just (String itemId) == M.lookup "id" o
-// matchObjectId _      _          = False
-
-// | Resolve the path in the object.
-// resolvePathIn :: Path -> Value -> Maybe Value
-// resolvePathIn path = go (pathElements path)
-//   where
-//     go []     value      = Just value
-//     go [""]   value      = Just value
-//
-//     go (x:xs) (Object o) =
-//         case parse (const $ o .: x) o of
-//             Error   _ -> Nothing
-//             Success a -> go xs a
-//
-//     go (x:xs) (Array a)  =
-//         maybe Nothing (go xs) $ V.find (matchObjectId x) a
-//
-//     go _      _          = Nothing
-
-// onlyIfPresent path = case resolvePathIn path content of
-//     Nothing -> Nothing
-//     Just _  -> Just op
-//
-// // Both ops are 'Splice' on the same path.
-// spliceOnSplice op1 op2
-//     | opIndex op1 + opRemove op1 <= opIndex op2
-//         = Just $ op2 { opIndex = opIndex op2 + (length $ opInsert op1) - opRemove op2 }
-//
-//     | opIndex op2 + opRemove op2 < opIndex op1
-//         = Just op2
-//
-//     | otherwise = Nothing
-
 /// Given an `op` which was created against a particular `content`, rebase it on top of patches which were created against the very same content in parallel.
 ///
 /// This function assumes that the patches apply cleanly to the content. Otherwire the function will panic.
