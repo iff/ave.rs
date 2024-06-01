@@ -1,0 +1,14 @@
+[package]
+name = "all-o-stasis"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+axum = "0.6.20"
+chrono = "0.4.38"
+firestore = "0.37.2"
+serde = { version = "1.0.189", features = ["derive"] }
+serde_json = "1.0.117"
+tokio = { version = "1.33.0", features = ["full", "macros", "rt-multi-thread"] }
+tracing = "0.1.39"
+tracing-subscriber = "0.3.17"
