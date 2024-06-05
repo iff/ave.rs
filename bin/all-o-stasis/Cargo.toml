@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-otp = { path = "../../crates/otp", version = "0.1.0" }
+otp = { path = "../../avers-otp", version = "0.1.0" }
 axum = "0.6.20"
 chrono = "0.4.38"
 firestore = "0.37.2"
