@@ -25,19 +25,16 @@ pub fn config_env_var(name: &str) -> Result<String, String> {
 
 #[derive(Clone)]
 struct AppState {
-    db: FirestoreDb,
+    pub db: FirestoreDb,
 }
 
 #[tokio::main]
-async fn main() {
-    // -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     tracing_subscriber::fmt::init();
 
     // TODO proper error handling
     let shared_state = Arc::new(AppState {
-        db: FirestoreDb::new(&config_env_var("PROJECT_ID").expect("google creds"))
-            .await
-            .expect("connection to db"),
+        db: FirestoreDb::new(&config_env_var("PROJECT_ID")?).await?,
     });
 
     let app = Router::new()
@@ -47,13 +44,44 @@ async fn main() {
         .route("/healthz", get(healthz))
         .with_state(shared_state);
 
-    axum::Server::bind(&"0.0.0.0:3000".parse().unwrap())
+    println!("starting server");
+    axum::Server::bind(&"0.0.0.0:3000".parse()?)
         .serve(app.into_make_service())
-        .await
-        .unwrap();
+        .await?;
+
+    Ok(())
+}
+
+// Example structure to play with
+#[derive(Debug, Clone, Deserialize, Serialize)]
+struct MyTestStructure {
+    some_id: String,
+    some_string: String,
+    one_more_string: String,
+    some_num: u64,
 }
 
 async fn revision(State(_state): State<Arc<AppState>>) -> &'static str {
+    const TEST_COLLECTION_NAME: &'static str = "test";
+
+    let my_struct = MyTestStructure {
+        some_id: "test-1".to_string(),
+        some_string: "Test".to_string(),
+        one_more_string: "Test2".to_string(),
+        some_num: 42,
+    };
+
+    let object_returned: MyTestStructure = _state
+        .db
+        .fluent()
+        .insert()
+        .into(TEST_COLLECTION_NAME)
+        .document_id(&my_struct.some_id)
+        .object(&my_struct)
+        .execute()
+        .await
+        .expect("");
+
     "rev!"
 }
 async fn healthz(State(_state): State<Arc<AppState>>) -> &'static str {

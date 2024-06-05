@@ -44,6 +44,7 @@
           cargo-edit
           cargo-watch
           rust-analyzer
+          (google-cloud-sdk.withExtraComponents [ google-cloud-sdk.components.gke-gcloud-auth-plugin ])
         ] ++ lib.optionals pkgs.stdenv.isDarwin [ darwin.apple_sdk.frameworks.Security darwin.apple_sdk.frameworks.SystemConfiguration ];
 
         shellHook = ''
