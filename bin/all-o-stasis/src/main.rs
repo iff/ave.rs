@@ -1,5 +1,5 @@
-// use axum::{extract::Path, extract::State, response::Json, routing::get, Router};
-use axum::{extract::State, routing::get, Router};
+use axum::response::Json;
+use axum::{extract::Path, extract::State, routing::get, Router};
 use firestore::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -42,6 +42,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .route("/revision", get(revision))
         // health check
         .route("/healthz", get(healthz))
+        // get object
+        .route("/objects/:id", get(objects))
         .with_state(shared_state);
 
     println!("starting server");
@@ -52,7 +54,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     Ok(())
 }
 
-// Example structure to play with
+const TEST_COLLECTION_NAME: &'static str = "test";
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 struct MyTestStructure {
     some_id: String,
@@ -61,27 +64,26 @@ struct MyTestStructure {
     some_num: u64,
 }
 
-async fn revision(State(_state): State<Arc<AppState>>) -> &'static str {
-    const TEST_COLLECTION_NAME: &'static str = "test";
-
-    let my_struct = MyTestStructure {
-        some_id: "test-1".to_string(),
-        some_string: "Test".to_string(),
-        one_more_string: "Test2".to_string(),
-        some_num: 42,
-    };
-
-    let object_returned: MyTestStructure = _state
+async fn objects(
+    State(_state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Json<serde_json::Value> {
+    let obj: Option<MyTestStructure> = _state
         .db
         .fluent()
-        .insert()
-        .into(TEST_COLLECTION_NAME)
-        .document_id(&my_struct.some_id)
-        .object(&my_struct)
-        .execute()
+        .select()
+        .by_id_in(TEST_COLLECTION_NAME)
+        .obj()
+        .one(&id)
         .await
-        .expect("");
+        .unwrap();
 
+    Json(serde_json::Value::String(
+        serde_json::to_string(&obj).unwrap(),
+    ))
+}
+
+async fn revision(State(_state): State<Arc<AppState>>) -> &'static str {
     "rev!"
 }
 async fn healthz(State(_state): State<Arc<AppState>>) -> &'static str {
