@@ -1,6 +1,7 @@
 use axum::response::Json;
 use axum::{extract::Path, extract::State, routing::get, Router};
 use firestore::*;
+use otp::types::{Object, Pk};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -32,7 +33,6 @@ struct AppState {
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     tracing_subscriber::fmt::init();
 
-    // TODO proper error handling
     let shared_state = Arc::new(AppState {
         db: FirestoreDb::new(&config_env_var("PROJECT_ID")?).await?,
     });
@@ -42,8 +42,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .route("/revision", get(revision))
         // health check
         .route("/healthz", get(healthz))
+        // debug create
+        .route("/:gym/objects/new", get(new))
         // get object
-        .route("/objects/:id", get(objects))
+        .route("/:gym/objects/:id", get(objects))
         .with_state(shared_state);
 
     println!("starting server");
@@ -54,25 +56,36 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     Ok(())
 }
 
-const TEST_COLLECTION_NAME: &'static str = "test";
+async fn new(State(_state): State<Arc<AppState>>, Path(gym): Path<String>) {
+    let collection_name = String::from("objects");
+    let obj = Object::new(String::from("boulder"), String::from("id"));
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
-struct MyTestStructure {
-    some_id: String,
-    some_string: String,
-    one_more_string: String,
-    some_num: u64,
+    let parent_path = _state.db.parent_path("gyms", gym).unwrap();
+    let obj: Option<Object> = _state
+        .db
+        .fluent()
+        .insert()
+        .into(&collection_name[..])
+        .document_id(obj.to_pk())
+        .parent(&parent_path)
+        .object(&obj)
+        .execute()
+        .await
+        .unwrap();
 }
 
 async fn objects(
     State(_state): State<Arc<AppState>>,
-    Path(id): Path<String>,
+    Path((gym, id)): Path<(String, String)>,
 ) -> Json<serde_json::Value> {
-    let obj: Option<MyTestStructure> = _state
+    let parent_path = _state.db.parent_path("gyms", gym).unwrap();
+    let collection_name = String::from("objects");
+    let obj: Option<Object> = _state
         .db
         .fluent()
         .select()
-        .by_id_in(TEST_COLLECTION_NAME)
+        .by_id_in(&collection_name[..])
+        .parent(&parent_path)
         .obj()
         .one(&id)
         .await

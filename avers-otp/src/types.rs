@@ -4,7 +4,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 
 /// converts to database primary key
-trait Pk {
+pub trait Pk {
     fn to_pk(&self) -> String;
 }
 
@@ -99,6 +99,20 @@ pub struct Object {
     // pub content: Option<HashMap<String, Value>>,
 }
 
+impl Object {
+    pub fn new(object_type: String, created_by: ObjId) -> Object {
+        // TODO generete random id?
+        Object {
+            id: String::from("id"),
+            object_type: object_type,
+            created_at: FirestoreTimestamp(chrono::Utc::now()),
+            created_by,
+            deleted: None,
+            content: HashMap::new(),
+        }
+    }
+}
+
 impl Pk for Object {
     fn to_pk(&self) -> String {
         self.id.to_string()
@@ -150,6 +164,7 @@ mod tests {
 
     #[test]
     fn object_additional_fields_as_value() {
+        // TODO use new()
         let object = Object {
             id: String::from("fa21ea12c"),
             object_type: String::from("value"),
