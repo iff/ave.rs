@@ -86,26 +86,28 @@ pub enum Operation {
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Object {
-    id: ObjId,
+    #[serde(alias = "_firestore_id")]
+    id: Option<ObjId>, // not nice that this has to be empty for id generation to work
+    #[serde(alias = "_firestore_created")]
+    created_at: Option<FirestoreTimestamp>,
     object_type: String,
-    created_at: FirestoreTimestamp,
     created_by: ObjId,
     deleted: Option<bool>,
 
-    // data - is there a better way to map?
-    // we know its a value or an array?
-    // #[serde(flatten)]
+    // flatten or not? keeping things in content helps with clashes
+    // maybe an option?
     pub content: HashMap<String, Value>,
-    // pub content: Option<HashMap<String, Value>>,
 }
 
 impl Object {
     pub fn new(object_type: String, created_by: ObjId) -> Object {
-        // TODO generete random id?
+        // TODO generete random id? (see Avers/Storage.hs)
+        // or use firestore ids
+        // TODO should we only allow to create Objects that are already persisted?
         Object {
-            id: String::from("id"),
+            id: None,
             object_type: object_type,
-            created_at: FirestoreTimestamp(chrono::Utc::now()),
+            created_at: None,
             created_by,
             deleted: None,
             content: HashMap::new(),
@@ -115,7 +117,7 @@ impl Object {
 
 impl Pk for Object {
     fn to_pk(&self) -> String {
-        self.id.to_string()
+        self.id.as_ref().expect("").to_string()
     }
 }
 
@@ -164,16 +166,7 @@ mod tests {
 
     #[test]
     fn object_additional_fields_as_value() {
-        // TODO use new()
-        let object = Object {
-            id: String::from("fa21ea12c"),
-            object_type: String::from("value"),
-            created_at: FirestoreTimestamp(chrono::Utc::now()),
-            created_by: String::from("deadbeef"),
-            deleted: None,
-            content: HashMap::new(),
-        };
-
+        let object = Object::new(String::from("value"), String::from("deadbeef"));
         let json = to_string(&object).unwrap();
 
         // I think the only way to handle custom keys on the Object is to actually parse it as a
@@ -195,17 +188,10 @@ mod tests {
 
     #[test]
     fn object_additional_fields_using_extra() {
-        let created_at = FirestoreTimestamp(chrono::Utc::now());
-        let mut extra = HashMap::new();
-        extra.insert(String::from("grade"), Value::String(String::from("blue")));
-        let object = Object {
-            id: String::from("fa21ea12c"),
-            object_type: String::from("value"),
-            created_at,
-            created_by: String::from("deadbeef"),
-            deleted: None,
-            content: extra,
-        };
+        let mut object = Object::new(String::from("value"), String::from("deadbeef"));
+        object
+            .content
+            .insert(String::from("grade"), Value::String(String::from("blue")));
 
         let json = to_string(&object).unwrap();
         match serde_json::from_str::<Object>(&json[..]) {
