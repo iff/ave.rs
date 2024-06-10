@@ -88,6 +88,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // let cloud_resource_prefix = format!("projects/{}/databases/(default)", google_project_id);
     // FirestoreDb::with_options(FirestoreDbOptions)
 
+    // TODO arc needed?
     let state = AppState {
         db: Arc::new(FirestoreDb::new(&config_env_var("PROJECT_ID")?).await?),
     };
