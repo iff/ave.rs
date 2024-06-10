@@ -1,3 +1,6 @@
+// https://github.com/abdolence/firestore-rs/blob/master/examples/caching_memory_collections.rs
+// https://github.com/abdolence/firestore-rs/blob/master/examples/nested_collections.rs
+
 use crate::routes::app;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
@@ -23,6 +26,8 @@ struct AppState {
 // The kinds of errors we can hit in our application.
 enum AppError {
     // Ot operations fail
+    // TODO decide what OT errors we expose and handle those here
+    #[allow(dead_code)]
     Ot(OtError),
     // firestore db errors
     Firestore(FirestoreError),
@@ -39,8 +44,11 @@ impl From<FirestoreError> for AppError {
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let (status, error_message) = match self {
+            // TODO handle all firestore errors
             AppError::Firestore(FirestoreError::DatabaseError(_)) => (StatusCode::NOT_FOUND, "xxx"),
+            // TODO
             AppError::Ot(_) => (StatusCode::NOT_FOUND, "xxx"),
+            // TODO more info what kind of error we faced?
             _ => (StatusCode::INTERNAL_SERVER_ERROR, "Something went wrong"),
         };
 
@@ -70,6 +78,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         )
         .with(tracing_subscriber::fmt::layer())
         .init();
+
+    // see https://github.com/abdolence/gcloud-sdk-rs/blob/master/examples/firestore-client/src/main.rs
+    // Detect Google project ID using environment variables PROJECT_ID/GCP_PROJECT_ID
+    // or GKE metadata server when the app runs inside GKE
+    // let google_project_id = GoogleEnvironment::detect_google_project_id().await
+    //     .expect("No Google Project ID detected. Please specify it explicitly using env variable: PROJECT_ID");
+    //
+    // let cloud_resource_prefix = format!("projects/{}/databases/(default)", google_project_id);
+    // FirestoreDb::with_options(FirestoreDbOptions)
 
     let state = AppState {
         db: Arc::new(FirestoreDb::new(&config_env_var("PROJECT_ID")?).await?),
