@@ -5,6 +5,7 @@ use axum::{
 };
 use otp::types::Object;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use crate::{AppError, AppState};
 
@@ -179,18 +180,18 @@ fn api_routes() -> Router<AppState> {
         // lookup patch
         .route("/:gym/objects/:id/patchse/:rev_id", get(lookup_patch))
         // changes on object (raw websocket)
-        .route(":gym/objects/:id/changes", get(object_changes))
+        .route("/:gym/objects/:id/changes", get(object_changes))
         // create a release
-        .route(":gym/objects/:id/releases", post(create_release))
+        .route("/:gym/objects/:id/releases", post(create_release))
         // lookup release
-        .route(":gym/objects/:id/releases/:rev_id", get(lookup_release))
+        .route("/:gym/objects/:id/releases/:rev_id", get(lookup_release))
         // lookup latest release
         .route(
-            ":gym/objects/:id/releases/_latest",
+            "/:gym/objects/:id/releases/_latest",
             get(lookup_latest_release),
         )
         // feed (raw websocket)
-        .route(":gym/feed", get(feed))
+        .route("/:gym/feed", get(feed))
 
     // type ChangeSecret
     //     = "secret"
