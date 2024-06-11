@@ -1,14 +1,19 @@
 #[derive(Serialize, Deserialize, Clone)]
-struct BoulderStat {
-    set_on: u32,
-    removed_on: Option<u32>,
-    setters: Vec<String>,
-    sector: String,
-    grade: String,
+struct Account {
+    login: String,
+    role: String,
+    email: Option<String>,
+    name: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
-struct PublicProfile {
-    name: String,
-    avatar: Option<String>,
+struct Boulder {
+    setter: Vec<ObjId>,
+    sector: String,
+    grade: String,
+    grade_nr: u16,
+    set_date: usize,
+    removed: usize,
+    is_draft: usize,
+    name: Option<String>,
 }

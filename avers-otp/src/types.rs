@@ -106,12 +106,17 @@ impl Object {
         // TODO should we only allow to create Objects that are already persisted?
         Object {
             id: None,
-            object_type: object_type,
+            object_type,
             created_at: None,
             created_by,
             deleted: None,
             content: HashMap::new(),
         }
+    }
+
+    pub fn id(&self) -> String {
+        // FIXME
+        self.id.as_ref().expect("no id").to_string()
     }
 }
 

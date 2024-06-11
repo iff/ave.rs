@@ -3,7 +3,7 @@ use axum::{
     extract::Path, extract::State, routing::delete, routing::get, routing::patch, routing::post,
     Router,
 };
-use otp::types::Object;
+use otp::types::{Object, ObjectId, Operation, Patch, ROOT_PATH, ZERO_REV_ID};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -24,11 +24,10 @@ struct PublicProfile {
     avatar: Option<String>,
 }
 
-// Having a function that produces our app makes it easy to call it from tests
-// without having to create an HTTP server.
 pub fn app(state: AppState) -> Router {
     // XXX https://docs.rs/axum/0.6.20/axum/routing/struct.Router.html#method.nest would be nice
     // but we can't use it without breaking the js library
+
     // TODO simplify gym capture?
 
     let api = api_routes();
@@ -63,24 +62,27 @@ pub fn app(state: AppState) -> Router {
         // TODO what does this do?
         //     :> Get '[JSON] [BoulderStat]
         .route("/:gym/stats/boulders", get(stats_boulders))
+        // auth
+        .route("/gym/:gym/signup", post(signup))
         .merge(api)
         .with_state(state)
-    // auth
-    //   :> ReqBody '[JSON] SignupRequest2
-    //   :> Post '[JSON] SignupResponse2
-    // .route("/gym/:gym/signup", post(signup))
-
-    // We can still add middleware
-    // .layer(TraceLayer::new_for_http())
 }
 
-async fn revision(State(_state): State<AppState>) -> &'static str {
-    "rev!"
+async fn revision(State(_state): State<AppState>) -> Result<&'static str, AppError> {
+    Ok("some git sha - no cheating!")
 }
 
-async fn healthz(State(_state): State<AppState>) -> &'static str {
+async fn healthz(State(state): State<AppState>) -> Result<&'static str, AppError> {
     // run a really simple query to check that the database is also alive
-    "healthy"
+    let _ = state
+        .db
+        .fluent()
+        .list()
+        .collections()
+        .stream_all_with_errors()
+        .await?;
+
+    Ok("healthy")
 }
 
 async fn public_profile(
@@ -94,7 +96,32 @@ async fn active_boulders(
     State(state): State<AppState>,
     Path(gym): Path<String>,
 ) -> Result<Json<Object>, AppError> {
-    todo!()
+    let object_stream: BoxStream<FirestoreResult<MyTestStructure>> = db
+        .fluent()
+        .select()
+        .fields(
+            paths!(MyTestStructure::{some_id, some_num, some_string, one_more_string, created_at}),
+        )
+        .from(TEST_COLLECTION_NAME)
+        .filter(|q| {
+            q.for_all([
+                q.field(path!(MyTestStructure::some_num)).is_not_null(),
+                q.field(path!(MyTestStructure::some_string)).eq("Test"),
+                Some("Test2")
+                    .and_then(|value| q.field(path!(MyTestStructure::one_more_string)).eq(value)),
+            ])
+        })
+        .order_by([(
+            path!(MyTestStructure::some_num),
+            FirestoreQueryDirection::Descending,
+        )])
+        .obj()
+        .stream_query_with_errors()
+        .await?;
+
+    let as_vec: Vec<Boulders> = object_stream.try_collect().await?;
+
+    Ok(as_vec)
 }
 
 async fn draft_boulders(
@@ -135,6 +162,13 @@ async fn stats(
 async fn stats_boulders(
     State(state): State<AppState>,
     Path(gym): Path<String>,
+) -> Result<Json<Object>, AppError> {
+    todo!()
+}
+
+async fn signup(
+    State(state): State<AppState>,
+    Json(payload): Json<Value>,
 ) -> Result<Json<Object>, AppError> {
     todo!()
 }
@@ -243,24 +277,55 @@ async fn new_object(
     State(state): State<AppState>,
     Path(gym): Path<String>,
     Json(payload): Json<Value>,
-) -> Result<Json<Object>, AppError> {
-    todo!()
-    // TODO get body from post and create an object
-    // let obj = Object::new(String::from("boulder"), String::from("id"));
-    //
-    // let parent_path = state.db.parent_path("gyms", gym).unwrap();
-    // let obj: Option<Object> = state
-    //     .db
-    //     .fluent()
-    //     .insert()
-    //     .into("objects")
-    //     .generate_document_id()
-    //     .parent(&parent_path)
-    //     .object(&obj)
-    //     .execute()
-    //     .await?;
-    //
-    // obj.map_or(Err(AppError::Query()), |o| Ok(Json(o)))
+) -> Result<String, AppError> {
+    // TODO how to parse payload?
+    // ot
+    // created_by
+    // content
+
+    let obj = Object::new(String::from("boulder"), String::from("id"));
+
+    let parent_path = state.db.parent_path("gyms", gym).unwrap();
+    let obj: Option<Object> = state
+        .db
+        .fluent()
+        .insert()
+        .into("objects")
+        .generate_document_id()
+        .parent(&parent_path)
+        .object(&obj)
+        .execute()
+        .await?;
+
+    let obj = if let Some(o) = obj {
+        o
+    } else {
+        return Err(AppError::Query());
+    };
+
+    // object = Object objId otType now createdBy Nothing
+    // boId   = BaseObjectId objId
+    // op     = Set rootPath (Just $ toJSON content)
+    // patch  = Patch boId zeroRevId objId now op
+
+    let op = Operation::Set {
+        path: ROOT_PATH.to_string(),
+        value: content,
+    };
+    let patch = Patch {
+        object_id: ObjectId::Base(obj.id()),
+        revision_id: ZERO_REV_ID,
+        author_id: created_by,
+        created_at: now,
+        operation: op,
+    };
+
+    // insert object objectsTable
+    // insert patch patchesTable
+    // updateObjectViews ot objId (Just content)
+
+    // TODO return only id?
+    Ok(obj.id())
 }
 
 async fn lookup_object(
