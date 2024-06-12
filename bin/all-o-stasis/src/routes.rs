@@ -96,32 +96,33 @@ async fn active_boulders(
     State(state): State<AppState>,
     Path(gym): Path<String>,
 ) -> Result<Json<Object>, AppError> {
-    let object_stream: BoxStream<FirestoreResult<MyTestStructure>> = db
-        .fluent()
-        .select()
-        .fields(
-            paths!(MyTestStructure::{some_id, some_num, some_string, one_more_string, created_at}),
-        )
-        .from(TEST_COLLECTION_NAME)
-        .filter(|q| {
-            q.for_all([
-                q.field(path!(MyTestStructure::some_num)).is_not_null(),
-                q.field(path!(MyTestStructure::some_string)).eq("Test"),
-                Some("Test2")
-                    .and_then(|value| q.field(path!(MyTestStructure::one_more_string)).eq(value)),
-            ])
-        })
-        .order_by([(
-            path!(MyTestStructure::some_num),
-            FirestoreQueryDirection::Descending,
-        )])
-        .obj()
-        .stream_query_with_errors()
-        .await?;
-
-    let as_vec: Vec<Boulders> = object_stream.try_collect().await?;
-
-    Ok(as_vec)
+    todo!()
+    // let object_stream: BoxStream<FirestoreResult<MyTestStructure>> = db
+    //     .fluent()
+    //     .select()
+    //     .fields(
+    //         paths!(MyTestStructure::{some_id, some_num, some_string, one_more_string, created_at}),
+    //     )
+    //     .from(TEST_COLLECTION_NAME)
+    //     .filter(|q| {
+    //         q.for_all([
+    //             q.field(path!(MyTestStructure::some_num)).is_not_null(),
+    //             q.field(path!(MyTestStructure::some_string)).eq("Test"),
+    //             Some("Test2")
+    //                 .and_then(|value| q.field(path!(MyTestStructure::one_more_string)).eq(value)),
+    //         ])
+    //     })
+    //     .order_by([(
+    //         path!(MyTestStructure::some_num),
+    //         FirestoreQueryDirection::Descending,
+    //     )])
+    //     .obj()
+    //     .stream_query_with_errors()
+    //     .await?;
+    //
+    // let as_vec: Vec<Boulders> = object_stream.try_collect().await?;
+    //
+    // Ok(as_vec)
 }
 
 async fn draft_boulders(
@@ -278,12 +279,16 @@ async fn new_object(
     Path(gym): Path<String>,
     Json(payload): Json<Value>,
 ) -> Result<String, AppError> {
-    // TODO how to parse payload?
-    // ot
-    // created_by
-    // content
+    // TODO where do we get that?
+    // ah that comes from the credentials
+    let created_by = String::from("some id");
+    let ot_type = match payload.get("type") {
+        Some(t) => t.as_str(),
+        None => return Err(AppError::Query()),
+    };
+    let content = payload.get("content");
 
-    let obj = Object::new(String::from("boulder"), String::from("id"));
+    let obj = Object::new(ot_type, created_by);
 
     let parent_path = state.db.parent_path("gyms", gym).unwrap();
     let obj: Option<Object> = state
@@ -316,7 +321,7 @@ async fn new_object(
         object_id: ObjectId::Base(obj.id()),
         revision_id: ZERO_REV_ID,
         author_id: created_by,
-        created_at: now,
+        created_at: now, // o.created_at
         operation: op,
     };
 
