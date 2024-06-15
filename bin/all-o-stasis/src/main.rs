@@ -46,10 +46,10 @@ impl IntoResponse for AppError {
         let (status, error_message) = match self {
             // TODO handle all firestore errors
             AppError::Firestore(FirestoreError::DatabaseError(_)) => (StatusCode::NOT_FOUND, "xxx"),
+            AppError::Firestore(_) => (StatusCode::INTERNAL_SERVER_ERROR, "firestore error"),
             // TODO
             AppError::Ot(_) => (StatusCode::NOT_FOUND, "xxx"),
-            // TODO more info what kind of error we faced?
-            _ => (StatusCode::INTERNAL_SERVER_ERROR, "Something went wrong"),
+            AppError::Query() => (StatusCode::BAD_REQUEST, "can't handle req"),
         };
 
         let body = Json(json!({

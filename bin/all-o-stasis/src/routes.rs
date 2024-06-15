@@ -279,19 +279,19 @@ async fn new_object(
     Path(gym): Path<String>,
     Json(payload): Json<Value>,
 ) -> Result<String, AppError> {
-    // TODO where do we get that?
-    // ah that comes from the credentials
+    // TODO where do we get that? ah that comes from the credentials
     let created_by = String::from("some id");
-    // FIXME use or or so to get Result type and then immediately call ? on it
-    let ot_type = match payload.get("type") {
-        Some(t) => t.as_str().expect("").to_string(),
-        None => return Err(AppError::Query()),
-    };
-    let content = Some(payload.get("content").expect("").clone());
+    let ot_type = payload
+        .get("type")
+        .ok_or_else(AppError::Query)?
+        .as_str()
+        .expect("type is string") // FIXME another expect to get rid of
+        .to_string();
+    let content = Some(payload.get("content").ok_or_else(AppError::Query)?.clone());
 
     let obj = Object::new(ot_type, created_by.clone());
 
-    let parent_path = state.db.parent_path("gyms", gym).unwrap();
+    let parent_path = state.db.parent_path("gyms", gym)?;
     let obj: Option<Object> = state
         .db
         .fluent()
@@ -303,17 +303,7 @@ async fn new_object(
         .execute()
         .await?;
 
-    let obj = if let Some(o) = obj {
-        o
-    } else {
-        return Err(AppError::Query());
-    };
-
-    // object = Object objId otType now createdBy Nothing
-    // boId   = BaseObjectId objId
-    // op     = Set rootPath (Just $ toJSON content)
-    // patch  = Patch boId zeroRevId objId now op
-
+    let obj = obj.ok_or_else(AppError::Query)?;
     let op = Operation::Set {
         path: ROOT_PATH.to_string(),
         value: content,
@@ -325,7 +315,7 @@ async fn new_object(
         created_at: None,
         operation: op,
     };
-    let _patch: Option<Patch> = state
+    let patch: Option<Patch> = state
         .db
         .fluent()
         .insert()
@@ -335,8 +325,9 @@ async fn new_object(
         .object(&patch)
         .execute()
         .await?;
+    let _ = patch.ok_or_else(AppError::Query)?;
 
-    // updateObjectViews ot objId (Just content)
+    // TODO updateObjectViews ot objId (Just content)
 
     // TODO return only id?
     Ok(obj.id())
