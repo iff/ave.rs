@@ -131,7 +131,8 @@ pub struct Patch {
     pub object_id: ObjectId,
     pub revision_id: RevId,
     pub author_id: ObjId,
-    pub created_at: FirestoreTimestamp,
+    #[serde(alias = "_firestore_created")]
+    pub created_at: Option<FirestoreTimestamp>,
     pub operation: Operation,
 }
 

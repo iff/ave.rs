@@ -37,6 +37,7 @@
     {
       devShells.default = pkgs.mkShell {
         nativeBuildInputs = with pkgs; [
+          bruno
           rustToolchain
           openssl
           pkg-config

@@ -282,13 +282,14 @@ async fn new_object(
     // TODO where do we get that?
     // ah that comes from the credentials
     let created_by = String::from("some id");
+    // FIXME use or or so to get Result type and then immediately call ? on it
     let ot_type = match payload.get("type") {
-        Some(t) => t.as_str(),
+        Some(t) => t.as_str().expect("").to_string(),
         None => return Err(AppError::Query()),
     };
-    let content = payload.get("content");
+    let content = Some(payload.get("content").expect("").clone());
 
-    let obj = Object::new(ot_type, created_by);
+    let obj = Object::new(ot_type, created_by.clone());
 
     let parent_path = state.db.parent_path("gyms", gym).unwrap();
     let obj: Option<Object> = state
@@ -321,12 +322,20 @@ async fn new_object(
         object_id: ObjectId::Base(obj.id()),
         revision_id: ZERO_REV_ID,
         author_id: created_by,
-        created_at: now, // o.created_at
+        created_at: None,
         operation: op,
     };
+    let _patch: Option<Patch> = state
+        .db
+        .fluent()
+        .insert()
+        .into("patches")
+        .generate_document_id()
+        .parent(&parent_path)
+        .object(&patch)
+        .execute()
+        .await?;
 
-    // insert object objectsTable
-    // insert patch patchesTable
     // updateObjectViews ot objId (Just content)
 
     // TODO return only id?
