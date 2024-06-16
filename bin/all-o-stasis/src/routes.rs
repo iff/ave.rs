@@ -315,6 +315,7 @@ async fn new_object(
         created_at: None,
         operation: op,
     };
+    // TODO why do we get deserialize issue here?
     let patch: Option<Patch> = state
         .db
         .fluent()

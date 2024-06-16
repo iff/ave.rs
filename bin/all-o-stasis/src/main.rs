@@ -44,12 +44,47 @@ impl From<FirestoreError> for AppError {
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let (status, error_message) = match self {
-            // TODO handle all firestore errors
-            AppError::Firestore(FirestoreError::DatabaseError(_)) => (StatusCode::NOT_FOUND, "xxx"),
-            AppError::Firestore(_) => (StatusCode::INTERNAL_SERVER_ERROR, "firestore error"),
+            AppError::Firestore(FirestoreError::SystemError(_)) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "firestore system error".to_string(),
+            ),
+            AppError::Firestore(FirestoreError::DatabaseError(_)) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "database error".to_string(),
+            ),
+            AppError::Firestore(FirestoreError::DataConflictError(_)) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "data conflict error".to_string(),
+            ),
+            AppError::Firestore(FirestoreError::DataNotFoundError(_)) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "data not found error".to_string(),
+            ),
+            AppError::Firestore(FirestoreError::InvalidParametersError(_)) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "invalid params error".to_string(),
+            ),
+            AppError::Firestore(FirestoreError::SerializeError(_)) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "serialization error".to_string(),
+            ),
+            AppError::Firestore(FirestoreError::DeserializeError(e)) => {
+                (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+            }
+            AppError::Firestore(FirestoreError::NetworkError(_)) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "network error".to_string(),
+            ),
+            AppError::Firestore(FirestoreError::ErrorInTransaction(_)) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "transaction error".to_string(),
+            ),
+            AppError::Firestore(FirestoreError::CacheError(_)) => {
+                (StatusCode::INTERNAL_SERVER_ERROR, "cache error".to_string())
+            }
             // TODO
-            AppError::Ot(_) => (StatusCode::NOT_FOUND, "xxx"),
-            AppError::Query() => (StatusCode::BAD_REQUEST, "can't handle req"),
+            AppError::Ot(_) => (StatusCode::NOT_FOUND, "xxx".to_string()),
+            AppError::Query() => (StatusCode::BAD_REQUEST, "can't handle req".to_string()),
         };
 
         let body = Json(json!({
