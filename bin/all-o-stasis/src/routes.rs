@@ -3,6 +3,9 @@ use axum::{
     extract::Path, extract::State, routing::delete, routing::get, routing::patch, routing::post,
     Router,
 };
+use firestore::{path, FirestoreResult};
+use futures::stream::BoxStream;
+use futures::TryStreamExt;
 use otp::types::{Object, ObjectId, Operation, Patch, ROOT_PATH, ZERO_REV_ID};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -213,7 +216,7 @@ fn api_routes() -> Router<AppState> {
         // delete
         .route("/:gym/objects/:id", delete(delete_object))
         // lookup patch
-        .route("/:gym/objects/:id/patchse/:rev_id", get(lookup_patch))
+        .route("/:gym/objects/:id/patches/:rev_id", get(lookup_patch))
         // changes on object (raw websocket)
         .route("/:gym/objects/:id/changes", get(object_changes))
         // create a release
@@ -382,40 +385,27 @@ async fn create_release(
 
 async fn lookup_patch(
     State(state): State<AppState>,
-    Path((gym, id, rev_id)): Path<(String, String, String)>,
+    Path((gym, id, rev_id)): Path<(String, String, i64)>,
 ) -> Result<Json<Patch>, AppError> {
     let parent_path = state.db.parent_path("gyms", gym).unwrap();
-    // FIXME patches for a given object id and rev id
-    let obj: Option<Patch> = state
-        .db
-        .fluent()
-        .select()
-        .by_id_in("patches")
-        .parent(&parent_path)
-        .obj()
-        .one(&id)
-        .await?;
-
     let patch_stream: BoxStream<FirestoreResult<Patch>> = state
         .db
         .fluent()
         .select()
-        .from(TEST_COLLECTION_NAME)
+        .from("patches")
+        .parent(&parent_path)
         .filter(|q| {
             q.for_all([
-                q.field(path!(Patch::object_id)).eq(id),
+                // q.field(path!(Patch::object_id)).eq(id.clone()),
                 q.field(path!(Patch::revision_id)).eq(rev_id),
             ])
         })
-        // .order_by([(
-        //     path!(MyTestStructure::some_num),
-        //     FirestoreQueryDirection::Descending,
-        // )])
-        .obj() // Reading documents as structures using Serde gRPC deserializer
+        .obj()
         .stream_query_with_errors()
         .await?;
 
     let as_vec: Vec<Patch> = patch_stream.try_collect().await?;
+    Ok(Json(as_vec[0].clone()))
 }
 
 async fn lookup_release(

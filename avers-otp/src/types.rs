@@ -160,7 +160,7 @@ pub struct Snapshot {
 //     }
 // }
 
-impl<T> Pk for Snapshot<T> {
+impl Pk for Snapshot {
     fn to_pk(&self) -> String {
         self.object_id.to_pk() + "@" + &self.revision_id.to_string()[..]
     }

@@ -33,6 +33,7 @@ dependencies = [
  "axum",
  "chrono",
  "firestore",
+ "futures",
  "otp",
  "serde",
  "serde_json",
