@@ -383,8 +383,39 @@ async fn create_release(
 async fn lookup_patch(
     State(state): State<AppState>,
     Path((gym, id, rev_id)): Path<(String, String, String)>,
-) -> Result<Json<Object>, AppError> {
-    todo!()
+) -> Result<Json<Patch>, AppError> {
+    let parent_path = state.db.parent_path("gyms", gym).unwrap();
+    // FIXME patches for a given object id and rev id
+    let obj: Option<Patch> = state
+        .db
+        .fluent()
+        .select()
+        .by_id_in("patches")
+        .parent(&parent_path)
+        .obj()
+        .one(&id)
+        .await?;
+
+    let patch_stream: BoxStream<FirestoreResult<Patch>> = state
+        .db
+        .fluent()
+        .select()
+        .from(TEST_COLLECTION_NAME)
+        .filter(|q| {
+            q.for_all([
+                q.field(path!(Patch::object_id)).eq(id),
+                q.field(path!(Patch::revision_id)).eq(rev_id),
+            ])
+        })
+        // .order_by([(
+        //     path!(MyTestStructure::some_num),
+        //     FirestoreQueryDirection::Descending,
+        // )])
+        .obj() // Reading documents as structures using Serde gRPC deserializer
+        .stream_query_with_errors()
+        .await?;
+
+    let as_vec: Vec<Patch> = patch_stream.try_collect().await?;
 }
 
 async fn lookup_release(

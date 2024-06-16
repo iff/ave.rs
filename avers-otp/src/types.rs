@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use firestore::FirestoreTimestamp;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -89,7 +90,7 @@ pub struct Object {
     #[serde(alias = "_firestore_id")]
     id: Option<ObjId>, // not nice that this has to be empty for id generation to work
     #[serde(alias = "_firestore_created")]
-    created_at: Option<FirestoreTimestamp>,
+    created_at: Option<DateTime<Utc>>, // Option<FirestoreTimestamp>,
     object_type: String,
     created_by: ObjId,
     deleted: Option<bool>,
@@ -132,7 +133,7 @@ pub struct Patch {
     pub revision_id: RevId,
     pub author_id: ObjId,
     #[serde(alias = "_firestore_created")]
-    pub created_at: Option<FirestoreTimestamp>,
+    pub created_at: Option<DateTime<Utc>>, //Option<FirestoreTimestamp>,
     pub operation: Operation,
 }
 
@@ -143,10 +144,10 @@ impl Pk for Patch {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
-pub struct Snapshot<T> {
+pub struct Snapshot {
     pub object_id: ObjectId,
     pub revision_id: RevId,
-    pub content: T,
+    pub content: Value,
 }
 
 // impl<T> Snapshot<T> {
