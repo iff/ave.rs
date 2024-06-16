@@ -405,6 +405,7 @@ async fn lookup_patch(
         .await?;
 
     let as_vec: Vec<Patch> = patch_stream.try_collect().await?;
+    // FIXME cleanup, ensure only 1 result?
     Ok(Json(as_vec[0].clone()))
 }
 
