@@ -318,7 +318,6 @@ async fn new_object(
         created_at: None,
         operation: op,
     };
-    // TODO why do we get deserialize issue here?
     let patch: Option<Patch> = state
         .db
         .fluent()
@@ -396,7 +395,8 @@ async fn lookup_patch(
         .parent(&parent_path)
         .filter(|q| {
             q.for_all([
-                // q.field(path!(Patch::object_id)).eq(id.clone()),
+                q.field(path!(Patch::object_id))
+                    .eq(ObjectId::Base(id.clone())),
                 q.field(path!(Patch::revision_id)).eq(rev_id),
             ])
         })
