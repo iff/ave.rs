@@ -33,6 +33,7 @@ pub const ZERO_REV_ID: RevId = 0;
 //     Admin = "admin",
 // }
 
+// TODO can't be internally typed (tuple), so externally okay?
 #[derive(Serialize, Deserialize, Clone)]
 pub enum ObjectId {
     /// The base object whose snapshots contain the actual content.
@@ -105,7 +106,8 @@ impl Object {
     pub fn new(object_type: String, created_by: ObjId) -> Object {
         // TODO generete random id? (see Avers/Storage.hs)
         // or use firestore ids
-        // TODO should we only allow to create Objects that are already persisted?
+        // TODO should we only allow to create Objects with non-optional id?
+        // eg use a proxy for adding one to the db and then mutate?
         Object {
             id: None,
             object_type,
