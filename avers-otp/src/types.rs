@@ -70,6 +70,7 @@ impl Pk for ObjectId {
 // } ''Operation)
 
 #[derive(Serialize, Deserialize, Clone, PartialEq)]
+#[serde(tag = "type")]
 pub enum Operation {
     /// applied to Value::Object for adding, updating and inserting multiple elements in a single op
     Set { path: Path, value: Option<Value> },
