@@ -15,7 +15,7 @@ pub type Path = String;
 // operations.
 pub const ROOT_PATH: &str = "";
 
-type ObjId = String;
+pub type ObjId = String;
 
 // The root object id is used for object created internally or when there
 // is no applicable creator.

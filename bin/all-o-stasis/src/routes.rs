@@ -6,7 +6,7 @@ use axum::{
 use firestore::{path, FirestoreResult};
 use futures::stream::BoxStream;
 use futures::TryStreamExt;
-use otp::types::{Object, ObjectId, Operation, Patch, ROOT_PATH, ZERO_REV_ID};
+use otp::types::{ObjId, Object, ObjectId, Operation, Patch, ROOT_PATH, ZERO_REV_ID};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -277,11 +277,17 @@ async fn feed(
     todo!()
 }
 
+struct CreateObjectResponse {
+    id: ObjId,
+    ot_type: String,
+    content: Value,
+}
+
 async fn new_object(
     State(state): State<AppState>,
     Path(gym): Path<String>,
     Json(payload): Json<Value>,
-) -> Result<String, AppError> {
+) -> Result<Json<CreateObjectResponse>, AppError> {
     // TODO where do we get that? ah that comes from the credentials
     let created_by = String::from("some id");
     let ot_type = payload
@@ -292,7 +298,7 @@ async fn new_object(
         .to_string();
     let content = Some(payload.get("content").ok_or_else(AppError::Query)?.clone());
 
-    let obj = Object::new(ot_type, created_by.clone());
+    let obj = Object::new(ot_type.clone(), created_by.clone());
 
     let parent_path = state.db.parent_path("gyms", gym)?;
     let obj: Option<Object> = state
@@ -309,7 +315,7 @@ async fn new_object(
     let obj = obj.ok_or_else(AppError::Query)?;
     let op = Operation::Set {
         path: ROOT_PATH.to_string(),
-        value: content,
+        value: content.clone(),
     };
     let patch = Patch {
         object_id: ObjectId::Base(obj.id()),
@@ -333,7 +339,11 @@ async fn new_object(
     // TODO updateObjectViews ot objId (Just content)
 
     // TODO return only id?
-    Ok(obj.id())
+    Ok(Json(CreateObjectResponse {
+        id: obj.id(),
+        ot_type,
+        content: content.expect(""),
+    }))
 }
 
 async fn lookup_object(
@@ -357,8 +367,19 @@ async fn lookup_object(
 async fn patch_object(
     State(state): State<AppState>,
     Path((gym, id)): Path<(String, String)>,
+    Json(payload): Json<Value>,
 ) -> Result<Json<Object>, AppError> {
     todo!()
+
+    // TODO where do we get that? ah that comes from the credentials
+    // let created_by = String::from("some id");
+    // let ot_type = payload
+    //     .get("type")
+    //     .ok_or_else(AppError::Query)?
+    //     .as_str()
+    //     .expect("type is string") // FIXME another expect to get rid of
+    //     .to_string();
+    // let content = Some(payload.get("content").ok_or_else(AppError::Query)?.clone());
 }
 
 async fn delete_object(
