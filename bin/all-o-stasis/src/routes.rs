@@ -277,6 +277,7 @@ async fn feed(
     todo!()
 }
 
+#[derive(Serialize, Deserialize, Clone, PartialEq)]
 struct CreateObjectResponse {
     id: ObjId,
     ot_type: String,
@@ -296,7 +297,7 @@ async fn new_object(
         .as_str()
         .expect("type is string") // FIXME another expect to get rid of
         .to_string();
-    let content = Some(payload.get("content").ok_or_else(AppError::Query)?.clone());
+    let content = payload.get("content").ok_or_else(AppError::Query)?.clone();
 
     let obj = Object::new(ot_type.clone(), created_by.clone());
 
@@ -315,7 +316,7 @@ async fn new_object(
     let obj = obj.ok_or_else(AppError::Query)?;
     let op = Operation::Set {
         path: ROOT_PATH.to_string(),
-        value: content.clone(),
+        value: Some(content.clone()),
     };
     let patch = Patch {
         object_id: ObjectId::Base(obj.id()),
@@ -338,11 +339,10 @@ async fn new_object(
 
     // TODO updateObjectViews ot objId (Just content)
 
-    // TODO return only id?
     Ok(Json(CreateObjectResponse {
         id: obj.id(),
         ot_type,
-        content: content.expect(""),
+        content,
     }))
 }
 
