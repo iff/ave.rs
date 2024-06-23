@@ -27,11 +27,24 @@ struct PublicProfile {
     avatar: Option<String>,
 }
 
+#[derive(Serialize, Deserialize, Clone)]
+struct CreateObjectBody {
+    #[serde(rename = "type")]
+    ot_type: String,
+    content: Value,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 struct CreateObjectResponse {
     id: ObjId,
     ot_type: String,
     content: Value,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+struct PatchObjectBody {
+    revision_id: RevId,
+    operations: Vec<Operation>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -47,7 +60,7 @@ fn apply_object_updates(
     _obj_id: ObjectId,
     _rev_id: RevId,
     _author: ObjId,
-    _operations: &Vec<Value>, // _operations: Vec<Operation>,
+    _operations: &Vec<Operation>,
     _skip_validation: bool,
 ) -> Result<Json<PatchObjectResponse>, AppError> {
     todo!()
@@ -347,17 +360,12 @@ fn api_routes() -> Router<AppState> {
 async fn new_object(
     State(state): State<AppState>,
     Path(gym): Path<String>,
-    Json(payload): Json<Value>,
+    Json(payload): axum::extract::Json<CreateObjectBody>,
 ) -> Result<Json<CreateObjectResponse>, AppError> {
     // TODO where do we get that? ah that comes from the credentials
     let created_by = String::from("some id");
-    let ot_type = payload
-        .get("type")
-        .ok_or_else(AppError::Query)?
-        .as_str()
-        .expect("type is string") // FIXME another expect to get rid of
-        .to_string();
-    let content = payload.get("content").ok_or_else(AppError::Query)?.clone();
+    let ot_type = payload.ot_type;
+    let content = payload.content;
 
     let obj = Object::new(ot_type.clone(), created_by.clone());
 
@@ -427,7 +435,7 @@ async fn lookup_object(
 async fn patch_object(
     State(state): State<AppState>,
     Path((gym, id)): Path<(String, String)>,
-    Json(payload): Json<Value>,
+    Json(payload): axum::extract::Json<PatchObjectBody>,
 ) -> Result<Json<PatchObjectResponse>, AppError> {
     // TODO where do we get that? ah that comes from the credentials
     let created_by = String::from("some id");
@@ -437,15 +445,14 @@ async fn patch_object(
     //     .as_str()
     //     .expect("type is string") // FIXME another expect to get rid of
     //     .to_string();
-    let content = payload.get("content").ok_or_else(AppError::Query)?.clone();
 
     apply_object_updates(
         &state,
         &gym,
         ObjectId::Base(id),
-        content.get("revision_id").unwrap().as_i64().unwrap(), // FIXME
+        payload.revision_id,
         created_by,
-        content.get("operations").unwrap().as_array().unwrap(), // FIXME
+        &payload.operations,
         false,
     )
 }
@@ -490,6 +497,7 @@ async fn feed(
     State(_state): State<AppState>,
     Path(_gym): Path<String>,
 ) -> Result<Json<Object>, AppError> {
+    // changes are streamed realtime to the client
     Err(AppError::NotImplemented())
 }
 
