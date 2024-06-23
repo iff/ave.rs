@@ -21,7 +21,7 @@ pub type ObjId = String;
 // is no applicable creator.
 pub const ROOT_OBJ_ID: &str = "";
 
-type RevId = i64;
+pub type RevId = i64;
 
 // The 'RevId' which is used for the initial snapshot.
 pub const ZERO_REV_ID: RevId = 0;

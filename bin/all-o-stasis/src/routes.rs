@@ -6,13 +6,13 @@ use axum::{
 use firestore::{path, FirestoreResult};
 use futures::stream::BoxStream;
 use futures::TryStreamExt;
-use otp::types::{ObjId, Object, ObjectId, Operation, Patch, ROOT_PATH, ZERO_REV_ID};
+use otp::types::{ObjId, Object, ObjectId, Operation, Patch, RevId, ROOT_PATH, ZERO_REV_ID};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::{AppError, AppState};
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 struct BoulderStat {
     set_on: u32,
     removed_on: Option<u32>,
@@ -21,10 +21,62 @@ struct BoulderStat {
     grade: String,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 struct PublicProfile {
     name: String,
     avatar: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+struct CreateObjectResponse {
+    id: ObjId,
+    ot_type: String,
+    content: Value,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+struct PatchObjectResponse {
+    previous_patches: Vec<Patch>,
+    num_processed_operations: u32,
+    resulting_patches: Vec<Patch>,
+}
+
+fn apply_object_updates(
+    _db: &AppState,
+    _gym: &String,
+    _obj_id: ObjectId,
+    _rev_id: RevId,
+    _author: ObjId,
+    _operations: &Vec<Value>, // _operations: Vec<Operation>,
+    _skip_validation: bool,
+) -> Result<Json<PatchObjectResponse>, AppError> {
+    todo!()
+    // let parent_path = state.db.parent_path("gyms", gym)?;
+    //   -- First check that the object exists. We'll need its metadata later.
+    //   baseObjId = objectIdBase objId
+    //   obj <- lookupObject baseObjId
+    //   SomeObjectType ot <- lookupObjectType (objectType obj)
+    //
+    //   -- The 'Snapshot' against which the submitted operations were created.
+    //   baseSnapshot <- lookupSnapshot objId revId
+    //
+    //   -- If there are any patches which the client doesn't know about we need
+    //   -- to let her know.
+    //   previousPatches <- patchesAfterRevision objId revId
+    //
+    //   latestSnapshot <- applyPatches baseSnapshot previousPatches
+    //
+    //   -- Apply the operations and get the final snapshot.
+    //   (Snapshot{..}, PatchState{..}) <- runStateT (patchHandler novalidate) $
+    //       PatchState ot objId revId committerId ops 0
+    //           baseSnapshot latestSnapshot previousPatches []
+    //
+    //   -- Update object views.
+    //   unless novalidate $ do
+    //       content <- parseValue snapshotContent
+    //       updateObjectViews ot baseObjId (Just content)
+    //
+    //   Ok(Json(PatchObjectResponse {previousPatches, psNumConsumedOperations, psPatches}))
 }
 
 pub fn app(state: AppState) -> Router {
@@ -90,16 +142,20 @@ async fn healthz(State(state): State<AppState>) -> Result<&'static str, AppError
 
 async fn public_profile(
     State(state): State<AppState>,
-    Path((gym, id)): Path<(String, String)>,
+    Path((gym, _id)): Path<(String, String)>,
 ) -> Result<Json<Object>, AppError> {
-    todo!()
+    // TODO
+    let _parent_path = state.db.parent_path("gyms", gym)?;
+    Err(AppError::NotImplemented())
 }
 
 async fn active_boulders(
     State(state): State<AppState>,
     Path(gym): Path<String>,
 ) -> Result<Json<Object>, AppError> {
-    todo!()
+    // TODO
+    let _parent_path = state.db.parent_path("gyms", gym)?;
+    Err(AppError::NotImplemented())
     // let object_stream: BoxStream<FirestoreResult<MyTestStructure>> = db
     //     .fluent()
     //     .select()
@@ -128,53 +184,71 @@ async fn active_boulders(
     // Ok(as_vec)
 }
 
+// TODO views?
 async fn draft_boulders(
     State(state): State<AppState>,
     Path(gym): Path<String>,
 ) -> Result<Json<Object>, AppError> {
-    todo!()
+    // TODO
+    let _parent_path = state.db.parent_path("gyms", gym)?;
+    Err(AppError::NotImplemented())
 }
 
+// TODO views?
 async fn own_boulders(
     State(state): State<AppState>,
     Path(gym): Path<String>,
 ) -> Result<Json<Object>, AppError> {
-    todo!()
+    // TODO
+    let _parent_path = state.db.parent_path("gyms", gym)?;
+    Err(AppError::NotImplemented())
 }
 
+// TODO views?
 async fn accounts(
     State(state): State<AppState>,
     Path(gym): Path<String>,
 ) -> Result<Json<Object>, AppError> {
-    todo!()
+    // TODO
+    let _parent_path = state.db.parent_path("gyms", gym)?;
+    Err(AppError::NotImplemented())
 }
 
+// TODO views?
 async fn admin_accounts(
     State(state): State<AppState>,
     Path(gym): Path<String>,
 ) -> Result<Json<Object>, AppError> {
-    todo!()
+    // TODO
+    let _parent_path = state.db.parent_path("gyms", gym)?;
+    Err(AppError::NotImplemented())
 }
 
 async fn stats(
     State(state): State<AppState>,
-    Path((gym, id, year, month)): Path<(String, String, i32, i32)>,
+    Path((gym, _id, _year, _month)): Path<(String, String, i32, i32)>,
 ) -> Result<Json<Object>, AppError> {
-    todo!()
+    // TODO
+    let _parent_path = state.db.parent_path("gyms", gym)?;
+    Err(AppError::NotImplemented())
 }
 
 async fn stats_boulders(
     State(state): State<AppState>,
     Path(gym): Path<String>,
 ) -> Result<Json<Object>, AppError> {
-    todo!()
+    // TODO
+    let _parent_path = state.db.parent_path("gyms", gym)?;
+    Err(AppError::NotImplemented())
 }
 
 async fn signup(
-    State(state): State<AppState>,
-    Json(payload): Json<Value>,
+    State(_state): State<AppState>,
+    Json(_payload): Json<Value>,
 ) -> Result<Json<Object>, AppError> {
-    todo!()
+    // TODO needs gym
+    // TODO
+    Err(AppError::NotImplemented())
 }
 
 fn api_routes() -> Router<AppState> {
@@ -270,20 +344,6 @@ fn api_routes() -> Router<AppState> {
     //     :> Get '[OctetStream] (Headers '[Header "Content-Type" Text] BlobContent)
 }
 
-async fn feed(
-    State(state): State<AppState>,
-    Path(gym): Path<String>,
-) -> Result<Json<Object>, AppError> {
-    todo!()
-}
-
-#[derive(Serialize, Deserialize, Clone, PartialEq)]
-struct CreateObjectResponse {
-    id: ObjId,
-    ot_type: String,
-    content: Value,
-}
-
 async fn new_object(
     State(state): State<AppState>,
     Path(gym): Path<String>,
@@ -350,7 +410,7 @@ async fn lookup_object(
     State(state): State<AppState>,
     Path((gym, id)): Path<(String, String)>,
 ) -> Result<Json<Object>, AppError> {
-    let parent_path = state.db.parent_path("gyms", gym).unwrap();
+    let parent_path = state.db.parent_path("gyms", gym)?;
     let obj: Option<Object> = state
         .db
         .fluent()
@@ -368,46 +428,33 @@ async fn patch_object(
     State(state): State<AppState>,
     Path((gym, id)): Path<(String, String)>,
     Json(payload): Json<Value>,
-) -> Result<Json<Object>, AppError> {
-    todo!()
-
+) -> Result<Json<PatchObjectResponse>, AppError> {
     // TODO where do we get that? ah that comes from the credentials
-    // let created_by = String::from("some id");
+    let created_by = String::from("some id");
     // let ot_type = payload
     //     .get("type")
     //     .ok_or_else(AppError::Query)?
     //     .as_str()
     //     .expect("type is string") // FIXME another expect to get rid of
     //     .to_string();
-    // let content = Some(payload.get("content").ok_or_else(AppError::Query)?.clone());
-}
+    let content = payload.get("content").ok_or_else(AppError::Query)?.clone();
 
-async fn delete_object(
-    State(state): State<AppState>,
-    Path((gym, id)): Path<(String, String)>,
-) -> Result<Json<Object>, AppError> {
-    todo!()
-}
-
-async fn object_changes(
-    State(state): State<AppState>,
-    Path((gym, id)): Path<(String, String)>,
-) -> Result<Json<Object>, AppError> {
-    todo!()
-}
-
-async fn create_release(
-    State(state): State<AppState>,
-    Path((gym, id)): Path<(String, String)>,
-) -> Result<Json<Object>, AppError> {
-    todo!()
+    apply_object_updates(
+        &state,
+        &gym,
+        ObjectId::Base(id),
+        content.get("revision_id").unwrap().as_i64().unwrap(), // FIXME
+        created_by,
+        content.get("operations").unwrap().as_array().unwrap(), // FIXME
+        false,
+    )
 }
 
 async fn lookup_patch(
     State(state): State<AppState>,
     Path((gym, id, rev_id)): Path<(String, String, i64)>,
 ) -> Result<Json<Patch>, AppError> {
-    let parent_path = state.db.parent_path("gyms", gym).unwrap();
+    let parent_path = state.db.parent_path("gyms", gym)?;
     let patch_stream: BoxStream<FirestoreResult<Patch>> = state
         .db
         .fluent()
@@ -430,16 +477,48 @@ async fn lookup_patch(
     Ok(Json(as_vec[0].clone()))
 }
 
-async fn lookup_release(
-    State(state): State<AppState>,
-    Path((gym, id, rev_id)): Path<(String, String, String)>,
+// XXX maybe don't needed
+
+async fn object_changes(
+    State(_state): State<AppState>,
+    Path((_gym, _id)): Path<(String, String)>,
 ) -> Result<Json<Object>, AppError> {
-    todo!()
+    Err(AppError::NotImplemented())
+}
+
+async fn feed(
+    State(_state): State<AppState>,
+    Path(_gym): Path<String>,
+) -> Result<Json<Object>, AppError> {
+    Err(AppError::NotImplemented())
+}
+
+// XXX below not implemented in Avers
+
+async fn delete_object(
+    State(_state): State<AppState>,
+    Path((_gym, _id)): Path<(String, String)>,
+) -> Result<Json<Object>, AppError> {
+    Err(AppError::NotImplemented())
+}
+
+async fn create_release(
+    State(_state): State<AppState>,
+    Path((_gym, _id)): Path<(String, String)>,
+) -> Result<Json<Object>, AppError> {
+    Err(AppError::NotImplemented())
+}
+
+async fn lookup_release(
+    State(_state): State<AppState>,
+    Path((_gym, _id, _rev_id)): Path<(String, String, String)>,
+) -> Result<Json<Object>, AppError> {
+    Err(AppError::NotImplemented())
 }
 
 async fn lookup_latest_release(
-    State(state): State<AppState>,
-    Path((gym, id, rev_id)): Path<(String, String, String)>,
+    State(_state): State<AppState>,
+    Path((_gym, _id, _rev_id)): Path<(String, String, String)>,
 ) -> Result<Json<Object>, AppError> {
-    todo!()
+    Err(AppError::NotImplemented())
 }

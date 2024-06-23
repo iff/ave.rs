@@ -33,6 +33,8 @@ enum AppError {
     Firestore(FirestoreError),
     //
     Query(),
+    //
+    NotImplemented(),
 }
 
 impl From<FirestoreError> for AppError {
@@ -83,6 +85,9 @@ impl IntoResponse for AppError {
                 (StatusCode::INTERNAL_SERVER_ERROR, "cache error".to_string())
             }
             // TODO
+            AppError::NotImplemented() => {
+                (StatusCode::NOT_IMPLEMENTED, "not implemented".to_string())
+            }
             AppError::Ot(_) => (StatusCode::NOT_FOUND, "xxx".to_string()),
             AppError::Query() => (StatusCode::BAD_REQUEST, "can't handle req".to_string()),
         };
