@@ -6,7 +6,9 @@ use axum::{
 use firestore::{path, FirestoreResult};
 use futures::stream::BoxStream;
 use futures::TryStreamExt;
-use otp::types::{ObjId, Object, ObjectId, Operation, Patch, RevId, ROOT_PATH, ZERO_REV_ID};
+use otp::types::{
+    ObjId, Object, ObjectId, Operation, Patch, RevId, Snapshot, ROOT_PATH, ZERO_REV_ID,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -54,42 +56,100 @@ struct PatchObjectResponse {
     resulting_patches: Vec<Patch>,
 }
 
-fn apply_object_updates(
-    _db: &AppState,
-    _gym: &String,
-    _obj_id: ObjectId,
-    _rev_id: RevId,
+async fn lookup_object_(state: &AppState, gym: &String, id: ObjId) -> Result<Object, AppError> {
+    let parent_path = state.db.parent_path("gyms", gym)?;
+    let obj: Option<Object> = state
+        .db
+        .fluent()
+        .select()
+        .by_id_in("objects")
+        .parent(&parent_path)
+        .obj()
+        .one(&id)
+        .await?;
+
+    obj.ok_or(AppError::Query())
+}
+
+fn base_id(obj_id: &ObjectId) -> ObjId {
+    match obj_id {
+        ObjectId::Base(id) => id.clone(),
+        ObjectId::Release(id, _) => id.clone(),
+        ObjectId::Authorization(id) => id.clone(),
+    }
+}
+
+fn lookup_object_type(obj_id: Object) -> String {
+    todo!()
+}
+
+fn lookup_snapshot(obj_id: &ObjectId, rev_id: &RevId) -> Snapshot {
+    todo!()
+}
+
+fn patches_after_revision(obj_id: &ObjectId, rev_id: &RevId) -> Vec<Patch> {
+    todo!()
+}
+
+fn apply_patches(base_snapshot: Snapshot, previous_patches: &Vec<Patch>) -> Snapshot {
+    todo!()
+}
+
+async fn apply_object_updates(
+    state: &AppState,
+    gym: &String,
+    obj_id: ObjectId,
+    rev_id: RevId,
     _author: ObjId,
     _operations: &Vec<Operation>,
     _skip_validation: bool,
 ) -> Result<Json<PatchObjectResponse>, AppError> {
-    todo!()
-    // let parent_path = state.db.parent_path("gyms", gym)?;
-    //   -- First check that the object exists. We'll need its metadata later.
-    //   baseObjId = objectIdBase objId
-    //   obj <- lookupObject baseObjId
-    //   SomeObjectType ot <- lookupObjectType (objectType obj)
-    //
-    //   -- The 'Snapshot' against which the submitted operations were created.
-    //   baseSnapshot <- lookupSnapshot objId revId
-    //
-    //   -- If there are any patches which the client doesn't know about we need
-    //   -- to let her know.
-    //   previousPatches <- patchesAfterRevision objId revId
-    //
-    //   latestSnapshot <- applyPatches baseSnapshot previousPatches
-    //
-    //   -- Apply the operations and get the final snapshot.
+    let parent_path = state.db.parent_path("gyms", gym)?;
+
+    // first check that the object exists. We'll need its metadata later
+    let id = base_id(&obj_id);
+    let obj = lookup_object_(state, gym, id).await?;
+    let ot_type = lookup_object_type(obj);
+
+    // The 'Snapshot' against which the submitted operations were created
+    let base_snapshot = lookup_snapshot(&obj_id, &rev_id);
+
+    // If there are any patches which the client doesn't know about we need
+    // to let her know.
+    let previous_patches = patches_after_revision(&obj_id, &rev_id);
+    let latest_snapshot = apply_patches(base_snapshot, &previous_patches);
+
+    // Apply the operations and get the final snapshot.
     //   (Snapshot{..}, PatchState{..}) <- runStateT (patchHandler novalidate) $
     //       PatchState ot objId revId committerId ops 0
     //           baseSnapshot latestSnapshot previousPatches []
-    //
+    //           data PatchState a = PatchState
+    // PatchState {
+    //   psObjectType            :: ObjectType a
+    // , psObjectId              :: ObjectId
+    // , psRevisionId            :: RevId
+    // , psCommitterId           :: ObjId
+    // , psOperations            :: [ Operation ]
+    // , psNumConsumedOperations :: Int
+    // , psBaseSnapshot          :: Snapshot
+    // , psLatestSnapshot        :: Snapshot
+    // , psPreviousPatches       :: [ Patch ]
+    // , psPatches               :: [ Patch ]
+    // }
+    // TODO form PatchState
+    let num_processed_operations = 0;
+    let resulting_patches = Vec::new();
+
     //   -- Update object views.
     //   unless novalidate $ do
     //       content <- parseValue snapshotContent
     //       updateObjectViews ot baseObjId (Just content)
-    //
-    //   Ok(Json(PatchObjectResponse {previousPatches, psNumConsumedOperations, psPatches}))
+
+    Ok(Json(PatchObjectResponse {
+        previous_patches,
+        num_processed_operations,
+        resulting_patches,
+    }))
 }
 
 pub fn app(state: AppState) -> Router {
@@ -364,9 +424,9 @@ async fn new_object(
 ) -> Result<Json<CreateObjectResponse>, AppError> {
     // TODO where do we get that? ah that comes from the credentials
     let created_by = String::from("some id");
+
     let ot_type = payload.ot_type;
     let content = payload.content;
-
     let obj = Object::new(ot_type.clone(), created_by.clone());
 
     let parent_path = state.db.parent_path("gyms", gym)?;
@@ -419,6 +479,7 @@ async fn lookup_object(
     Path((gym, id)): Path<(String, String)>,
 ) -> Result<Json<Object>, AppError> {
     let parent_path = state.db.parent_path("gyms", gym)?;
+    // TODO use lookup object
     let obj: Option<Object> = state
         .db
         .fluent()
@@ -439,14 +500,8 @@ async fn patch_object(
 ) -> Result<Json<PatchObjectResponse>, AppError> {
     // TODO where do we get that? ah that comes from the credentials
     let created_by = String::from("some id");
-    // let ot_type = payload
-    //     .get("type")
-    //     .ok_or_else(AppError::Query)?
-    //     .as_str()
-    //     .expect("type is string") // FIXME another expect to get rid of
-    //     .to_string();
 
-    apply_object_updates(
+    let result = apply_object_updates(
         &state,
         &gym,
         ObjectId::Base(id),
@@ -454,7 +509,9 @@ async fn patch_object(
         created_by,
         &payload.operations,
         false,
-    )
+    ).await?;
+
+    Ok(result)
 }
 
 async fn lookup_patch(
