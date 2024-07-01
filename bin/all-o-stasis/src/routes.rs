@@ -49,10 +49,24 @@ struct PatchObjectBody {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
-struct PatchObjectResponse {
+pub(crate) struct PatchObjectResponse {
     previous_patches: Vec<Patch>,
     num_processed_operations: u32,
     resulting_patches: Vec<Patch>,
+}
+
+impl PatchObjectResponse {
+    pub fn new(
+        previous_patches: Vec<Patch>,
+        num_processed_operations: u32,
+        resulting_patches: Vec<Patch>,
+    ) -> Self {
+        Self {
+            previous_patches,
+            num_processed_operations,
+            resulting_patches,
+        }
+    }
 }
 
 pub fn app(state: AppState) -> Router {
@@ -104,8 +118,7 @@ async fn revision(State(_state): State<AppState>) -> Result<&'static str, AppErr
 }
 
 async fn healthz(State(state): State<AppState>) -> Result<&'static str, AppError> {
-    // run a really simple query to check that the database is also alive
-    let _ = state
+    let _db_is_alive = state
         .db
         .fluent()
         .list()
@@ -113,7 +126,7 @@ async fn healthz(State(state): State<AppState>) -> Result<&'static str, AppError
         .stream_all_with_errors()
         .await?;
 
-    Ok("healthy")
+    Ok("alive and kickin")
 }
 
 async fn public_profile(

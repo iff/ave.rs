@@ -1,3 +1,4 @@
+use axum::Json;
 use firestore::{path, FirestoreResult};
 use futures::stream::BoxStream;
 use futures::TryStreamExt;
@@ -8,9 +9,10 @@ use otp::types::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::routes::PatchObjectResponse;
 use crate::{AppError, AppState};
 
-pub struct PatchState {
+struct PatchState {
     object_type: String,
     object_id: ObjectId,
     revision_id: RevId,
@@ -31,15 +33,20 @@ fn base_id(obj_id: &ObjectId) -> ObjId {
     }
 }
 
-fn lookup_object_type(obj_id: Object) -> String {
-    todo!()
-    // types <- objectTypes <$> gets hConfig
-    // case find (\(SomeObjectType ObjectType{..}) -> otType == objType) types of
-    //     Nothing -> throwError $ UnknownObjectType objType
-    //     Just x  -> return x
+async fn lookup_object_type(_obj_id: Object) -> String {
+    // TODO for now we just assume it is a boulder
+    // later we only need to also support Accounts, atm it does not make sense to be more flexible
+    // but still we need to check the registered types (given an object id)?
+    // or use an enum in objects that enumerates all possibilities (also easy to query)
+    String::from("boulder")
 }
 
-pub async fn lookup_object_(state: &AppState, gym: &String, id: ObjId) -> Result<Object, AppError> {
+/// generic object lookup in :gym: with :id:
+pub(crate) async fn lookup_object_(
+    state: &AppState,
+    gym: &String,
+    id: ObjId,
+) -> Result<Object, AppError> {
     let parent_path = state.db.parent_path("gyms", gym)?;
     let obj: Option<Object> = state
         .db
@@ -96,10 +103,10 @@ pub async fn apply_object_updates(
     // first check that the object exists. We'll need its metadata later
     let id = base_id(&obj_id);
     let obj = lookup_object_(state, gym, id).await?;
-    let ot_type = lookup_object_type(obj);
+    let ot_type = lookup_object_type(obj).await;
 
     // The 'Snapshot' against which the submitted operations were created
-    let base_snapshot = lookup_snapshot(&obj_id, &rev_id);
+    let base_snapshot = lookup_snapshot(&state, &gym, &obj_id, &rev_id).await?;
 
     // If there are any patches which the client doesn't know about we need
     // to let her know.
@@ -116,25 +123,25 @@ pub async fn apply_object_updates(
         num_consumed_operations: 0,
         base_snapshot,
         latest_snapshot,
-        previous_patches,
+        previous_patches: previous_patches.clone(),
         patches: Vec::new(),
     };
 
-    let (_snapshot, patch_state) = patch_handler(&ps, !skip_validation)?;
+    let (_snapshot, patch_state) = patch_handler(&ps, !skip_validation).await?;
 
     //   -- Update object views.
     //   unless novalidate $ do
     //       content <- parseValue snapshotContent
     //       updateObjectViews ot baseObjId (Just content)
 
-    Ok(Json(PatchObjectResponse {
-        previous_patches: previous_patches.clone(),
-        num_processed_operations: patch_state.num_consumed_operations,
-        resulting_patches: patch_state.patches,
-    }))
+    Ok(Json(PatchObjectResponse::new(
+        previous_patches,
+        patch_state.num_consumed_operations,
+        patch_state.patches,
+    )))
 }
 
-pub fn patch_handler(
+async fn patch_handler(
     patch_state: &PatchState,
     validate: bool,
 ) -> Result<(Snapshot, PatchState), AppError> {
@@ -148,7 +155,7 @@ pub fn patch_handler(
     //   where
 }
 
-pub fn save_opeation(patch_state: &PatchState, validate: bool) -> Result<Snapshot, AppError> {
+async fn save_operation(patch_state: &PatchState, validate: bool) -> Result<Snapshot, AppError> {
     todo!()
     // call rebase_operation
     // handle op result
