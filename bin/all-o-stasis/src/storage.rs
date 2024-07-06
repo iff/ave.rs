@@ -41,7 +41,7 @@ async fn lookup_object_type(_obj_id: Object) -> String {
     String::from("boulder")
 }
 
-/// generic object lookup in :gym: with :id:
+/// generic object lookup in `gym` with `id`
 pub(crate) async fn lookup_object_(
     state: &AppState,
     gym: &String,
