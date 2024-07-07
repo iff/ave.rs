@@ -2,10 +2,10 @@ use axum::Json;
 use firestore::{path, FirestoreResult};
 use futures::stream::BoxStream;
 use futures::TryStreamExt;
-use otp::rebase;
 use otp::types::{
     ObjId, Object, ObjectId, Operation, Patch, RevId, Snapshot, ROOT_PATH, ZERO_REV_ID,
 };
+use otp::{apply, rebase};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -114,7 +114,7 @@ pub async fn apply_object_updates(
     let latest_snapshot = apply_patches(&base_snapshot, &previous_patches);
 
     // Apply the operations and get the final snapshot.
-    let ps = PatchState {
+    let mut ps = PatchState {
         object_type: ot_type,
         object_id: obj_id,
         revision_id: rev_id,
@@ -127,7 +127,8 @@ pub async fn apply_object_updates(
         patches: Vec::new(),
     };
 
-    let (_snapshot, patch_state) = patch_handler(&ps, !skip_validation).await?;
+    // FIXME return values??
+    let (_snapshot, patch_state) = patch_handler(&mut ps, !skip_validation).await?;
 
     //   -- Update object views.
     //   unless novalidate $ do
@@ -142,58 +143,60 @@ pub async fn apply_object_updates(
 }
 
 async fn patch_handler(
-    patch_state: &PatchState,
+    patch_state: &mut PatchState,
     validate: bool,
 ) -> Result<(Snapshot, PatchState), AppError> {
     todo!()
-    // -   patchHandler :: (FromJSON a) => Bool -> AversPatch a Snapshot
-    // patchHandler novalidate = do
-    //     PatchState{..} <- get
-    //     foldM (saveOperation $ snapshotContent psBaseSnapshot)
-    //         psLatestSnapshot psOperations
-    //
-    //   where
+    // for each op in patch_state.operation:
+    //  save_operation(patch_state, validate, patch_state.base_snapshot, patch_state.latest_snapshot, op)
 }
 
-async fn save_operation(patch_state: &PatchState, validate: bool) -> Result<Snapshot, AppError> {
-    todo!()
-    // call rebase_operation
-    // handle op result
-    // match rebase(patch_state.base_snapshot, patch_state.operations, patch_state.previous_patches) {}
+async fn save_operation(
+    patch_state: &mut PatchState,
+    validate: bool,
+    base_content: Value,
+    snapshot: Snapshot,
+    op: Operation,
+) -> Result<Snapshot, AppError> {
+    match rebase(base_content, op, patch_state.previous_patches) {
+        None => return Ok(snapshot),
+        Some(new_op) => {
+            let rev_id = snapshot.revision_id + 1;
+            let patch = Patch {
+                object_id: patch_state.object_id,
+                revision_id: rev_id,
+                author_id: patch_state.committer_id,
+                created_at: None,
+                operation: new_op,
+            };
 
-    //     saveOperation baseContent snapshot@Snapshot{..} op = do
-    //         PatchState{..} <- get
-    //
-    //         case rebaseOperation baseContent op psPreviousPatches of
-    //             Nothing -> return snapshot
-    //             Just op' -> do
-    //                 now <- liftIO $ getCurrentTime
-    //
-    //                 let revId = succ snapshotRevisionId
-    //                     patch = Patch psObjectId revId psCommitterId now op'
-    //
-    //                 case applyOperation snapshotContent op' of
-    //                     Left e -> error $ "Failure: " ++ (show e)
-    //                     Right newContent
-    //                         | newContent /= snapshotContent -> do
-    //                             unless novalidate $ do
-    //                                 lift $ validateWithType psObjectType newContent
-    //
-    //                             let newSnapshot = snapshot { snapshotContent    = newContent
-    //                                                        , snapshotRevisionId = revId
-    //                                                        }
-    //
-    //                             -- Now we know that the patch can be applied cleanly, so
-    //                             -- we can save it in the database.
-    //                             lift $ savePatch patch
-    //
-    //                             modify $ \s -> s
-    //                                 { psPatches = psPatches ++ [patch]
-    //                                 , psNumConsumedOperations = psNumConsumedOperations + 1
-    //                                 }
-    //
-    //                             lift $ saveSnapshot newSnapshot
-    //                             return newSnapshot
-    //                         | otherwise -> return snapshot
-    //
+            let new_content = apply(snapshot.content, new_op)?;
+            if new_content == snapshot.content {
+                return Ok(snapshot);
+            }
+            if validate {
+                // TODO: validateWithType psObjectType newContent
+            }
+
+            let new_snapshot = Snapshot {
+                object_id: snapshot.object_id,
+                revision_id: rev_id,
+                content: new_content,
+            };
+
+            // Now we know that the patch can be applied cleanly, so
+            // we can save it in the database.
+            // TODO savePatch
+
+            // TODO
+            // modify $ \s -> s
+            //     { psPatches = psPatches ++ [patch]
+            //     , psNumConsumedOperations = psNumConsumedOperations + 1
+            //     }
+
+            // TODO saveSnapshot
+
+            return Ok(new_snapshot);
+        }
+    }
 }
