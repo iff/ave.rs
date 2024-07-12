@@ -114,21 +114,33 @@ pub async fn apply_object_updates(
     let latest_snapshot = apply_patches(&base_snapshot, &previous_patches);
 
     // Apply the operations and get the final snapshot.
-    let mut ps = PatchState {
-        object_type: ot_type,
-        object_id: obj_id,
-        revision_id: rev_id,
-        committer_id: author,
-        operations,
-        num_consumed_operations: 0,
-        base_snapshot,
-        latest_snapshot,
-        previous_patches: previous_patches.clone(),
-        patches: Vec::new(),
-    };
+    // let mut ps = PatchState {
+    //     object_type: ot_type,
+    //     object_id: obj_id,
+    //     revision_id: rev_id,
+    //     committer_id: author,
+    //     operations,
+    //     num_consumed_operations: 0,
+    //     base_snapshot,
+    //     latest_snapshot,
+    //     previous_patches: previous_patches.clone(),
+    //     patches: Vec::new(),
+    // };
+    // patch_handler(&mut ps, !skip_validation).await?;
 
-    // FIXME return values??
-    let (_snapshot, patch_state) = patch_handler(&mut ps, !skip_validation).await?;
+    let _patches = operations
+        .iter()
+        .map(|&op| {
+            save_operation_(
+                base_snapshot.content.clone(),
+                &latest_snapshot,
+                previous_patches.clone(),
+                op,
+                !skip_validation,
+            )
+        })
+        // .filter(|&p| p.is_some())
+        .collect::<Vec<Patch>>();
 
     //   -- Update object views.
     //   unless novalidate $ do
@@ -137,29 +149,27 @@ pub async fn apply_object_updates(
 
     Ok(Json(PatchObjectResponse::new(
         previous_patches,
-        patch_state.num_consumed_operations,
-        patch_state.patches,
+        patches_.len(),
+        patches,
     )))
+    
+    // Ok(Json(PatchObjectResponse::new(
+    //     previous_patches,
+    //     patch_state.num_consumed_operations,
+    //     patch_state.patches,
+    // )))
 }
 
-async fn patch_handler(
-    patch_state: &mut PatchState,
-    validate: bool,
-) -> Result<(Snapshot, PatchState), AppError> {
-    todo!()
-    // for each op in patch_state.operation:
-    //  save_operation(patch_state, validate, patch_state.base_snapshot, patch_state.latest_snapshot, op)
-}
-
-async fn save_operation(
-    patch_state: &mut PatchState,
-    validate: bool,
+/// try rebase and then apply the operation to get a new snapshot (or return the old)
+fn save_operation_(
     base_content: Value,
-    snapshot: Snapshot,
+    snapshot: &Snapshot,
+    previous_patches: Vec<Patch>,
     op: Operation,
-) -> Result<Snapshot, AppError> {
-    match rebase(base_content, op, patch_state.previous_patches) {
-        None => return Ok(snapshot),
+    validate: bool,
+) -> Result<Option<Patch>, AppError> {
+    match rebase(base_content.clone(), op, previous_patches) {
+        None => return Ok(None),
         Some(new_op) => {
             let rev_id = snapshot.revision_id + 1;
             let patch = Patch {
@@ -172,7 +182,7 @@ async fn save_operation(
 
             let new_content = apply(snapshot.content, new_op)?;
             if new_content == snapshot.content {
-                return Ok(snapshot);
+                return Ok(None);
             }
             if validate {
                 // TODO: validateWithType psObjectType newContent
@@ -184,19 +194,68 @@ async fn save_operation(
                 content: new_content,
             };
 
-            // Now we know that the patch can be applied cleanly, so
-            // we can save it in the database.
+            // now we know that the patch can be applied cleanly, so we can save it in the database
             // TODO savePatch
-
-            // TODO
-            // modify $ \s -> s
-            //     { psPatches = psPatches ++ [patch]
-            //     , psNumConsumedOperations = psNumConsumedOperations + 1
-            //     }
 
             // TODO saveSnapshot
 
-            return Ok(new_snapshot);
+            return Ok(Some(patch));
+        }
+    }
+}
+
+async fn patch_handler(patch_state: &mut PatchState, validate: bool) -> Result<(), AppError> {
+    // TODO collect into patches vec instead of iterate?
+    for op in patch_state.operations {
+        let s = save_operation(patch_state, validate, op).await?;
+    }
+    Ok(())
+}
+
+/// try rebase and then apply the operation to get a new snapshot (or return the old)
+async fn save_operation(
+    patch_state: &mut PatchState,
+    validate: bool,
+    op: Operation,
+) -> Result<(), AppError> {
+    let base_content = patch_state.base_snapshot.content;
+    let snapshot = patch_state.latest_snapshot;
+
+    match rebase(base_content.clone(), op, patch_state.previous_patches) {
+        None => return Ok(()),
+        Some(new_op) => {
+            let rev_id = snapshot.revision_id + 1;
+            let patch = Patch {
+                object_id: patch_state.object_id,
+                revision_id: rev_id,
+                author_id: patch_state.committer_id,
+                created_at: None,
+                operation: new_op,
+            };
+
+            let new_content = apply(snapshot.content, new_op)?;
+            if new_content == snapshot.content {
+                return Ok(());
+            }
+            if validate {
+                // TODO: validateWithType psObjectType newContent
+            }
+
+            let new_snapshot = Snapshot {
+                object_id: snapshot.object_id,
+                revision_id: rev_id,
+                content: new_content,
+            };
+
+            // now we know that the patch can be applied cleanly, so we can save it in the database
+            // TODO savePatch
+
+            patch_state.patches.push(patch);
+            patch_state.num_consumed_operations += 1;
+
+            // TODO saveSnapshot
+
+            return Ok(());
         }
     }
 }
