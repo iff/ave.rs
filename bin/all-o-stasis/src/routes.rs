@@ -51,14 +51,14 @@ struct PatchObjectBody {
 #[derive(Serialize, Deserialize, Clone)]
 pub(crate) struct PatchObjectResponse {
     previous_patches: Vec<Patch>,
-    num_processed_operations: u32,
+    num_processed_operations: usize,
     resulting_patches: Vec<Patch>,
 }
 
 impl PatchObjectResponse {
     pub fn new(
         previous_patches: Vec<Patch>,
-        num_processed_operations: u32,
+        num_processed_operations: usize,
         resulting_patches: Vec<Patch>,
     ) -> Self {
         Self {

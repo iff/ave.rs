@@ -128,7 +128,7 @@ pub async fn apply_object_updates(
     // };
     // patch_handler(&mut ps, !skip_validation).await?;
 
-    let _patches = operations
+    let patches = operations
         .iter()
         .map(|&op| {
             save_operation_(
@@ -139,7 +139,11 @@ pub async fn apply_object_updates(
                 !skip_validation,
             )
         })
-        // .filter(|&p| p.is_some())
+        .filter_map(|p| match p {
+             Ok(Some(val)) => Some(val),
+             Ok(None) => None,
+             Err(_e) => None, // Some(Err(e)), FIXME handle err?
+        })
         .collect::<Vec<Patch>>();
 
     //   -- Update object views.
@@ -149,7 +153,7 @@ pub async fn apply_object_updates(
 
     Ok(Json(PatchObjectResponse::new(
         previous_patches,
-        patches_.len(),
+        patches.len(),
         patches,
     )))
     
@@ -169,7 +173,7 @@ fn save_operation_(
     validate: bool,
 ) -> Result<Option<Patch>, AppError> {
     match rebase(base_content.clone(), op, previous_patches) {
-        None => return Ok(None),
+            None => return Ok(None),
         Some(new_op) => {
             let rev_id = snapshot.revision_id + 1;
             let patch = Patch {
@@ -180,6 +184,7 @@ fn save_operation_(
                 operation: new_op,
             };
 
+            // raise as OtError? or just as patch?
             let new_content = apply(snapshot.content, new_op)?;
             if new_content == snapshot.content {
                 return Ok(None);

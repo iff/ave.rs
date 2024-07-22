@@ -14,6 +14,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod routes;
 mod storage;
+use otp::PatchError;
 
 pub fn config_env_var(name: &str) -> Result<String, String> {
     std::env::var(name).map_err(|e| format!("{}: {}", name, e))
@@ -41,6 +42,13 @@ enum AppError {
 impl From<FirestoreError> for AppError {
     fn from(inner: firestore::errors::FirestoreError) -> Self {
         AppError::Firestore(inner)
+    }
+}
+
+// maybe like this?
+impl From<PatchError> for AppError {
+    fn from(_inner: PatchError) -> Self {
+        AppError::Ot(OtError::PatchError)
     }
 }
 
@@ -108,6 +116,8 @@ enum OtError {
     NotFound,
     #[allow(dead_code)]
     InvalidObjectId,
+    // simply wrap all patching errors for now
+    PatchError,
 }
 
 #[tokio::main]
