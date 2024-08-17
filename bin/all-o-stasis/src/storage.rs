@@ -98,7 +98,7 @@ pub async fn apply_object_updates(
     operations: Vec<Operation>,
     skip_validation: bool,
 ) -> Result<Json<PatchObjectResponse>, AppError> {
-    let parent_path = state.db.parent_path("gyms", gym)?;
+    // let parent_path = state.db.parent_path("gyms", gym)?;
 
     // first check that the object exists. We'll need its metadata later
     let id = base_id(&obj_id);
@@ -140,9 +140,9 @@ pub async fn apply_object_updates(
             )
         })
         .filter_map(|p| match p {
-             Ok(Some(val)) => Some(val),
-             Ok(None) => None,
-             Err(_e) => None, // Some(Err(e)), FIXME handle err?
+            Ok(Some(val)) => Some(val),
+            Ok(None) => None,
+            Err(_e) => None, // Some(Err(e)), FIXME handle err?
         })
         .collect::<Vec<Patch>>();
 
@@ -156,7 +156,7 @@ pub async fn apply_object_updates(
         patches.len(),
         patches,
     )))
-    
+
     // Ok(Json(PatchObjectResponse::new(
     //     previous_patches,
     //     patch_state.num_consumed_operations,
@@ -173,7 +173,7 @@ fn save_operation_(
     validate: bool,
 ) -> Result<Option<Patch>, AppError> {
     match rebase(base_content.clone(), op, previous_patches) {
-            None => return Ok(None),
+        None => return Ok(None),
         Some(new_op) => {
             let rev_id = snapshot.revision_id + 1;
             let patch = Patch {
