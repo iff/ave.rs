@@ -33,14 +33,6 @@ fn base_id(obj_id: &ObjectId) -> ObjId {
     }
 }
 
-async fn lookup_object_type(_obj_id: Object) -> String {
-    // TODO for now we just assume it is a boulder
-    // later we only need to also support Accounts, atm it does not make sense to be more flexible
-    // but still we need to check the registered types (given an object id)?
-    // or use an enum in objects that enumerates all possibilities (also easy to query)
-    String::from("boulder")
-}
-
 /// generic object lookup in `gym` with `id`
 pub(crate) async fn lookup_object_(
     state: &AppState,
@@ -103,14 +95,14 @@ pub async fn apply_object_updates(
     // first check that the object exists. We'll need its metadata later
     let id = base_id(&obj_id);
     let obj = lookup_object_(state, gym, id).await?;
-    // FIXME in our case the OT type can be an enum (we know it is either a boulder or an account)
-    let ot_type = lookup_object_type(obj).await;
+    // in our case the OT type can be an enum (we know it is either a boulder or an account)
+    let ot_type = obj.get_type();
 
     // The 'Snapshot' against which the submitted operations were created
     let base_snapshot = lookup_snapshot(&state, &gym, &obj_id, &rev_id).await?;
 
     // If there are any patches which the client doesn't know about we need
-    // to let her know.
+    // to let her know
     let previous_patches = patches_after_revision(&obj_id, &rev_id);
     let latest_snapshot = apply_patches(&base_snapshot, &previous_patches);
 

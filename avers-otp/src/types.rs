@@ -93,7 +93,7 @@ pub struct Object {
     id: Option<ObjId>, // not nice that this has to be empty for id generation to work
     #[serde(alias = "_firestore_created")]
     created_at: Option<DateTime<Utc>>, // Option<FirestoreTimestamp>,
-    object_type: String,
+    object_type: ObjectType,
     created_by: ObjId,
     deleted: Option<bool>,
 
@@ -102,8 +102,18 @@ pub struct Object {
     pub content: HashMap<String, Value>,
 }
 
+// TODO or move type defs here and embedd them directly in Object? maybe needs too many changes
+// with js lib
+#[derive(Serialize, Deserialize, Clone)]
+pub enum ObjectType {
+    /// account type
+    Account,
+    /// boulder type
+    Boulder,
+}
+
 impl Object {
-    pub fn new(object_type: String, created_by: ObjId) -> Object {
+    pub fn new(object_type: ObjectType, created_by: ObjId) -> Object {
         // TODO generete random id? (see Avers/Storage.hs)
         // or use firestore ids
         // TODO should we only allow to create Objects with non-optional id?
@@ -121,6 +131,10 @@ impl Object {
     pub fn id(&self) -> String {
         // FIXME
         self.id.as_ref().expect("no id").to_string()
+    }
+
+    pub fn get_type(&self) -> ObjectType {
+        self.object_type
     }
 }
 
@@ -176,7 +190,7 @@ mod tests {
 
     #[test]
     fn object_additional_fields_as_value() {
-        let object = Object::new(String::from("value"), String::from("deadbeef"));
+        let object = Object::new(ObjectType::Boulder, String::from("deadbeef"));
         let json = to_string(&object).unwrap();
 
         // I think the only way to handle custom keys on the Object is to actually parse it as a
@@ -198,7 +212,7 @@ mod tests {
 
     #[test]
     fn object_additional_fields_using_extra() {
-        let mut object = Object::new(String::from("value"), String::from("deadbeef"));
+        let mut object = Object::new(ObjectType::Boulder, String::from("deadbeef"));
         object
             .content
             .insert(String::from("grade"), Value::String(String::from("blue")));
