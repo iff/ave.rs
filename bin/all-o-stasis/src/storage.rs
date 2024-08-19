@@ -12,19 +12,6 @@ use serde_json::Value;
 use crate::routes::PatchObjectResponse;
 use crate::{AppError, AppState};
 
-struct PatchState {
-    object_type: String,
-    object_id: ObjectId,
-    revision_id: RevId,
-    committer_id: ObjId,
-    operations: Vec<Operation>,
-    num_consumed_operations: u32,
-    base_snapshot: Snapshot,
-    latest_snapshot: Snapshot,
-    previous_patches: Vec<Patch>,
-    patches: Vec<Patch>,
-}
-
 fn base_id(obj_id: &ObjectId) -> ObjId {
     match obj_id {
         ObjectId::Base(id) => id.clone(),
@@ -90,13 +77,9 @@ pub async fn apply_object_updates(
     operations: Vec<Operation>,
     skip_validation: bool,
 ) -> Result<Json<PatchObjectResponse>, AppError> {
-    // let parent_path = state.db.parent_path("gyms", gym)?;
-
     // first check that the object exists. We'll need its metadata later
     let id = base_id(&obj_id);
     let obj = lookup_object_(state, gym, id).await?;
-    // in our case the OT type can be an enum (we know it is either a boulder or an account)
-    let ot_type = obj.get_type();
 
     // The 'Snapshot' against which the submitted operations were created
     let base_snapshot = lookup_snapshot(&state, &gym, &obj_id, &rev_id).await?;
@@ -110,7 +93,9 @@ pub async fn apply_object_updates(
         .iter()
         .map(|&op| {
             save_operation(
-                base_snapshot.content.clone(),
+                obj_id.clone(),
+                author.clone(),
+                (base_snapshot.content).clone(),
                 &latest_snapshot,
                 previous_patches.clone(),
                 op,
@@ -127,6 +112,7 @@ pub async fn apply_object_updates(
     //   -- Update object views.
     //   unless novalidate $ do
     //       content <- parseValue snapshotContent
+    //       let ot_type = obj.get_type();
     //       updateObjectViews ot baseObjId (Just content)
 
     Ok(Json(PatchObjectResponse::new(
@@ -134,36 +120,32 @@ pub async fn apply_object_updates(
         patches.len(),
         patches,
     )))
-
-    // Ok(Json(PatchObjectResponse::new(
-    //     previous_patches,
-    //     patch_state.num_consumed_operations,
-    //     patch_state.patches,
-    // )))
 }
 
 /// try rebase and then apply the operation to get a new snapshot (or return the old)
 fn save_operation(
+    object_id: ObjectId,
+    author_id: ObjId,
     base_content: Value,
     snapshot: &Snapshot,
     previous_patches: Vec<Patch>,
     op: Operation,
     validate: bool,
 ) -> Result<Option<Patch>, AppError> {
-    match rebase(base_content.clone(), op, previous_patches) {
+    match rebase(base_content, op, previous_patches) {
         None => return Ok(None),
         Some(new_op) => {
             let rev_id = snapshot.revision_id + 1;
             let patch = Patch {
-                object_id: patch_state.object_id,
+                object_id,
                 revision_id: rev_id,
-                author_id: patch_state.committer_id,
+                author_id,
                 created_at: None,
-                operation: new_op,
+                operation: new_op.clone(),
             };
 
             // raise as OtError? or just as patch?
-            let new_content = apply(snapshot.content, new_op)?;
+            let new_content = apply(snapshot.content.clone(), new_op.clone())?;
             if new_content == snapshot.content {
                 return Ok(None);
             }
@@ -172,15 +154,36 @@ fn save_operation(
             }
 
             let new_snapshot = Snapshot {
-                object_id: snapshot.object_id,
+                object_id: snapshot.object_id.clone(),
                 revision_id: rev_id,
                 content: new_content,
             };
 
             // now we know that the patch can be applied cleanly, so we can save it in the database
-            // TODO savePatch
+            let parent_path = state.db.parent_path("gyms", gym)?;
+            let p: Option<Patch> = state
+                .db
+                .fluent()
+                .insert()
+                .into("patches")
+                .generate_document_id() // FIXME true?
+                .parent(&parent_path)
+                .object(&patch)
+                .execute()
+                .await?;
+            let _ = p.ok_or_else(AppError::Query)?;
 
-            // TODO saveSnapshot
+            let s: Option<Snapshot> = state
+                .db
+                .fluent()
+                .insert()
+                .into("snapshots")
+                .generate_document_id() // FIXME true?
+                .parent(&parent_path)
+                .object(&new_snapshot)
+                .execute()
+                .await?;
+            let _ = s.ok_or_else(AppError::Query)?;
 
             return Ok(Some(patch));
         }
