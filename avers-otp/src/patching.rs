@@ -379,6 +379,25 @@ mod tests {
     use crate::types::{Operation, ROOT_PATH};
     use serde_json::json;
 
+    // macro_rules! test_battery {
+    //   ($($t:ty as $name:ident),*) => {
+    //     $(
+    //       mod $name {
+    //         #[test]
+    //         fn frobnified() { test_inner::<$t>(1, true) }
+    //         #[test]
+    //         fn unfrobnified() { test_inner::<$t>(1, false) }
+    //       }
+    //     )*
+    //   }
+    // }
+    //
+    // test_battery! {
+    //   u8 as u8_tests,
+    //   // ...
+    //   i128 as i128_tests
+    // }
+
     #[test]
     fn apply_set_op_root_path() {
         let op = Operation::Set {
