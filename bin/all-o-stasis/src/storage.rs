@@ -206,7 +206,6 @@ async fn save_operation(
         operation: new_op.clone(),
     };
 
-    // raise as OtError? or just as patch?
     // FIXME clone?
     let new_content = apply(snapshot.content.clone(), new_op.clone())?;
     if new_content == snapshot.content {
@@ -223,11 +222,8 @@ async fn save_operation(
     };
 
     // now we know that the patch can be applied cleanly, so we can save it in the database
-    let p = store_patch(&state, &gym, &patch).await?;
-    let _ = p.ok_or_else(AppError::Query)?;
-
-    let s = store_snapshot(&state, &gym, &new_snapshot).await?;
-    let _ = s.ok_or_else(AppError::Query)?;
+    store_patch(&state, &gym, &patch).await?.ok_or_else(AppError::Query)?;
+    store_snapshot(&state, &gym, &new_snapshot).await?.ok_or_else(AppError::Query)?;
 
     return Ok(Some(patch));
 }
