@@ -60,30 +60,70 @@ async fn lookup_snapshot(
     //     filter (\Patch{..} -> unRevId patchRevisionId <= revId) patches
 }
 
-fn patches_after_revision(obj_id: &ObjectId, rev_id: &RevId) -> Vec<Patch> {
+async fn store_patch(
+    state: &AppState,
+    gym: &String,
+    patch: &Patch,
+) -> Result<Option<Patch>, AppError> {
+    let parent_path = state.db.parent_path("gyms", gym)?;
+    let p: Option<Patch> = state
+        .db
+        .fluent()
+        .insert()
+        .into("patches")
+        .generate_document_id() // FIXME true?
+        .parent(&parent_path)
+        .object(patch)
+        .execute()
+        .await?;
+    return Ok(p);
+}
+
+async fn store_snapshot(
+    state: &AppState,
+    gym: &String,
+    snapshot: &Snapshot,
+) -> Result<Option<Snapshot>, AppError> {
+    let parent_path = state.db.parent_path("gyms", gym)?;
+    let p: Option<Snapshot> = state
+        .db
+        .fluent()
+        .insert()
+        .into("snapshot")
+        .generate_document_id() // FIXME true?
+        .parent(&parent_path)
+        .object(snapshot)
+        .execute()
+        .await?;
+    return Ok(p);
+}
+
+fn patches_after_revision(
+    state: &AppState,
+    gym: &String,
+    obj_id: &ObjectId,
+    rev_id: &RevId,
+) -> Vec<Patch> {
     todo!()
 
-    // res <- runQueryCollect $
-    //     R.OrderBy [R.Ascending "revisionId"] $
-    //     objectPatchSequenceE objId (revId + 1) maxBound
-    //
-    // V.toList <$> V.mapM parseDatum res
+    // let parent_path = state.db.parent_path("gyms", gym)?;
+
+    // in patches table find all patches with obj_id
+    // and revision between rev+1 and MAX
+    // order ascending
 }
 
-fn apply_patch_to_snapshots(snapshot: &Snapshot, patch: &Patch) -> Result<Snapshot, AppError> {
-    let mut new_snapshot = snapshot.clone();
-    new_snapshot.content = apply(snapshot.content, patch.operation)?;
-    new_snapshot.revision_id = patch.revision_id;
-
-    return new_snapshot;
+fn apply_patch_to_snapshot(snapshot: &Snapshot, patch: &Patch) -> Result<Snapshot, AppError> {
+    Ok(Snapshot {
+        object_id: snapshot.object_id.clone(),
+        revision_id: patch.revision_id,
+        content: apply(snapshot.content.clone(), patch.operation.clone())?,
+    })
 }
 
-fn apply_patches(
-    base_snapshot: &Snapshot,
-    previous_patches: &Vec<Patch>,
-) -> Result<Snapshot, AppError> {
-    patches.iter().fold(base_snapshot, |snapshot, patch| {
-        snapshot = apply_patch_to_snapshot(snapshot, patch)?
+fn apply_patches(base_snapshot: &Snapshot, patches: &Vec<Patch>) -> Result<Snapshot, AppError> {
+    patches.iter().fold(Ok(base_snapshot), |snapshot, patch| {
+        snapshot = apply_patch_to_snapshot(&snapshot, &patch)?
     })
 }
 
@@ -105,13 +145,17 @@ pub async fn apply_object_updates(
 
     // If there are any patches which the client doesn't know about we need
     // to let her know
-    let previous_patches = patches_after_revision(&obj_id, &rev_id);
+    let previous_patches = patches_after_revision(&state, &gym, &obj_id, &rev_id);
     let latest_snapshot = apply_patches(&base_snapshot, &previous_patches)?;
 
+    // FIXME async in closure - can we separate this out? we only need async for actually storing
+    // the patch and snapshot in the database?
     let patches = operations
         .iter()
         .map(|&op| {
             save_operation(
+                &state,
+                &gym,
                 obj_id.clone(),
                 author.clone(),
                 (base_snapshot.content).clone(),
@@ -121,6 +165,7 @@ pub async fn apply_object_updates(
                 !skip_validation,
             )
         })
+        .await?
         .filter_map(|p| match p {
             Ok(Some(val)) => Some(val),
             Ok(None) => None,
@@ -142,7 +187,9 @@ pub async fn apply_object_updates(
 }
 
 /// try rebase and then apply the operation to get a new snapshot (or return the old)
-fn save_operation(
+async fn save_operation(
+    state: &AppState,
+    gym: &String,
     object_id: ObjectId,
     author_id: ObjId,
     base_content: Value,
@@ -151,60 +198,41 @@ fn save_operation(
     op: Operation,
     validate: bool,
 ) -> Result<Option<Patch>, AppError> {
-    match rebase(base_content, op, previous_patches) {
-        None => return Ok(None),
-        Some(new_op) => {
-            let rev_id = snapshot.revision_id + 1;
-            let patch = Patch {
-                object_id,
-                revision_id: rev_id,
-                author_id,
-                created_at: None,
-                operation: new_op.clone(),
-            };
+    let Some(new_op) = rebase(base_content, op, previous_patches) else {
+        return Ok(None);
+    };
 
-            // raise as OtError? or just as patch?
-            let new_content = apply(snapshot.content.clone(), new_op.clone())?;
-            if new_content == snapshot.content {
-                return Ok(None);
-            }
-            if validate {
-                // TODO: validateWithType psObjectType newContent
-            }
+    let rev_id = snapshot.revision_id + 1;
+    let patch = Patch {
+        object_id,
+        revision_id: rev_id,
+        author_id,
+        created_at: None,
+        operation: new_op.clone(),
+    };
 
-            let new_snapshot = Snapshot {
-                object_id: snapshot.object_id.clone(),
-                revision_id: rev_id,
-                content: new_content,
-            };
-
-            // now we know that the patch can be applied cleanly, so we can save it in the database
-            let parent_path = state.db.parent_path("gyms", gym)?;
-            let p: Option<Patch> = state
-                .db
-                .fluent()
-                .insert()
-                .into("patches")
-                .generate_document_id() // FIXME true?
-                .parent(&parent_path)
-                .object(&patch)
-                .execute()
-                .await?;
-            let _ = p.ok_or_else(AppError::Query)?;
-
-            let s: Option<Snapshot> = state
-                .db
-                .fluent()
-                .insert()
-                .into("snapshots")
-                .generate_document_id() // FIXME true?
-                .parent(&parent_path)
-                .object(&new_snapshot)
-                .execute()
-                .await?;
-            let _ = s.ok_or_else(AppError::Query)?;
-
-            return Ok(Some(patch));
-        }
+    // raise as OtError? or just as patch?
+    // FIXME clone?
+    let new_content = apply(snapshot.content.clone(), new_op.clone())?;
+    if new_content == snapshot.content {
+        return Ok(None);
     }
+    if validate {
+        // TODO: validateWithType psObjectType newContent
+    }
+
+    let new_snapshot = Snapshot {
+        object_id: snapshot.object_id.clone(),
+        revision_id: rev_id,
+        content: new_content,
+    };
+
+    // now we know that the patch can be applied cleanly, so we can save it in the database
+    let p = store_patch(&state, &gym, &patch).await?;
+    let _ = p.ok_or_else(AppError::Query)?;
+
+    let s = store_snapshot(&state, &gym, &snapshot).await?;
+    let _ = s.ok_or_else(AppError::Query)?;
+
+    return Ok(Some(patch));
 }
