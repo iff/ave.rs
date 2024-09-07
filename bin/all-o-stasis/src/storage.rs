@@ -197,15 +197,6 @@ async fn save_operation(
         return Ok(None);
     };
 
-    let rev_id = snapshot.revision_id + 1;
-    let patch = Patch {
-        object_id,
-        revision_id: rev_id,
-        author_id,
-        created_at: None,
-        operation: new_op.clone(),
-    };
-
     // FIXME clone?
     let new_content = apply(snapshot.content.clone(), new_op.clone())?;
     if new_content == snapshot.content {
@@ -215,15 +206,27 @@ async fn save_operation(
         // TODO: validateWithType psObjectType newContent
     }
 
+    let rev_id = snapshot.revision_id + 1;
+    // now we know that the patch can be applied cleanly, so we can save it in the database
     let new_snapshot = Snapshot {
         object_id: snapshot.object_id.clone(),
         revision_id: rev_id,
         content: new_content,
     };
+    store_snapshot(&state, &gym, &new_snapshot)
+        .await?
+        .ok_or_else(AppError::Query)?;
 
-    // now we know that the patch can be applied cleanly, so we can save it in the database
-    store_patch(&state, &gym, &patch).await?.ok_or_else(AppError::Query)?;
-    store_snapshot(&state, &gym, &new_snapshot).await?.ok_or_else(AppError::Query)?;
+    let patch = Patch {
+        object_id,
+        revision_id: rev_id,
+        author_id,
+        created_at: None,
+        operation: new_op.clone(),
+    };
+    store_patch(&state, &gym, &patch)
+        .await?
+        .ok_or_else(AppError::Query)?;
 
     return Ok(Some(patch));
 }
