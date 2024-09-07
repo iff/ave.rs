@@ -134,7 +134,7 @@ impl Object {
     }
 
     pub fn get_type(&self) -> ObjectType {
-        self.object_type
+        self.object_type.clone()
     }
 }
 
