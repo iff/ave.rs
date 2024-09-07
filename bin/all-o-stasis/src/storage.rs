@@ -1,12 +1,7 @@
 use axum::Json;
 use firestore::{path, FirestoreResult};
-use futures::stream::BoxStream;
-use futures::TryStreamExt;
-use otp::types::{
-    ObjId, Object, ObjectId, Operation, Patch, RevId, Snapshot, ROOT_PATH, ZERO_REV_ID,
-};
+use otp::types::{ObjId, Object, ObjectId, Operation, Patch, RevId, Snapshot};
 use otp::{apply, rebase};
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::routes::PatchObjectResponse;
