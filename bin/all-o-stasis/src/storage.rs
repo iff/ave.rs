@@ -62,10 +62,29 @@ async fn lookup_snapshot(
 
 fn patches_after_revision(obj_id: &ObjectId, rev_id: &RevId) -> Vec<Patch> {
     todo!()
+
+    // res <- runQueryCollect $
+    //     R.OrderBy [R.Ascending "revisionId"] $
+    //     objectPatchSequenceE objId (revId + 1) maxBound
+    //
+    // V.toList <$> V.mapM parseDatum res
 }
 
-fn apply_patches(base_snapshot: &Snapshot, previous_patches: &Vec<Patch>) -> Snapshot {
-    todo!()
+fn apply_patch_to_snapshots(snapshot: &Snapshot, patch: &Patch) -> Result<Snapshot, AppError> {
+    let mut new_snapshot = snapshot.clone();
+    new_snapshot.content = apply(snapshot.content, patch.operation)?;
+    new_snapshot.revision_id = patch.revision_id;
+
+    return new_snapshot;
+}
+
+fn apply_patches(
+    base_snapshot: &Snapshot,
+    previous_patches: &Vec<Patch>,
+) -> Result<Snapshot, AppError> {
+    patches.iter().fold(base_snapshot, |snapshot, patch| {
+        snapshot = apply_patch_to_snapshot(snapshot, patch)?
+    })
 }
 
 pub async fn apply_object_updates(
@@ -87,7 +106,7 @@ pub async fn apply_object_updates(
     // If there are any patches which the client doesn't know about we need
     // to let her know
     let previous_patches = patches_after_revision(&obj_id, &rev_id);
-    let latest_snapshot = apply_patches(&base_snapshot, &previous_patches);
+    let latest_snapshot = apply_patches(&base_snapshot, &previous_patches)?;
 
     let patches = operations
         .iter()
@@ -109,7 +128,7 @@ pub async fn apply_object_updates(
         })
         .collect::<Vec<Patch>>();
 
-    //   -- Update object views.
+    //   TODO: Update object views.
     //   unless novalidate $ do
     //       content <- parseValue snapshotContent
     //       let ot_type = obj.get_type();
