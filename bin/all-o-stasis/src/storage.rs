@@ -226,7 +226,7 @@ async fn save_operation(
     let p = store_patch(&state, &gym, &patch).await?;
     let _ = p.ok_or_else(AppError::Query)?;
 
-    let s = store_snapshot(&state, &gym, &snapshot).await?;
+    let s = store_snapshot(&state, &gym, &new_snapshot).await?;
     let _ = s.ok_or_else(AppError::Query)?;
 
     return Ok(Some(patch));
