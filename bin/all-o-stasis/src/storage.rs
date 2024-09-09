@@ -55,6 +55,7 @@ async fn lookup_snapshot(
     //     filter (\Patch{..} -> unRevId patchRevisionId <= revId) patches
 }
 
+// TODO generic store op using templates and table name?
 async fn store_patch(
     state: &AppState,
     gym: &String,
@@ -66,7 +67,7 @@ async fn store_patch(
         .fluent()
         .insert()
         .into("patches")
-        .generate_document_id() // FIXME true?
+        .generate_document_id() // FIXME do generate an id here?
         .parent(&parent_path)
         .object(patch)
         .execute()
@@ -85,7 +86,7 @@ async fn store_snapshot(
         .fluent()
         .insert()
         .into("snapshot")
-        .generate_document_id() // FIXME true?
+        .generate_document_id() // FIXME do generate an id here?
         .parent(&parent_path)
         .object(snapshot)
         .execute()
@@ -116,10 +117,10 @@ fn apply_patch_to_snapshot(snapshot: &Snapshot, patch: &Patch) -> Result<Snapsho
     })
 }
 
-fn apply_patches(base_snapshot: &Snapshot, patches: &Vec<Patch>) -> Result<Snapshot, AppError> {
-    patches.iter().fold(Ok(base_snapshot), |snapshot, patch| {
-        snapshot = apply_patch_to_snapshot(&snapshot, &patch)?
-    })
+fn apply_patches(snapshot: &Snapshot, patches: &Vec<Patch>) -> Result<Snapshot, AppError> {
+    Ok(patches.iter().fold(snapshot.clone(), |snapshot, patch| {
+        apply_patch_to_snapshot(&snapshot, &patch)?
+    }))
 }
 
 pub async fn apply_object_updates(
@@ -227,6 +228,8 @@ async fn save_operation(
     store_patch(&state, &gym, &patch)
         .await?
         .ok_or_else(AppError::Query)?;
+
+    // TODO maybe await here? or return futures?
 
     return Ok(Some(patch));
 }
