@@ -33,6 +33,7 @@ pub const ZERO_REV_ID: RevId = 0;
 //     Admin = "admin",
 // }
 
+// TODO this is not the firestore id
 // TODO can't be internally typed (tuple), so externally okay?
 #[derive(Serialize, Deserialize, Clone)]
 pub enum ObjectId {
