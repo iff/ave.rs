@@ -118,9 +118,15 @@ fn apply_patch_to_snapshot(snapshot: &Snapshot, patch: &Patch) -> Result<Snapsho
 }
 
 fn apply_patches(snapshot: &Snapshot, patches: &Vec<Patch>) -> Result<Snapshot, AppError> {
-    Ok(patches.iter().fold(snapshot.clone(), |snapshot, patch| {
-        apply_patch_to_snapshot(&snapshot, &patch)?
-    }))
+    let mut s = snapshot.clone();
+    for patch in patches {
+        s = apply_patch_to_snapshot(&s.clone(), patch)?;
+    }
+    // Ok(patches.iter().fold(snapshot.clone(), |snapshot, patch| {
+    //     apply_patch_to_snapshot(&snapshot, &patch)?
+    // }))
+
+    Ok(s)
 }
 
 pub async fn apply_object_updates(
@@ -146,28 +152,50 @@ pub async fn apply_object_updates(
 
     // FIXME async in closure - can we separate this out? we only need async for actually storing
     // the patch and snapshot in the database?
-    let patches = operations
-        .iter()
-        .map(|&op| {
-            save_operation(
-                &state,
-                &gym,
-                obj_id.clone(),
-                author.clone(),
-                (base_snapshot.content).clone(),
-                &latest_snapshot,
-                previous_patches.clone(),
-                op,
-                !skip_validation,
-            )
-        })
-        .await?
-        .filter_map(|p| match p {
-            Ok(Some(val)) => Some(val),
-            Ok(None) => None,
-            Err(_e) => None, // Some(Err(e)), FIXME handle err?
-        })
-        .collect::<Vec<Patch>>();
+    let mut patches = Vec::<Patch>::new();
+    for op in operations {
+        let patch = save_operation(
+            &state,
+            &gym,
+            obj_id.clone(),
+            author.clone(),
+            (base_snapshot.content).clone(),
+            &latest_snapshot,
+            previous_patches.clone(),
+            op,
+            !skip_validation,
+        )
+        .await; // TODO await all? does not matter that much probably?
+
+        match patch {
+            Ok(Some(val)) => patches.push(val),
+            Ok(None) => (), // TODO push nones?
+            Err(_e) => (),  // Some(Err(e)), FIXME handle err?
+        }
+    }
+
+    // let patches = operations.iter().map(|&op| {
+    //     save_operation(
+    //         &state,
+    //         &gym,
+    //         obj_id.clone(),
+    //         author.clone(),
+    //         (base_snapshot.content).clone(),
+    //         &latest_snapshot,
+    //         previous_patches.clone(),
+    //         op,
+    //         !skip_validation,
+    //     )
+    // });
+    //
+    // let concret_patches = patches.await?;
+    // let ps = concret_patches
+    //     .filter_map(|p| match p {
+    //         Ok(Some(val)) => Some(val),
+    //         Ok(None) => None,
+    //         Err(_e) => None, // Some(Err(e)), FIXME handle err?
+    //     })
+    //     .collect::<Vec<Patch>>();
 
     //   TODO: Update object views.
     //   unless novalidate $ do

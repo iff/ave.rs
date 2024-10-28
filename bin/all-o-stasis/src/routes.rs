@@ -6,6 +6,7 @@ use axum::{
 use firestore::{path, FirestoreResult};
 use futures::stream::BoxStream;
 use futures::TryStreamExt;
+use otp::types::ObjectType;
 use otp::types::{ObjId, Object, ObjectId, Operation, Patch, RevId, ROOT_PATH, ZERO_REV_ID};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -31,14 +32,14 @@ struct PublicProfile {
 #[derive(Serialize, Deserialize, Clone)]
 struct CreateObjectBody {
     #[serde(rename = "type")]
-    ot_type: String,
+    ot_type: ObjectType,
     content: Value,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone)]
 struct CreateObjectResponse {
     id: ObjId,
-    ot_type: String,
+    ot_type: ObjectType,
     content: Value,
 }
 
