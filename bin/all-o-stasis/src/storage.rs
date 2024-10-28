@@ -36,10 +36,10 @@ pub(crate) async fn lookup_object_(
 }
 
 async fn lookup_snapshot(
-    state: &AppState,
-    gym: &String,
-    obj_id: &ObjectId,
-    rev_id: &RevId,
+    _state: &AppState,
+    _gym: &String,
+    _obj_id: &ObjectId,
+    _rev_id: &RevId,
 ) -> Result<Snapshot, AppError> {
     todo!()
     // let parent_path = state.db.parent_path("gyms", gym)?;
@@ -91,14 +91,15 @@ async fn store_snapshot(
         .object(snapshot)
         .execute()
         .await?;
-    return Ok(p);
+
+    Ok(p)
 }
 
 fn patches_after_revision(
-    state: &AppState,
-    gym: &String,
-    obj_id: &ObjectId,
-    rev_id: &RevId,
+    _state: &AppState,
+    _gym: &String,
+    _obj_id: &ObjectId,
+    _rev_id: &RevId,
 ) -> Vec<Patch> {
     todo!()
 
