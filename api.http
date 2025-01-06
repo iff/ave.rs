@@ -1,0 +1,15 @@
+### #patches
+GET http://localhost:3000/test/objects/ckrMCmhHYpXY4JfqPLrQ/patches/0
+
+### #post object
+POST 127.0.0.1:3000/test/objects
+
+accept: application/json  
+Content-type: application/json; charset=UTF-8
+
+{
+  "type": "boulder",
+  "content": {
+    "grade": "red"
+  }
+}
