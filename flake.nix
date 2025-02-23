@@ -33,8 +33,33 @@
       ];
 
       pkgs = import nixpkgs { inherit system overlays; };
+
+      app = pkgs.rustPlatform.buildRustPackage {
+        pname = "all-o-stasis";
+        version = "0.0.1";
+        src = ./.;
+
+        cargoLock = {
+          lockFile = ./Cargo.lock;
+        };
+
+        nativeBuildInputs = [ pkgs.pkg-config ];
+        # TODO needed here?
+        PKG_CONFIG_PATH = "${pkgs.openssl.dev}/lib/pkgconfig";
+      };
+
+      container = pkgs.dockerTools.buildLayeredImage {
+        name = "api";
+
+        # TODO: env vars secrets etc
+        config = {
+          Cmd = [ app ];
+        };
+      };
     in
     {
+      defaultPackage = container;
+
       devShells.default = pkgs.mkShell {
         nativeBuildInputs = with pkgs; [
           bruno
