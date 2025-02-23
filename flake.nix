@@ -51,9 +51,15 @@
       container = pkgs.dockerTools.buildLayeredImage {
         name = "api";
 
+        # TODO: secrets for firestore?
+        # TODO service account?
         # TODO: env vars secrets etc
         config = {
-          Cmd = [ app ];
+          Env = [ "PROJECT_ID=all-o-stasis" ];
+          Cmd = [ "${app}/bin/all-o-stasis" ];
+          ExposedPorts = {
+            "8080/tcp" = { };
+          };
         };
       };
     in
