@@ -145,10 +145,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     };
     tracing::debug!("connected to firestore");
 
-    axum::Server::bind(&"0.0.0.0:3000".parse()?)
+    axum::Server::bind(&"0.0.0.0:8080".parse()?)
         .serve(app(state).into_make_service())
         .await?;
-    tracing::debug!("listening on http://localhost:3000");
+    tracing::debug!("listening on http://localhost:8080");
 
     Ok(())
 }
