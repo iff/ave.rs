@@ -12,3 +12,26 @@ Content-type: application/json; charset=UTF-8
     "grade": "red"
   }
 }
+
+### #get object
+GET https://api-146982620019.europe-west1.run.app/test/objects/KdTqjNIlfKHHmI4Fej7C
+
+### #patch object
+PATCH https://api-146982620019.europe-west1.run.app/test/objects/KdTqjNIlfKHHmI4Fej7C
+accept: application/json  
+Content-type: application/json; charset=UTF-8
+
+{
+  "revision_id": 1,
+  "operations": [
+    {
+      "type": "Set",
+      "path": "grade",
+      "value": "blue"
+    }
+  ]
+}
+
+
+# collections are 'specialised' in concrete avers impls
+# get ->  /collection/collectionName
