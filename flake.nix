@@ -51,10 +51,17 @@
       container = pkgs.dockerTools.buildLayeredImage {
         name = "api";
 
+        # needed for firestore
+        contents = with pkgs; [
+          cacert
+          app
+        ];
+
         # TODO: secrets for firestore?
         # TODO service account?
         # TODO: env vars secrets etc
         config = {
+          # TODO: probably not necessary to set (when running on gcloud)
           Env = [ "PROJECT_ID=all-o-stasis" ];
           Cmd = [ "${app}/bin/all-o-stasis" ];
           ExposedPorts = {
