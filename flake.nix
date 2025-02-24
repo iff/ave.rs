@@ -64,6 +64,7 @@
       };
     in
     {
+      # TODO expose container.imageId
       defaultPackage = container;
 
       devShells.default = pkgs.mkShell {
