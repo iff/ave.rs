@@ -1,14 +1,13 @@
 ### #patches
-GET http://localhost:3000/test/objects/ckrMCmhHYpXY4JfqPLrQ/patches/0
+GET https://api-146982620019.europe-west1.run.app/test/objects/ckrMCmhHYpXY4JfqPLrQ/patches/0
 
 ### #post object
-POST 127.0.0.1:3000/test/objects
-
+POST https://api-146982620019.europe-west1.run.app/test/objects
 accept: application/json  
 Content-type: application/json; charset=UTF-8
 
 {
-  "type": "boulder",
+  "type": "Boulder",
   "content": {
     "grade": "red"
   }
