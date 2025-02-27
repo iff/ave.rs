@@ -70,6 +70,13 @@ impl PatchObjectResponse {
     }
 }
 
+/* avers.js uses:
+ *
+ * POST      /objects
+ * PATCH/GET /objects/objId
+ * GET       /objects/objectId/patches/revId
+ * GET       /collection/collectionName
+ */
 pub fn app(state: AppState) -> Router {
     // XXX https://docs.rs/axum/0.6.20/axum/routing/struct.Router.html#method.nest would be nice
     // but we can't use it without breaking the js library
@@ -143,7 +150,7 @@ async fn active_boulders(
     State(state): State<AppState>,
     Path(gym): Path<String>,
 ) -> Result<Json<Object>, AppError> {
-    // TODO
+    // TODO just do that with a query
     let _parent_path = state.db.parent_path("gyms", gym)?;
     Err(AppError::NotImplemented())
     // let object_stream: BoxStream<FirestoreResult<MyTestStructure>> = db
@@ -174,42 +181,40 @@ async fn active_boulders(
     // Ok(as_vec)
 }
 
-// TODO views?
 async fn draft_boulders(
     State(state): State<AppState>,
     Path(gym): Path<String>,
 ) -> Result<Json<Object>, AppError> {
-    // TODO
+    // TODO just do that with a query
     let _parent_path = state.db.parent_path("gyms", gym)?;
     Err(AppError::NotImplemented())
 }
 
-// TODO views?
 async fn own_boulders(
     State(state): State<AppState>,
     Path(gym): Path<String>,
 ) -> Result<Json<Object>, AppError> {
-    // TODO
+    // TODO just do that with a query
     let _parent_path = state.db.parent_path("gyms", gym)?;
     Err(AppError::NotImplemented())
 }
 
-// TODO views?
 async fn accounts(
     State(state): State<AppState>,
     Path(gym): Path<String>,
 ) -> Result<Json<Object>, AppError> {
     // TODO
+    // TODO just do that with a query
     let _parent_path = state.db.parent_path("gyms", gym)?;
     Err(AppError::NotImplemented())
 }
 
-// TODO views?
 async fn admin_accounts(
     State(state): State<AppState>,
     Path(gym): Path<String>,
 ) -> Result<Json<Object>, AppError> {
     // TODO
+    // TODO just do that with a query
     let _parent_path = state.db.parent_path("gyms", gym)?;
     Err(AppError::NotImplemented())
 }
@@ -277,22 +282,23 @@ fn api_routes() -> Router<AppState> {
         .route("/:gym/objects/:id", get(lookup_object))
         // patch
         .route("/:gym/objects/:id", patch(patch_object))
-        // delete
-        .route("/:gym/objects/:id", delete(delete_object))
         // lookup patch
         .route("/:gym/objects/:id/patches/:rev_id", get(lookup_patch))
-        // changes on object (raw websocket)
+        // unused below
+        // delete - not used
+        .route("/:gym/objects/:id", delete(delete_object))
+        // changes on object (raw websocket) -- never used?
         .route("/:gym/objects/:id/changes", get(object_changes))
-        // create a release
+        // create a release -- not used
         .route("/:gym/objects/:id/releases", post(create_release))
-        // lookup release
+        // lookup release -- not used
         .route("/:gym/objects/:id/releases/:rev_id", get(lookup_release))
-        // lookup latest release
+        // lookup latest release -- not used
         .route(
             "/:gym/objects/:id/releases/_latest",
             get(lookup_latest_release),
         )
-        // feed (raw websocket)
+        // feed (raw websocket) -- never used?
         .route("/:gym/feed", get(feed))
 
     // type ChangeSecret
