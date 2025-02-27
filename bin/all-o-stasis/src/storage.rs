@@ -72,7 +72,8 @@ async fn store_patch(
         .object(patch)
         .execute()
         .await?;
-    return Ok(p);
+
+    Ok(p)
 }
 
 async fn store_snapshot(
