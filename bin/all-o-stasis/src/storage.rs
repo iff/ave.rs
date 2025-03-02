@@ -1,5 +1,4 @@
 use axum::Json;
-use firestore::{path, FirestoreResult};
 use otp::types::{ObjId, Object, ObjectId, Operation, Patch, RevId, Snapshot};
 use otp::{apply, rebase};
 use serde_json::Value;
@@ -142,14 +141,15 @@ pub async fn apply_object_updates(
 ) -> Result<Json<PatchObjectResponse>, AppError> {
     // first check that the object exists. We'll need its metadata later
     let id = base_id(&obj_id);
-    let obj = lookup_object_(state, gym, id).await?;
+    // TODO where do we need this?
+    let _obj = lookup_object_(state, gym, id).await?;
 
     // The 'Snapshot' against which the submitted operations were created
-    let base_snapshot = lookup_snapshot(&state, &gym, &obj_id, &rev_id).await?;
+    let base_snapshot = lookup_snapshot(state, gym, &obj_id, &rev_id).await?;
 
     // If there are any patches which the client doesn't know about we need
     // to let her know
-    let previous_patches = patches_after_revision(&state, &gym, &obj_id, &rev_id);
+    let previous_patches = patches_after_revision(state, gym, &obj_id, &rev_id);
     let latest_snapshot = apply_patches(&base_snapshot, &previous_patches)?;
 
     // FIXME async in closure - can we separate this out? we only need async for actually storing
@@ -157,8 +157,8 @@ pub async fn apply_object_updates(
     let mut patches = Vec::<Patch>::new();
     for op in operations {
         let patch = save_operation(
-            &state,
-            &gym,
+            state,
+            gym,
             obj_id.clone(),
             author.clone(),
             (base_snapshot.content).clone(),
@@ -244,7 +244,7 @@ async fn save_operation(
         revision_id: rev_id,
         content: new_content,
     };
-    store_snapshot(&state, &gym, &new_snapshot)
+    store_snapshot(state, gym, &new_snapshot)
         .await?
         .ok_or_else(AppError::Query)?;
 
@@ -255,11 +255,11 @@ async fn save_operation(
         created_at: None,
         operation: new_op.clone(),
     };
-    store_patch(&state, &gym, &patch)
+    store_patch(state, gym, &patch)
         .await?
         .ok_or_else(AppError::Query)?;
 
     // TODO maybe await here? or return futures?
 
-    return Ok(Some(patch));
+    Ok(Some(patch))
 }
