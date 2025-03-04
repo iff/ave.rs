@@ -125,19 +125,36 @@ async fn store_snapshot(
     Ok(p)
 }
 
-fn patches_after_revision(
-    _state: &AppState,
-    _gym: &String,
-    _obj_id: &ObjectId,
-    _rev_id: &RevId,
-) -> Vec<Patch> {
-    todo!()
+async fn patches_after_revision(
+    state: &AppState,
+    gym: &String,
+    obj_id: &ObjectId,
+    rev_id: &RevId,
+) -> Result<Vec<Patch>, AppError> {
+    let parent_path = state.db.parent_path("gyms", gym)?;
+    let object_stream: BoxStream<FirestoreResult<Patch>> = state
+        .db
+        .fluent()
+        .select()
+        .from("patches")
+        .parent(&parent_path)
+        .filter(|q| {
+            q.for_all([
+                q.field(path!(Patch::object_id)).eq(obj_id),
+                q.field(path!(Patch::revision_id)).greater_than(rev_id),
+                // q.field(path!(Patch::revision_id)).less_than(maxBound),
+            ])
+        })
+        .order_by([(
+            path!(Snapshot::revision_id),
+            FirestoreQueryDirection::Ascending,
+        )])
+        .obj()
+        .stream_query_with_errors()
+        .await?;
 
-    // let parent_path = state.db.parent_path("gyms", gym)?;
-
-    // in patches table find all patches with obj_id
-    // and revision between rev+1 and MAX
-    // order ascending
+    let patches: Vec<Patch> = object_stream.try_collect().await?;
+    Ok(patches)
 }
 
 fn apply_patch_to_snapshot(snapshot: &Snapshot, patch: &Patch) -> Result<Snapshot, AppError> {
