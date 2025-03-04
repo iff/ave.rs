@@ -1,4 +1,7 @@
 use axum::Json;
+use firestore::struct_path::path;
+use firestore::{FirestoreQueryDirection, FirestoreResult};
+use futures::stream::BoxStream;
 use otp::types::{ObjId, Object, ObjectId, Operation, Patch, RevId, Snapshot};
 use otp::{apply, rebase};
 use serde_json::Value;
@@ -35,13 +38,36 @@ pub(crate) async fn lookup_object_(
 }
 
 async fn lookup_snapshot(
-    _state: &AppState,
-    _gym: &String,
-    _obj_id: &ObjectId,
-    _rev_id: &RevId,
+    state: &AppState,
+    gym: &String,
+    obj_id: &ObjectId,
+    rev_id: &RevId,
 ) -> Result<Snapshot, AppError> {
-    todo!()
-    // let parent_path = state.db.parent_path("gyms", gym)?;
+    let parent_path = state.db.parent_path("gyms", gym)?;
+
+    let object_stream: BoxStream<FirestoreResult<Snapshot>> = state
+        .db
+        .fluent()
+        .select()
+        .from("snapshots")
+        .parent(&parent_path)
+        .filter(|q| {
+            q.for_all([
+                q.field(path!(Snapshot::revision_id))
+                    .greater_than_or_equal(0),
+                q.field(path!(Snapshot::revision_id)).less_than(rev_id),
+                q.field(path!(Snapshot::object_id)).eq(obj_id),
+            ])
+        })
+        .order_by([(
+            path!(Snapshot::revision_id),
+            FirestoreQueryDirection::Descending,
+        )])
+        .obj()
+        .stream_query_with_errors()
+        .await?;
+
+    let snapshots: Vec<Snapshot> = object_stream.try_collect().await?;
 
     // snapshot <- latestSnapshotBetween objId 0 revId
     //
