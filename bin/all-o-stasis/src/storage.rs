@@ -69,7 +69,7 @@ async fn lookup_snapshot(
 
     // snapshot <- latestSnapshotBetween objId 0 revId
     let snapshots: Vec<Snapshot> = object_stream.try_collect().await?;
-    let latest_snapshot = snapshots[0];
+    let latest_snapshot = &snapshots[0];
 
     // TODO
     // -- Get all patches which we need to apply on top of the snapshot to
