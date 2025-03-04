@@ -2,6 +2,7 @@ use axum::Json;
 use firestore::struct_path::path;
 use firestore::{FirestoreQueryDirection, FirestoreResult};
 use futures::stream::BoxStream;
+use futures::TryStreamExt;
 use otp::types::{ObjId, Object, ObjectId, Operation, Patch, RevId, Snapshot};
 use otp::{apply, rebase};
 use serde_json::Value;
@@ -44,7 +45,6 @@ async fn lookup_snapshot(
     rev_id: &RevId,
 ) -> Result<Snapshot, AppError> {
     let parent_path = state.db.parent_path("gyms", gym)?;
-
     let object_stream: BoxStream<FirestoreResult<Snapshot>> = state
         .db
         .fluent()
@@ -53,10 +53,10 @@ async fn lookup_snapshot(
         .parent(&parent_path)
         .filter(|q| {
             q.for_all([
+                q.field(path!(Snapshot::object_id)).eq(obj_id),
                 q.field(path!(Snapshot::revision_id))
                     .greater_than_or_equal(0),
                 q.field(path!(Snapshot::revision_id)).less_than(rev_id),
-                q.field(path!(Snapshot::object_id)).eq(obj_id),
             ])
         })
         .order_by([(
@@ -67,19 +67,21 @@ async fn lookup_snapshot(
         .stream_query_with_errors()
         .await?;
 
-    let snapshots: Vec<Snapshot> = object_stream.try_collect().await?;
-
     // snapshot <- latestSnapshotBetween objId 0 revId
-    //
+    let snapshots: Vec<Snapshot> = object_stream.try_collect().await?;
+    let latest_snapshot = snapshots[0];
+
+    // TODO
     // -- Get all patches which we need to apply on top of the snapshot to
     // -- arrive at the desired revision.
     // patches <- patchesAfterRevision objId (snapshotRevisionId snapshot)
-    //
+
+    // TODO
     // -- Apply those patches to the snapshot.
     // foldM applyPatchToSnapshot snapshot $
     //     filter (\Patch{..} -> unRevId patchRevisionId <= revId) patches
 
-    Ok(())
+    Ok(latest_snapshot.clone())
 }
 
 // TODO generic store op using templates and table name?
