@@ -3,7 +3,7 @@ use axum::{
     extract::Path, extract::State, routing::delete, routing::get, routing::patch, routing::post,
     Router,
 };
-use firestore::{path, FirestoreResult};
+use firestore::{path, FirestoreQueryDirection, FirestoreResult};
 use futures::stream::BoxStream;
 use futures::TryStreamExt;
 use otp::types::ObjectType;
@@ -149,36 +149,33 @@ async fn public_profile(
 async fn active_boulders(
     State(state): State<AppState>,
     Path(gym): Path<String>,
-) -> Result<Json<Object>, AppError> {
-    // TODO just do that with a query
-    let _parent_path = state.db.parent_path("gyms", gym)?;
-    Err(AppError::NotImplemented())
-    // let object_stream: BoxStream<FirestoreResult<MyTestStructure>> = db
-    //     .fluent()
-    //     .select()
-    //     .fields(
-    //         paths!(MyTestStructure::{some_id, some_num, some_string, one_more_string, created_at}),
-    //     )
-    //     .from(TEST_COLLECTION_NAME)
-    //     .filter(|q| {
-    //         q.for_all([
-    //             q.field(path!(MyTestStructure::some_num)).is_not_null(),
-    //             q.field(path!(MyTestStructure::some_string)).eq("Test"),
-    //             Some("Test2")
-    //                 .and_then(|value| q.field(path!(MyTestStructure::one_more_string)).eq(value)),
-    //         ])
-    //     })
-    //     .order_by([(
-    //         path!(MyTestStructure::some_num),
-    //         FirestoreQueryDirection::Descending,
-    //     )])
-    //     .obj()
-    //     .stream_query_with_errors()
-    //     .await?;
-    //
-    // let as_vec: Vec<Boulders> = object_stream.try_collect().await?;
-    //
-    // Ok(as_vec)
+) -> Result<Json<Vec<Object>>, AppError> {
+    let parent_path = state.db.parent_path("gyms", gym)?;
+    let object_stream: BoxStream<FirestoreResult<Object>> = state
+        .db
+        .fluent()
+        .select()
+        .from("objects")
+        .parent(&parent_path)
+        .filter(|q| {
+            q.for_all([
+                // TODO should actually filter contents of object
+                q.field(path!(Object::object_type)).eq(ObjectType::Boulder),
+                q.field(path!(Object::deleted)).is_not_null(),
+                // Some(False)
+                //     .and_then(|value| q.field(path!(Object::deleted)).eq(value)),
+            ])
+        })
+        .order_by([(
+            path!(Object::created_at),
+            FirestoreQueryDirection::Descending,
+        )])
+        .obj()
+        .stream_query_with_errors()
+        .await?;
+
+    let as_vec: Vec<Object> = object_stream.try_collect().await?;
+    Ok(Json(as_vec))
 }
 
 async fn draft_boulders(
@@ -195,6 +192,7 @@ async fn own_boulders(
     Path(gym): Path<String>,
 ) -> Result<Json<Object>, AppError> {
     // TODO just do that with a query
+    // FIXME needs owner ObjId
     let _parent_path = state.db.parent_path("gyms", gym)?;
     Err(AppError::NotImplemented())
 }
@@ -202,11 +200,25 @@ async fn own_boulders(
 async fn accounts(
     State(state): State<AppState>,
     Path(gym): Path<String>,
-) -> Result<Json<Object>, AppError> {
-    // TODO
-    // TODO just do that with a query
-    let _parent_path = state.db.parent_path("gyms", gym)?;
-    Err(AppError::NotImplemented())
+) -> Result<Json<Vec<Object>>, AppError> {
+    let parent_path = state.db.parent_path("gyms", gym)?;
+    let object_stream: BoxStream<FirestoreResult<Object>> = state
+        .db
+        .fluent()
+        .select()
+        .from("objects")
+        .parent(&parent_path)
+        .filter(|q| q.for_all([q.field(path!(Object::object_type)).eq(ObjectType::Account)]))
+        .order_by([(
+            path!(Object::created_at),
+            FirestoreQueryDirection::Descending,
+        )])
+        .obj()
+        .stream_query_with_errors()
+        .await?;
+
+    let as_vec: Vec<Object> = object_stream.try_collect().await?;
+    Ok(Json(as_vec))
 }
 
 async fn admin_accounts(
@@ -449,7 +461,7 @@ async fn lookup_patch(
         .await?;
 
     let as_vec: Vec<Patch> = patch_stream.try_collect().await?;
-    // FIXME cleanup, ensure only 1 result?
+    // FIXME ensure only 1 result?
     Ok(Json(as_vec[0].clone()))
 }
 
