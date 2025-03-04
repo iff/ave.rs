@@ -52,6 +52,8 @@ async fn lookup_snapshot(
     // -- Apply those patches to the snapshot.
     // foldM applyPatchToSnapshot snapshot $
     //     filter (\Patch{..} -> unRevId patchRevisionId <= revId) patches
+
+    Ok(())
 }
 
 // TODO generic store op using templates and table name?
