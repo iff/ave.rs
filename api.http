@@ -32,6 +32,8 @@ Content-type: application/json; charset=UTF-8
   ]
 }
 
+### #get activeBoulders collection
+GET https://api-146982620019.europe-west1.run.app/test/collection/activeBoulders
 
-# collections are 'specialised' in concrete avers impls
-# get ->  /collection/collectionName
+### #get accounts collection
+GET https://api-146982620019.europe-west1.run.app/test/collection/accounts
