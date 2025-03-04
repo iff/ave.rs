@@ -93,14 +93,18 @@ pub struct Object {
     #[serde(alias = "_firestore_id")]
     id: Option<ObjId>, // not nice that this has to be empty for id generation to work
     #[serde(alias = "_firestore_created")]
-    created_at: Option<DateTime<Utc>>, // Option<FirestoreTimestamp>,
-    object_type: ObjectType,
+    pub created_at: Option<DateTime<Utc>>, // Option<FirestoreTimestamp>,
+    pub object_type: ObjectType,
     created_by: ObjId,
-    deleted: Option<bool>,
+    pub deleted: Option<bool>,
 
     // flatten or not? keeping things in content helps with clashes
     // maybe an option?
+    // TODO why is this a hashmap? probably like Avers is implemented
+    // where do we connect this to our actual concrete types?
+    // need those for queries
     pub content: HashMap<String, Value>,
+    // pub content: ConcreteObject,
 }
 
 // TODO or move type defs here and embedd them directly in Object? maybe needs too many changes
