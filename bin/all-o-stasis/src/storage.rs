@@ -42,7 +42,7 @@ async fn lookup_snapshot(
     state: &AppState,
     gym: &String,
     obj_id: &ObjectId,
-    rev_id: &RevId,
+    rev_id: RevId,
 ) -> Result<Snapshot, AppError> {
     let parent_path = state.db.parent_path("gyms", gym)?;
     let object_stream: BoxStream<FirestoreResult<Snapshot>> = state
@@ -67,21 +67,19 @@ async fn lookup_snapshot(
         .stream_query_with_errors()
         .await?;
 
-    // snapshot <- latestSnapshotBetween objId 0 revId
     let snapshots: Vec<Snapshot> = object_stream.try_collect().await?;
-    let latest_snapshot = &snapshots[0];
+    let latest_snapshot = snapshots[0].clone();
 
-    // TODO
-    // -- Get all patches which we need to apply on top of the snapshot to
-    // -- arrive at the desired revision.
-    // patches <- patchesAfterRevision objId (snapshotRevisionId snapshot)
+    // get all patches which we need to apply on top of the snapshot to
+    // arrive at the desired revision
+    let patches = patches_after_revision(state, gym, obj_id, latest_snapshot.revision_id)
+        .await?
+        .into_iter()
+        .filter(|p| p.revision_id <= rev_id)
+        .collect();
 
-    // TODO
-    // -- Apply those patches to the snapshot.
-    // foldM applyPatchToSnapshot snapshot $
-    //     filter (\Patch{..} -> unRevId patchRevisionId <= revId) patches
-
-    Ok(latest_snapshot.clone())
+    // apply those patches to the snapshot
+    apply_patches(&latest_snapshot, &patches)
 }
 
 // TODO generic store op using templates and table name?
@@ -129,7 +127,7 @@ async fn patches_after_revision(
     state: &AppState,
     gym: &String,
     obj_id: &ObjectId,
-    rev_id: &RevId,
+    rev_id: RevId,
 ) -> Result<Vec<Patch>, AppError> {
     let parent_path = state.db.parent_path("gyms", gym)?;
     let object_stream: BoxStream<FirestoreResult<Patch>> = state
@@ -142,7 +140,6 @@ async fn patches_after_revision(
             q.for_all([
                 q.field(path!(Patch::object_id)).eq(obj_id),
                 q.field(path!(Patch::revision_id)).greater_than(rev_id),
-                // q.field(path!(Patch::revision_id)).less_than(maxBound),
             ])
         })
         .order_by([(
@@ -168,7 +165,7 @@ fn apply_patch_to_snapshot(snapshot: &Snapshot, patch: &Patch) -> Result<Snapsho
 fn apply_patches(snapshot: &Snapshot, patches: &Vec<Patch>) -> Result<Snapshot, AppError> {
     let mut s = snapshot.clone();
     for patch in patches {
-        s = apply_patch_to_snapshot(&s.clone(), patch)?;
+        s = apply_patch_to_snapshot(&s, patch)?;
     }
     // Ok(patches.iter().fold(snapshot.clone(), |snapshot, patch| {
     //     apply_patch_to_snapshot(&snapshot, &patch)?
@@ -192,11 +189,11 @@ pub async fn apply_object_updates(
     let _obj = lookup_object_(state, gym, id).await?;
 
     // The 'Snapshot' against which the submitted operations were created
-    let base_snapshot = lookup_snapshot(state, gym, &obj_id, &rev_id).await?;
+    let base_snapshot = lookup_snapshot(state, gym, &obj_id, rev_id).await?;
 
     // If there are any patches which the client doesn't know about we need
     // to let her know
-    let previous_patches = patches_after_revision(state, gym, &obj_id, &rev_id);
+    let previous_patches = patches_after_revision(state, gym, &obj_id, rev_id).await?;
     let latest_snapshot = apply_patches(&base_snapshot, &previous_patches)?;
 
     // FIXME async in closure - can we separate this out? we only need async for actually storing
