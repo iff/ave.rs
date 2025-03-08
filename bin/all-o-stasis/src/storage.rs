@@ -10,13 +10,13 @@ use serde_json::{json, Value};
 use crate::routes::PatchObjectResponse;
 use crate::{AppError, AppState};
 
-fn base_id(obj_id: &ObjectId) -> ObjId {
-    match obj_id {
-        ObjectId::Base(id) => id.clone(),
-        ObjectId::Release(id, _) => id.clone(),
-        ObjectId::Authorization(id) => id.clone(),
-    }
-}
+// fn base_id(obj_id: &ObjectId) -> ObjId {
+//     match obj_id {
+//         ObjectId::Base(id) => id.clone(),
+//         ObjectId::Release(id, _) => id.clone(),
+//         ObjectId::Authorization(id) => id.clone(),
+//     }
+// }
 
 // TODO generic store op using templates and table name?
 async fn store_patch(
