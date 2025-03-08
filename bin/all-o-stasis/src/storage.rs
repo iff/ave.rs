@@ -18,6 +18,47 @@ fn base_id(obj_id: &ObjectId) -> ObjId {
     }
 }
 
+// TODO generic store op using templates and table name?
+async fn store_patch(
+    state: &AppState,
+    gym: &String,
+    patch: &Patch,
+) -> Result<Option<Patch>, AppError> {
+    let parent_path = state.db.parent_path("gyms", gym)?;
+    let p: Option<Patch> = state
+        .db
+        .fluent()
+        .insert()
+        .into("patches")
+        .generate_document_id() // FIXME do generate an id here?
+        .parent(&parent_path)
+        .object(patch)
+        .execute()
+        .await?;
+
+    Ok(p)
+}
+
+async fn store_snapshot(
+    state: &AppState,
+    gym: &String,
+    snapshot: &Snapshot,
+) -> Result<Option<Snapshot>, AppError> {
+    let parent_path = state.db.parent_path("gyms", gym)?;
+    let p: Option<Snapshot> = state
+        .db
+        .fluent()
+        .insert()
+        .into("snapshot")
+        .generate_document_id() // FIXME do generate an id here?
+        .parent(&parent_path)
+        .object(snapshot)
+        .execute()
+        .await?;
+
+    Ok(p)
+}
+
 /// generic object lookup in `gym` with `id`
 pub(crate) async fn lookup_object_(
     state: &AppState,
@@ -59,6 +100,7 @@ async fn lookup_snapshot(
                 q.field(path!(Snapshot::revision_id)).less_than(rev_id),
             ])
         })
+        .limit(1)
         .order_by([(
             path!(Snapshot::revision_id),
             FirestoreQueryDirection::Descending,
@@ -68,11 +110,10 @@ async fn lookup_snapshot(
         .await?;
 
     let snapshots: Vec<Snapshot> = object_stream.try_collect().await?;
-    // let latest_snapshot = snapshots.first().ok_or(AppError::Query())?;
-    // XXX we could already create the first snapshot on object creation?
     let latest_snapshot: Snapshot = match snapshots.first() {
         Some(snapshot) => snapshot.clone(),
         None => {
+            // XXX we could already create the first snapshot on object creation?
             let snapshot = Snapshot {
                 object_id: obj_id.clone(),
                 revision_id: -1,
@@ -93,47 +134,6 @@ async fn lookup_snapshot(
 
     // apply those patches to the snapshot
     apply_patches(&latest_snapshot, &patches)
-}
-
-// TODO generic store op using templates and table name?
-async fn store_patch(
-    state: &AppState,
-    gym: &String,
-    patch: &Patch,
-) -> Result<Option<Patch>, AppError> {
-    let parent_path = state.db.parent_path("gyms", gym)?;
-    let p: Option<Patch> = state
-        .db
-        .fluent()
-        .insert()
-        .into("patches")
-        .generate_document_id() // FIXME do generate an id here?
-        .parent(&parent_path)
-        .object(patch)
-        .execute()
-        .await?;
-
-    Ok(p)
-}
-
-async fn store_snapshot(
-    state: &AppState,
-    gym: &String,
-    snapshot: &Snapshot,
-) -> Result<Option<Snapshot>, AppError> {
-    let parent_path = state.db.parent_path("gyms", gym)?;
-    let p: Option<Snapshot> = state
-        .db
-        .fluent()
-        .insert()
-        .into("snapshot")
-        .generate_document_id() // FIXME do generate an id here?
-        .parent(&parent_path)
-        .object(snapshot)
-        .execute()
-        .await?;
-
-    Ok(p)
 }
 
 async fn patches_after_revision(
@@ -198,8 +198,6 @@ pub async fn apply_object_updates(
 ) -> Result<Json<PatchObjectResponse>, AppError> {
     // first check that the object exists. We'll need its metadata later
     let id = base_id(&obj_id);
-    // TODO where do we need this?
-    let _obj = lookup_object_(state, gym, id).await?;
 
     // The 'Snapshot' against which the submitted operations were created
     let base_snapshot = lookup_snapshot(state, gym, &obj_id, rev_id).await?;
@@ -209,8 +207,6 @@ pub async fn apply_object_updates(
     let previous_patches = patches_after_revision(state, gym, &obj_id, rev_id).await?;
     let latest_snapshot = apply_patches(&base_snapshot, &previous_patches)?;
 
-    // FIXME async in closure - can we separate this out? we only need async for actually storing
-    // the patch and snapshot in the database?
     let mut patches = Vec::<Patch>::new();
     for op in operations {
         let patch = save_operation(
@@ -233,6 +229,8 @@ pub async fn apply_object_updates(
         }
     }
 
+    // FIXME async in closure - can we separate this out? we only need async for actually storing
+    // the patch and snapshot in the database?
     // let patches = operations.iter().map(|&op| {
     //     save_operation(
     //         &state,

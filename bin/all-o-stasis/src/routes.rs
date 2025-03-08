@@ -454,13 +454,13 @@ async fn lookup_patch(
                 q.field(path!(Patch::revision_id)).eq(rev_id),
             ])
         })
+        .limit(1)
         .obj()
         .stream_query_with_errors()
         .await?;
 
-    let as_vec: Vec<Patch> = patch_stream.try_collect().await?;
-    // FIXME ensure only 1 result?
-    match as_vec.first() {
+    let patches: Vec<Patch> = patch_stream.try_collect().await?;
+    match patches.first() {
         Some(patch) => Ok(Json(patch.clone())),
         None => Err(AppError::Query()),
     }
