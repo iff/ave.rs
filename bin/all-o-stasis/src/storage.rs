@@ -5,7 +5,7 @@ use futures::stream::BoxStream;
 use futures::TryStreamExt;
 use otp::types::{ObjId, Object, ObjectId, Operation, Patch, RevId, Snapshot};
 use otp::{apply, rebase};
-use serde_json::Value;
+use serde_json::{json, Value};
 
 use crate::routes::PatchObjectResponse;
 use crate::{AppError, AppState};
@@ -68,11 +68,20 @@ async fn lookup_snapshot(
         .await?;
 
     let snapshots: Vec<Snapshot> = object_stream.try_collect().await?;
-    // can be empty? no snapshots around so we panic below
-    // TODO why?
-    // what does avers do when creating objects? adding a snapshot?
-    // actually we could live with only objects and patches
-    let latest_snapshot = snapshots.first().ok_or(AppError::Query())?;
+    // let latest_snapshot = snapshots.first().ok_or(AppError::Query())?;
+    // XXX we could already create the first snapshot on object creation?
+    let latest_snapshot: Snapshot = match snapshots.first() {
+        Some(snapshot) => snapshot.clone(),
+        None => {
+            let snapshot = Snapshot {
+                object_id: obj_id.clone(),
+                revision_id: -1,
+                content: json!({}),
+            };
+            store_snapshot(state, gym, &snapshot).await?;
+            snapshot
+        }
+    };
 
     // get all patches which we need to apply on top of the snapshot to
     // arrive at the desired revision
@@ -83,7 +92,7 @@ async fn lookup_snapshot(
         .collect();
 
     // apply those patches to the snapshot
-    apply_patches(latest_snapshot, &patches)
+    apply_patches(&latest_snapshot, &patches)
 }
 
 // TODO generic store op using templates and table name?

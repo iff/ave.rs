@@ -59,9 +59,9 @@ impl IntoResponse for AppError {
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "firestore system error".to_string(),
             ),
-            AppError::Firestore(FirestoreError::DatabaseError(_)) => (
+            AppError::Firestore(FirestoreError::DatabaseError(e)) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                "database error".to_string(),
+                format!("database error: {}", e.details).to_string(),
             ),
             AppError::Firestore(FirestoreError::DataConflictError(_)) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
