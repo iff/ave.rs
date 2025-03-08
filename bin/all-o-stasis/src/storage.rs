@@ -5,7 +5,7 @@ use futures::stream::BoxStream;
 use futures::TryStreamExt;
 use otp::types::{ObjId, Object, ObjectId, Operation, Patch, RevId, Snapshot};
 use otp::{apply, rebase};
-use serde_json::{json, Value};
+use serde_json::Value;
 
 use crate::routes::PatchObjectResponse;
 use crate::{AppError, AppState};
@@ -114,11 +114,7 @@ async fn lookup_snapshot(
         Some(snapshot) => snapshot.clone(),
         None => {
             // XXX we could already create the first snapshot on object creation?
-            let snapshot = Snapshot {
-                object_id: obj_id.clone(),
-                revision_id: -1,
-                content: json!({}),
-            };
+            let snapshot = Snapshot::new(obj_id.clone());
             store_snapshot(state, gym, &snapshot).await?;
             snapshot
         }

@@ -1,7 +1,6 @@
 use chrono::{DateTime, Utc};
-// use firestore::FirestoreTimestamp;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::collections::HashMap;
 
 /// converts to database primary key
@@ -26,21 +25,12 @@ pub type RevId = i64;
 // The 'RevId' which is used for the initial snapshot.
 pub const ZERO_REV_ID: RevId = 0;
 
-// #[derive(Serialize, Deserialize, Clone)]
-// pub enum RevId {
-//     User = "user",
-//     Setter = "setter",
-//     Admin = "admin",
-// }
-
 // TODO this is not the firestore id
 // TODO can't be internally typed (tuple), so externally okay?
 #[derive(Serialize, Deserialize, Clone)]
 pub enum ObjectId {
     /// The base object whose snapshots contain the actual content.
     Base(ObjId),
-    /// An object describing a particualar release of the base object.
-    Release(ObjId, RevId),
     /// Object which contains authorization rules.
     Authorization(ObjId),
 }
@@ -50,9 +40,6 @@ impl Pk for ObjectId {
     fn to_pk(&self) -> String {
         match self {
             ObjectId::Base(obj_id) => obj_id.to_string(),
-            ObjectId::Release(obj_id, rev_id) => {
-                obj_id.to_string() + "/release/" + &rev_id.to_string()[..]
-            }
             ObjectId::Authorization(obj_id) => obj_id.to_string() + "/authorization",
         }
     }
@@ -172,15 +159,15 @@ pub struct Snapshot {
     pub content: Value,
 }
 
-// impl<T> Snapshot<T> {
-//     pub fn new(objectId: ObjectId) -> Self {
-//         Self {
-//             objectId,
-//             revisionId: -1,
-//             content: (), // FIXME Aeson.emptyObject
-//         }
-//     }
-// }
+impl Snapshot {
+    pub fn new(object_id: ObjectId) -> Self {
+        Self {
+            object_id,
+            revision_id: -1,
+            content: json!({}),
+        }
+    }
+}
 
 impl Pk for Snapshot {
     fn to_pk(&self) -> String {
