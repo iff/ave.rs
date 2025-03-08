@@ -400,8 +400,6 @@ async fn new_object(
         .await?;
     let _ = patch.ok_or_else(AppError::Query)?;
 
-    // TODO updateObjectViews ot objId (Just content)
-
     Ok(Json(CreateObjectResponse {
         id: obj.id(),
         ot_type,
@@ -462,7 +460,10 @@ async fn lookup_patch(
 
     let as_vec: Vec<Patch> = patch_stream.try_collect().await?;
     // FIXME ensure only 1 result?
-    Ok(Json(as_vec[0].clone()))
+    match as_vec.first() {
+        Some(patch) => Ok(Json(patch.clone())),
+        None => Err(AppError::Query()),
+    }
 }
 
 // XXX maybe don't needed

@@ -68,7 +68,11 @@ async fn lookup_snapshot(
         .await?;
 
     let snapshots: Vec<Snapshot> = object_stream.try_collect().await?;
-    let latest_snapshot = snapshots[0].clone();
+    // can be empty? no snapshots around so we panic below
+    // TODO why?
+    // what does avers do when creating objects? adding a snapshot?
+    // actually we could live with only objects and patches
+    let latest_snapshot = snapshots.first().ok_or(AppError::Query())?;
 
     // get all patches which we need to apply on top of the snapshot to
     // arrive at the desired revision
@@ -79,7 +83,7 @@ async fn lookup_snapshot(
         .collect();
 
     // apply those patches to the snapshot
-    apply_patches(&latest_snapshot, &patches)
+    apply_patches(latest_snapshot, &patches)
 }
 
 // TODO generic store op using templates and table name?
