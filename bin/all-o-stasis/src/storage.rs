@@ -197,12 +197,12 @@ pub async fn apply_object_updates(
     skip_validation: bool,
 ) -> Result<Json<PatchObjectResponse>, AppError> {
     // first check that the object exists. We'll need its metadata later
-    let id = base_id(&obj_id);
+    // let id = base_id(&obj_id);
 
-    // The 'Snapshot' against which the submitted operations were created
+    // the 'Snapshot' against which the submitted operations were created
     let base_snapshot = lookup_snapshot(state, gym, &obj_id, rev_id).await?;
 
-    // If there are any patches which the client doesn't know about we need
+    // if there are any patches which the client doesn't know about we need
     // to let her know
     let previous_patches = patches_after_revision(state, gym, &obj_id, rev_id).await?;
     let latest_snapshot = apply_patches(&base_snapshot, &previous_patches)?;
@@ -225,9 +225,15 @@ pub async fn apply_object_updates(
         match patch {
             Ok(Some(val)) => patches.push(val),
             Ok(None) => (), // TODO push nones?
-            Err(_e) => (),  // Some(Err(e)), FIXME handle err?
+            Err(e) => return Err(e),
         }
     }
+
+    Ok(Json(PatchObjectResponse::new(
+        previous_patches,
+        patches.len(),
+        patches,
+    )))
 
     // FIXME async in closure - can we separate this out? we only need async for actually storing
     // the patch and snapshot in the database?
@@ -253,18 +259,6 @@ pub async fn apply_object_updates(
     //         Err(_e) => None, // Some(Err(e)), FIXME handle err?
     //     })
     //     .collect::<Vec<Patch>>();
-
-    //   TODO: Update object views.
-    //   unless novalidate $ do
-    //       content <- parseValue snapshotContent
-    //       let ot_type = obj.get_type();
-    //       updateObjectViews ot baseObjId (Just content)
-
-    Ok(Json(PatchObjectResponse::new(
-        previous_patches,
-        patches.len(),
-        patches,
-    )))
 }
 
 /// try rebase and then apply the operation to get a new snapshot (or return the old)
