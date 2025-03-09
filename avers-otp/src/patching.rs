@@ -12,6 +12,7 @@ pub enum PatchError {
     IndexError(String),
     KeyError(String),
     NoId(),
+    PathError(String),
     Unknown(),
     ValueIsNotArray(),
 }
@@ -29,14 +30,14 @@ impl fmt::Display for PatchError {
             Self::IndexError(e) => write!(f, "IndexError: {}", e),
             Self::KeyError(e) => write!(f, "KeyError: {}", e),
             Self::NoId() => write!(f, "NoId"),
+            Self::PathError(e) => write!(f, "PathError: {}", e),
             Self::Unknown() => write!(f, "UnknownError"),
             Self::ValueIsNotArray() => write!(f, "ValueIsNotArray"),
         }
     }
 }
 
-/// Apply `op` to `value`.
-/// Panics if the operation is invalid.
+/// apply `op` to `value`. Panics if the operation is invalid.
 pub fn apply(value: Value, operation: Operation) -> Result<Value, PatchError> {
     match operation {
         Operation::Set {
@@ -111,24 +112,13 @@ pub fn apply(value: Value, operation: Operation) -> Result<Value, PatchError> {
     }
 }
 
-// pathElements :: Path -> [Text]
-// fn path_elements(path: Path) -> Vec<&'static str> {
-//     path.split(".").collect()
-// }
-
 /// Travers the path and then either insert or delete at the very end
 fn change_object<F>(mut value: Value, path: Path, f: F) -> Result<Value, PatchError>
 where
     F: FnOnce(String, &mut Object) -> Option<Value>,
 {
-    // let paths = path_elements(path);
-    // TODO use splits iterator somehow (stop before last element?) maybe not possible
-    // in a sense we want a traverse that returns the last object of the path and returns that plus
-    // a key
-    let mut paths: Vec<&str> = path.split('.').collect();
-    // let len = paths.len();
-    // let key_to_change = paths[len - 1]; //paths.pop().expect("paths is non-empty");
-    let key_to_change = paths.pop().expect("paths is non-empty");
+    let paths: Vec<&str> = path.split('.').collect();
+    let key_to_change = *paths.last().ok_or(PatchError::PathError(path.clone()))?;
 
     let mut content = &mut value;
 
@@ -154,8 +144,8 @@ where
 {
     // FIXME almost like change_object - combine as trait?
     // resolving path and then depending on the Value::Array | Object do something different
-    let mut paths: Vec<&str> = path.split('.').collect();
-    let key_to_change = paths.pop().expect("paths is non-empty");
+    let paths: Vec<&str> = path.split('.').collect();
+    let key_to_change = *paths.last().ok_or(PatchError::PathError(path.clone()))?;
 
     let mut content = &mut value;
 
