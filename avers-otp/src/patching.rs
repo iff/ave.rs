@@ -1,4 +1,5 @@
-/// Implementing a subset of OT operations to patch serde_json::Value::Objects and serde_json::Value::Array.
+/// implementing a subset of OT operations to patch serde_json::Value::Objects and serde_json::Value::Array.
+// no concrete types expected here, maybe we want to change that?
 use crate::types::{Operation, Patch, Path};
 use serde_json::Value;
 use std::error::Error;
@@ -514,6 +515,7 @@ mod tests {
         }
     }
 
+    // TODO what is the expected behavior here?
     // #[test]
     // fn is_reachable_empty_path() {
     //     let value = json!(null);

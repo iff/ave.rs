@@ -1,8 +1,9 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::HashMap;
+// use std::collections::HashMap;
 
+// TODO do we need this later?
 /// converts to database primary key
 pub trait Pk {
     fn to_pk(&self) -> String;
@@ -53,11 +54,6 @@ impl Pk for ObjectId {
 //     }
 // }
 
-// $(deriveEncoding (deriveJSONOptions "op"){
-//     omitNothingFields = True,
-//     sumEncoding       = TaggedObject "type" "content"
-// } ''Operation)
-
 #[derive(Serialize, Deserialize, Clone, PartialEq)]
 #[serde(tag = "type")]
 pub enum Operation {
@@ -81,27 +77,59 @@ pub struct Object {
     id: Option<ObjId>, // not nice that this has to be empty for id generation to work
     #[serde(alias = "_firestore_created")]
     pub created_at: Option<DateTime<Utc>>, // Option<FirestoreTimestamp>,
+    // TODO do we still need this?
+    // TODO compatibility with avers.js
     pub object_type: ObjectType,
     created_by: ObjId,
+    // delete the object which has a very different meaning from deleting a boulder
     pub deleted: Option<bool>,
-
-    // flatten or not? keeping things in content helps with clashes
-    // maybe an option?
     // TODO why is this a hashmap? probably like Avers is implemented
-    // where do we connect this to our actual concrete types?
-    // need those for queries
-    pub content: HashMap<String, Value>,
-    // pub content: ConcreteObject,
+    // TODO need those for queries
+    // TODO does not have to be, mostly empty anyway? so nothing is stored in here anyway
+    // pub content: HashMap<String, Value>,
+
+    // TODO needs to match object_type
+    // TODO needs to be an Option to allow creation without values?
+    // TODO also patch works on json representation, so how do we serialise between the two?
+    // pub content: Option<ConcreteObject>,
 }
 
-// TODO or move type defs here and embedd them directly in Object? maybe needs too many changes
-// with js lib
 #[derive(Serialize, Deserialize, Clone)]
 pub enum ObjectType {
     /// account type
     Account,
     /// boulder type
     Boulder,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub enum AccountRole {
+    User,
+    Setter,
+    Admin,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub enum ConcreteObject {
+    /// account type
+    Account {
+        login: String,
+        role: AccountRole,
+        email: Option<String>,
+        name: Option<String>,
+    },
+
+    /// boulder type
+    Boulder {
+        setter: Vec<ObjectId>,
+        sector: String,
+        grade: String,
+        grade_nr: u32,
+        set_date: usize,
+        removed: Option<usize>,
+        is_draft: Option<usize>,
+        name: Option<String>,
+    },
 }
 
 impl Object {
@@ -116,7 +144,8 @@ impl Object {
             created_at: None,
             created_by,
             deleted: None,
-            content: HashMap::new(),
+            // content: None,
+            // content: HashMap::new(),
         }
     }
 
@@ -202,17 +231,17 @@ mod tests {
         }
     }
 
-    #[test]
-    fn object_additional_fields_using_extra() {
-        let mut object = Object::new(ObjectType::Boulder, String::from("deadbeef"));
-        object
-            .content
-            .insert(String::from("grade"), Value::String(String::from("blue")));
-
-        let json = to_string(&object).unwrap();
-        match serde_json::from_str::<Object>(&json[..]) {
-            Ok(o) => o.content.get("grade").expect("should have grade field"),
-            Err(e) => panic!("{}", e),
-        };
-    }
+    // #[test]
+    // fn object_additional_fields_using_extra() {
+    //     let mut object = Object::new(ObjectType::Boulder, String::from("deadbeef"));
+    //     object
+    //         .content
+    //         .insert(String::from("grade"), Value::String(String::from("blue")));
+    //
+    //     let json = to_string(&object).unwrap();
+    //     match serde_json::from_str::<Object>(&json[..]) {
+    //         Ok(o) => o.content.get("grade").expect("should have grade field"),
+    //         Err(e) => panic!("{}", e),
+    //     };
+    // }
 }
