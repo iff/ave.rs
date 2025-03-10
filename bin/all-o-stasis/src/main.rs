@@ -14,6 +14,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod routes;
 mod storage;
+mod types;
 use otp::PatchError;
 
 pub fn config_env_var(name: &str) -> Result<String, String> {
@@ -33,10 +34,12 @@ enum AppError {
     Ot(OtError),
     // firestore db errors
     Firestore(FirestoreError),
-    //
+    // query error
     Query(),
-    //
+    // should not happen but lets see something in the logs otherwise
     NotImplemented(),
+    // unable to parse json content into type
+    ParseError(),
 }
 
 impl From<FirestoreError> for AppError {
@@ -94,11 +97,16 @@ impl IntoResponse for AppError {
                 (StatusCode::INTERNAL_SERVER_ERROR, "cache error".to_string())
             }
             // TODO
+            AppError::Ot(_) => (StatusCode::NOT_FOUND, "OT failure".to_string()),
+            AppError::Query() => (StatusCode::BAD_REQUEST, "can't handle req".to_string()),
+            AppError::ParseError() => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "can't parse object".to_string(),
+            ),
+            // TODO
             AppError::NotImplemented() => {
                 (StatusCode::NOT_IMPLEMENTED, "not implemented".to_string())
             }
-            AppError::Ot(_) => (StatusCode::NOT_FOUND, "xxx".to_string()),
-            AppError::Query() => (StatusCode::BAD_REQUEST, "can't handle req".to_string()),
         };
 
         let body = Json(json!({

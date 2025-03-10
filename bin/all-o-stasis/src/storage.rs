@@ -1,11 +1,12 @@
+use crate::types::Boulder;
 use axum::Json;
 use firestore::struct_path::path;
 use firestore::{FirestoreQueryDirection, FirestoreResult};
 use futures::stream::BoxStream;
 use futures::TryStreamExt;
-use otp::types::{ObjId, Object, ObjectId, Operation, Patch, RevId, Snapshot};
+use otp::types::{ObjId, Object, ObjectId, Operation, Patch, Pk, RevId, Snapshot};
 use otp::{apply, rebase};
-use serde_json::Value;
+use serde_json::{from_value, Value};
 
 use crate::routes::PatchObjectResponse;
 use crate::{AppError, AppState};
@@ -57,6 +58,32 @@ async fn store_snapshot(
         .await?;
 
     Ok(p)
+}
+
+async fn update_boulder_view(
+    state: &AppState,
+    gym: &String,
+    snapshot: &Snapshot,
+) -> Result<Option<Boulder>, AppError> {
+    let parent_path = state.db.parent_path("gyms", gym)?;
+
+    // TODO we could match object content_type to decide which view to update
+    // for now we only have boulders
+
+    let boulder =
+        from_value::<Boulder>(snapshot.content.clone()).or(Err(AppError::ParseError()))?;
+    let b: Option<Boulder> = state
+        .db
+        .fluent()
+        .update() // TODO test if that inserts if non-existent id otherwise need transaction
+        .in_col("boulder_view")
+        .document_id(snapshot.object_id.to_pk())
+        .parent(&parent_path)
+        .object(&boulder)
+        .execute()
+        .await?;
+
+    Ok(b)
 }
 
 /// generic object lookup in `gym` with `id`
@@ -236,8 +263,7 @@ pub async fn apply_object_updates(
     //
     // FIXME why using validate here? validation and view update is the same?
     // unless novalidate $ do
-    //     content <- parseValue snapshotContent
-    //     updateObjectViews ot baseObjId (Just content)
+    update_boulder_view(state, gym, &latest_snapshot).await?;
 
     Ok(Json(PatchObjectResponse::new(
         previous_patches,
