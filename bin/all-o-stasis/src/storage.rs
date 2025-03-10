@@ -225,6 +225,20 @@ pub async fn apply_object_updates(
         }
     }
 
+    // TODO update boulder/account view here? to make queries possible?
+    // so in Avers we had generic Views that provided this interface
+    //
+    //      viewObjectTransformer :: obj -> Avers (Maybe a)
+    //      (here this would just be serde trying to parse the Json)
+    //
+    // and concrete types implemented this transform to store concrete queriable
+    // data in the database:
+    //
+    // FIXME why using validate here? validation and view update is the same?
+    // unless novalidate $ do
+    //     content <- parseValue snapshotContent
+    //     updateObjectViews ot baseObjId (Just content)
+
     Ok(Json(PatchObjectResponse::new(
         previous_patches,
         patches.len(),
@@ -305,6 +319,5 @@ async fn save_operation(
         .ok_or_else(AppError::Query)?;
 
     // TODO maybe await here? or return futures?
-
     Ok(Some(patch))
 }

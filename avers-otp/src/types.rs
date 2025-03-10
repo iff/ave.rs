@@ -3,8 +3,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 // use std::collections::HashMap;
 
-// TODO do we need this later?
-/// converts to database primary key
+/// converts to database primary key. this is needed when updating the
+/// view tables (to get a pk to merge/update/delete/..)
 pub trait Pk {
     fn to_pk(&self) -> String;
 }
@@ -77,59 +77,17 @@ pub struct Object {
     id: Option<ObjId>, // not nice that this has to be empty for id generation to work
     #[serde(alias = "_firestore_created")]
     pub created_at: Option<DateTime<Utc>>, // Option<FirestoreTimestamp>,
-    // TODO do we still need this?
-    // TODO compatibility with avers.js
     pub object_type: ObjectType,
     created_by: ObjId,
     // delete the object which has a very different meaning from deleting a boulder
     pub deleted: Option<bool>,
-    // TODO why is this a hashmap? probably like Avers is implemented
-    // TODO need those for queries
-    // TODO does not have to be, mostly empty anyway? so nothing is stored in here anyway
-    // pub content: HashMap<String, Value>,
-
-    // TODO needs to match object_type
-    // TODO needs to be an Option to allow creation without values?
-    // TODO also patch works on json representation, so how do we serialise between the two?
-    // pub content: Option<ConcreteObject>,
 }
 
+// here we fix types to those instead of doing a generic str to type "cast"
 #[derive(Serialize, Deserialize, Clone)]
 pub enum ObjectType {
-    /// account type
     Account,
-    /// boulder type
     Boulder,
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-pub enum AccountRole {
-    User,
-    Setter,
-    Admin,
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-pub enum ConcreteObject {
-    /// account type
-    Account {
-        login: String,
-        role: AccountRole,
-        email: Option<String>,
-        name: Option<String>,
-    },
-
-    /// boulder type
-    Boulder {
-        setter: Vec<ObjectId>,
-        sector: String,
-        grade: String,
-        grade_nr: u32,
-        set_date: usize,
-        removed: Option<usize>,
-        is_draft: Option<usize>,
-        name: Option<String>,
-    },
 }
 
 impl Object {
@@ -144,8 +102,6 @@ impl Object {
             created_at: None,
             created_by,
             deleted: None,
-            // content: None,
-            // content: HashMap::new(),
         }
     }
 
