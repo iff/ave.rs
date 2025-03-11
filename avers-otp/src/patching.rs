@@ -123,7 +123,8 @@ where
 
     let mut content = &mut value;
 
-    for key in &paths {
+    let len = paths.len();
+    for key in &paths[..(len - 1)] {
         match content.get_mut(key) {
             Some(value) => content = value,
             None => return Err(PatchError::KeyError(key.to_string())),
@@ -150,7 +151,8 @@ where
 
     let mut content = &mut value;
 
-    for key in &paths {
+    let len = paths.len();
+    for key in &paths[..(len-1)] {
         match content.get_mut(key) {
             Some(value) => content = value,
             None => return Err(PatchError::KeyError(key.to_string())),
