@@ -39,7 +39,7 @@ enum AppError {
     // should not happen but lets see something in the logs otherwise
     NotImplemented(),
     // unable to parse json content into type
-    ParseError(),
+    ParseError(String),
 }
 
 impl From<FirestoreError> for AppError {
@@ -99,9 +99,9 @@ impl IntoResponse for AppError {
             // TODO
             AppError::Ot(_) => (StatusCode::NOT_FOUND, "OT failure".to_string()),
             AppError::Query() => (StatusCode::BAD_REQUEST, "can't handle req".to_string()),
-            AppError::ParseError() => (
+            AppError::ParseError(err) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                "can't parse object".to_string(),
+                format!("parse error: {}", err).to_string(),
             ),
             // TODO
             AppError::NotImplemented() => {

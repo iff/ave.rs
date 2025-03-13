@@ -70,8 +70,8 @@ async fn update_boulder_view(
     // TODO we could match object content_type to decide which view to update
     // for now we only have boulders
 
-    let boulder =
-        from_value::<Boulder>(snapshot.content.clone()).or(Err(AppError::ParseError()))?;
+    let boulder = from_value::<Boulder>(snapshot.content.clone())
+        .map_err(|e| AppError::ParseError(format!("{} in: {}", e, snapshot.content)))?;
     let b: Option<Boulder> = state
         .db
         .fluent()
