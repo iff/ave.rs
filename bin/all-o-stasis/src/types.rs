@@ -22,8 +22,8 @@ pub struct Boulder {
     sector: String,
     grade: String,
     grade_nr: u32,
-    set_date: usize,
-    removed: Option<usize>,
+    pub set_date: usize,
+    pub removed: Option<usize>,
     is_draft: Option<usize>,
     name: Option<String>,
 }

@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::storage::{apply_object_updates, lookup_object_};
+use crate::types::Boulder;
 use crate::{AppError, AppState};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -149,32 +150,29 @@ async fn public_profile(
 async fn active_boulders(
     State(state): State<AppState>,
     Path(gym): Path<String>,
-) -> Result<Json<Vec<Object>>, AppError> {
+) -> Result<Json<Vec<Boulder>>, AppError> {
     let parent_path = state.db.parent_path("gyms", gym)?;
-    let object_stream: BoxStream<FirestoreResult<Object>> = state
+    let object_stream: BoxStream<FirestoreResult<Boulder>> = state
         .db
         .fluent()
         .select()
-        .from("objects")
+        .from("boulder_view")
         .parent(&parent_path)
         .filter(|q| {
             q.for_all([
-                // TODO should actually filter contents of object
-                q.field(path!(Object::object_type)).eq(ObjectType::Boulder),
-                q.field(path!(Object::deleted)).is_not_null(),
-                // Some(False)
-                //     .and_then(|value| q.field(path!(Object::deleted)).eq(value)),
+                q.field(path!(Boulder::removed)).is_null(),
+                // Some(False).and_then(|value| q.field(path!(Boulder::deleted)).eq(value)),
             ])
         })
         .order_by([(
-            path!(Object::created_at),
+            path!(Boulder::set_date),
             FirestoreQueryDirection::Descending,
         )])
         .obj()
         .stream_query_with_errors()
         .await?;
 
-    let as_vec: Vec<Object> = object_stream.try_collect().await?;
+    let as_vec: Vec<Boulder> = object_stream.try_collect().await?;
     Ok(Json(as_vec))
 }
 
