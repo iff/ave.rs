@@ -1,15 +1,9 @@
-migrating from haskell
+simplified rewrite of [avers](https://github.com/wereHamster/avers) in Rust:
 
-packages
-
-pkg/hs/avers
-    - OTP types and functionality
-pkg/hs/avers-api
-    - api endpoints
-pkg/hs/avers-docs
-    - just docs?
-pkg/hs/avers-server
-    - http serving the api?
-    
+- only supporting [all-o-stasis-avers](https://github.com/iff/all-o-stasis-avers) atm
+- merged most of the api/http crates into a specific binary
+- using firestore
+- object types currently hardcoded to be boulders or accounts
+- no releases, no websockets (feed), ...
 
 
