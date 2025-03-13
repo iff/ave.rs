@@ -26,8 +26,45 @@ Content-type: application/json; charset=UTF-8
   "operations": [
     {
       "type": "Set",
+      "path": "setter",
+      "value": [
+        {"Base": "KdTqjNIlfKHHmI4Fej7C"}
+      ]
+    },
+    {
+      "type": "Set",
       "path": "grade",
-      "value": "blue"
+      "value": "red"
+    },
+    {
+      "type": "Set",
+      "path": "sector",
+      "value": "a"
+    },
+    {
+      "type": "Set",
+      "path": "grade_nr",
+      "value": 8
+    },
+    {
+      "type": "Set",
+      "path": "set_date",
+      "value": 1371023
+    },
+    {
+      "type": "Set",
+      "path": "removed",
+      "value": null
+    },
+    {
+      "type": "Set",
+      "path": "is_draft",
+      "value": null
+    },
+    {
+      "type": "Set",
+      "path": "name",
+      "value": null
     }
   ]
 }
