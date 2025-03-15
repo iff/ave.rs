@@ -10,6 +10,7 @@ use otp::types::ObjectType;
 use otp::types::{ObjId, Object, ObjectId, Operation, Patch, RevId, ROOT_PATH, ZERO_REV_ID};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use tower_http::cors::CorsLayer;
 
 use crate::storage::{apply_object_updates, lookup_object_};
 use crate::types::Boulder;
@@ -84,6 +85,10 @@ pub fn app(state: AppState) -> Router {
 
     // TODO simplify gym capture?
 
+    // TODO allow any? see examples here: https://docs.rs/tower-http/latest/tower_http/cors/struct.CorsLayer.html#method.allow_origin
+    let cors = CorsLayer::very_permissive();
+    // let cors = CorsLayer::new().allow_origin(Any)..allow_credentials(true);
+
     let api = api_routes();
 
     Router::new()
@@ -120,6 +125,7 @@ pub fn app(state: AppState) -> Router {
         .route("/gym/:gym/signup", post(signup))
         .merge(api)
         .with_state(state)
+        .layer(cors)
 }
 
 async fn revision(State(_state): State<AppState>) -> Result<&'static str, AppError> {
