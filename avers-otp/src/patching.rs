@@ -46,7 +46,8 @@ pub fn apply(value: Value, operation: Operation) -> Result<Value, PatchError> {
             value: op_value,
         } => {
             if path.is_empty() {
-                return Ok(value);
+                // TODO what do we do with Nones here?
+                return op_value.ok_or(PatchError::Unknown());
             }
 
             // delete key (path) if op_Value is empty else insert key (path)
@@ -152,7 +153,7 @@ where
     let mut content = &mut value;
 
     let len = paths.len();
-    for key in &paths[..(len-1)] {
+    for key in &paths[..(len - 1)] {
         match content.get_mut(key) {
             Some(value) => content = value,
             None => return Err(PatchError::KeyError(key.to_string())),
@@ -392,15 +393,38 @@ mod tests {
     //   i128 as i128_tests
     // }
 
+    // #[test]
+    // fn apply_set_op_root_path() {
+    //     let op = Operation::Set {
+    //         path: ROOT_PATH.to_string(),
+    //         value: None,
+    //     };
+    //
+    //     let val = json!({ "meaning of life": 42});
+    //     let res = apply(val.clone(), op);
+    //     assert_eq!(res.ok(), Some(val));
+    // }
+
     #[test]
-    fn apply_set_op_root_path() {
+    fn apply_set_op_on_empty() {
         let op = Operation::Set {
-            path: ROOT_PATH.to_string(),
-            value: None,
+            path: "grade".into(),
+            value: Some("yellow".into()),
         };
 
-        let val = json!({ "meaning of life": 42});
-        let res = apply(val.clone(), op);
+        let res = apply(json!({}), op);
+        assert_eq!(res.ok(), Some(json!({"grade": "yellow"})));
+    }
+
+    #[test]
+    fn apply_set_op_on_empty_root_path() {
+        let val = json!({"grade": 52, "sector": "name"});
+        let op = Operation::Set {
+            path: ROOT_PATH.into(),
+            value: Some(val.clone()),
+        };
+
+        let res = apply(json!({}), op);
         assert_eq!(res.ok(), Some(val));
     }
 
