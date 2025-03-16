@@ -3,6 +3,7 @@ use axum::{
     extract::Path, extract::State, routing::delete, routing::get, routing::patch, routing::post,
     Router,
 };
+use chrono::{DateTime, Utc};
 use firestore::{path, FirestoreQueryDirection, FirestoreResult};
 use futures::stream::BoxStream;
 use futures::TryStreamExt;
@@ -39,6 +40,19 @@ struct CreateObjectBody {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct LookupObjectResponse {
+    pub id: ObjId,
+    #[serde(rename = "type")]
+    pub ot_type: String,
+    pub created_at: DateTime<Utc>,
+    pub created_by: ObjId,
+    pub revision_id: RevId,
+    pub content: Value,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 struct CreateObjectResponse {
     id: ObjId,
     ot_type: ObjectType,
@@ -46,12 +60,14 @@ struct CreateObjectResponse {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 struct PatchObjectBody {
     revision_id: RevId,
     operations: Vec<Operation>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct PatchObjectResponse {
     previous_patches: Vec<Patch>,
     num_processed_operations: usize,
@@ -156,7 +172,7 @@ async fn public_profile(
 async fn active_boulders(
     State(state): State<AppState>,
     Path(gym): Path<String>,
-) -> Result<Json<Vec<Boulder>>, AppError> {
+) -> Result<Json<Vec<String>>, AppError> {
     let parent_path = state.db.parent_path("gyms", gym)?;
     let object_stream: BoxStream<FirestoreResult<Boulder>> = state
         .db
@@ -167,6 +183,7 @@ async fn active_boulders(
         .filter(|q| {
             q.for_all([
                 q.field(path!(Boulder::removed)).is_null(),
+                q.field(path!(Boulder::is_draft)).is_null(),
                 // Some(False).and_then(|value| q.field(path!(Boulder::deleted)).eq(value)),
             ])
         })
@@ -179,7 +196,12 @@ async fn active_boulders(
         .await?;
 
     let as_vec: Vec<Boulder> = object_stream.try_collect().await?;
-    Ok(Json(as_vec))
+    Ok(Json(
+        as_vec
+            .into_iter()
+            .map(|b| b.id.expect("no id")) // TODO no panic
+            .collect(),
+    ))
 }
 
 async fn draft_boulders(
@@ -210,7 +232,7 @@ async fn accounts(
         .db
         .fluent()
         .select()
-        .from("objects")
+        .from("accounts_view")
         .parent(&parent_path)
         .filter(|q| q.for_all([q.field(path!(Object::object_type)).eq(ObjectType::Account)]))
         .order_by([(
@@ -404,6 +426,10 @@ async fn new_object(
         .await?;
     let _ = patch.ok_or_else(AppError::Query)?;
 
+    // TODO needs to also view update..
+    // TODO why not create a snapshot?
+    // update_boulder_view(state, gym, content);
+
     Ok(Json(CreateObjectResponse {
         id: obj.id(),
         ot_type,
@@ -414,8 +440,8 @@ async fn new_object(
 async fn lookup_object(
     State(state): State<AppState>,
     Path((gym, id)): Path<(String, String)>,
-) -> Result<Json<Object>, AppError> {
-    Ok(Json(lookup_object_(&state, &gym, id).await?))
+) -> Result<Json<LookupObjectResponse>, AppError> {
+    lookup_object_(&state, &gym, id).await
 }
 
 async fn patch_object(

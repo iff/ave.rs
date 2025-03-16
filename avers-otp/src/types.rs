@@ -78,13 +78,13 @@ pub struct Object {
     #[serde(alias = "_firestore_created")]
     pub created_at: Option<DateTime<Utc>>, // Option<FirestoreTimestamp>,
     pub object_type: ObjectType,
-    created_by: ObjId,
+    pub created_by: ObjId,
     // delete the object which has a very different meaning from deleting a boulder
     pub deleted: Option<bool>,
 }
 
 // here we fix types to those instead of doing a generic str to type "cast"
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum ObjectType {
     Account,
     Boulder,

@@ -8,7 +8,7 @@ use otp::types::{ObjId, Object, ObjectId, Operation, Patch, Pk, RevId, Snapshot}
 use otp::{apply, rebase};
 use serde_json::{from_value, Value};
 
-use crate::routes::PatchObjectResponse;
+use crate::routes::{LookupObjectResponse, PatchObjectResponse};
 use crate::{AppError, AppState};
 
 // fn base_id(obj_id: &ObjectId) -> ObjId {
@@ -60,7 +60,7 @@ async fn store_snapshot(
     Ok(p)
 }
 
-async fn update_boulder_view(
+pub(crate) async fn update_boulder_view(
     state: &AppState,
     gym: &String,
     snapshot: &Snapshot,
@@ -91,9 +91,9 @@ pub(crate) async fn lookup_object_(
     state: &AppState,
     gym: &String,
     id: ObjId,
-) -> Result<Object, AppError> {
+) -> Result<Json<LookupObjectResponse>, AppError> {
     let parent_path = state.db.parent_path("gyms", gym)?;
-    let obj: Option<Object> = state
+    let obj: Object = state
         .db
         .fluent()
         .select()
@@ -101,9 +101,69 @@ pub(crate) async fn lookup_object_(
         .parent(&parent_path)
         .obj()
         .one(&id)
+        .await?
+        .ok_or(AppError::Query())?;
+
+    let snapshot = lookup_latest_snapshot(state, gym, &ObjectId::Base(id.clone())).await?;
+    let created_at = obj.created_at.ok_or(AppError::Query())?;
+
+    Ok(Json(LookupObjectResponse {
+        id,
+        ot_type: "boulder".to_string(), //obj.object_type.to_string(),
+        created_at,
+        created_by: obj.created_by,
+        revision_id: snapshot.revision_id,
+        content: snapshot.content,
+    }))
+}
+
+async fn lookup_latest_snapshot(
+    state: &AppState,
+    gym: &String,
+    obj_id: &ObjectId,
+) -> Result<Snapshot, AppError> {
+    // same as lookup_snapshot but not with upper bound
+    let parent_path = state.db.parent_path("gyms", gym)?;
+    let object_stream: BoxStream<FirestoreResult<Snapshot>> = state
+        .db
+        .fluent()
+        .select()
+        .from("snapshots")
+        .parent(&parent_path)
+        .filter(|q| {
+            q.for_all([
+                q.field(path!(Snapshot::object_id)).eq(obj_id),
+                q.field(path!(Snapshot::revision_id))
+                    .greater_than_or_equal(0),
+            ])
+        })
+        .limit(1)
+        .order_by([(
+            path!(Snapshot::revision_id),
+            FirestoreQueryDirection::Descending,
+        )])
+        .obj()
+        .stream_query_with_errors()
         .await?;
 
-    obj.ok_or(AppError::Query())
+    let snapshots: Vec<Snapshot> = object_stream.try_collect().await?;
+    // TODO handle non-existing snapshot here as well?
+    let latest_snapshot: Snapshot = match snapshots.first() {
+        Some(snapshot) => snapshot.clone(),
+        None => {
+            // XXX we could already create the first snapshot on object creation?
+            let snapshot = Snapshot::new(obj_id.clone());
+            store_snapshot(state, gym, &snapshot).await?;
+            snapshot
+        }
+    };
+
+    // get all patches which we need to apply on top of the snapshot to
+    // arrive at the desired revision
+    let patches = patches_after_revision(state, gym, obj_id, latest_snapshot.revision_id).await?;
+
+    // apply those patches to the snapshot
+    apply_patches(&latest_snapshot, &patches)
 }
 
 async fn lookup_snapshot(
@@ -149,7 +209,8 @@ async fn lookup_snapshot(
 
     // get all patches which we need to apply on top of the snapshot to
     // arrive at the desired revision
-    let patches = patches_after_revision(state, gym, obj_id, latest_snapshot.revision_id)
+    // let patches = patches_after_revision(state, gym, obj_id, latest_snapshot.revision_id)
+    let patches = patches_after_revision(state, gym, obj_id, rev_id)
         .await?
         .into_iter()
         .filter(|p| p.revision_id <= rev_id)
@@ -227,6 +288,7 @@ pub async fn apply_object_updates(
 
     // if there are any patches which the client doesn't know about we need
     // to let her know
+    // only patched up to snapshot.revision_id ?
     let previous_patches = patches_after_revision(state, gym, &obj_id, rev_id).await?;
     let latest_snapshot = apply_patches(&base_snapshot, &previous_patches)?;
 

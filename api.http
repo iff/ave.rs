@@ -9,7 +9,16 @@ Content-type: application/json; charset=UTF-8
 {
   "type": "Boulder",
   "content": {
-    "grade": "red"
+    "grade": "red",
+    "gradeNr": 42,
+    "sector": "kurswand",
+    "setter": [
+      {"Base": "KdTqjNIlfKHHmI4Fej7C"}
+    ],
+    "removed": null,
+    "is_draft": null,
+    "name": null,
+    "id": null
   }
 }
 
@@ -17,54 +26,17 @@ Content-type: application/json; charset=UTF-8
 GET https://apiv2.boulderhalle.app/test/objects/KdTqjNIlfKHHmI4Fej7C
 
 ### #patch object
-PATCH https://apiv2.boulderhalle.app/test/objects/KdTqjNIlfKHHmI4Fej7C
+PATCH https://apiv2.boulderhalle.app/test/objects/jX3VMRdI33qjOkJIphlv
 accept: application/json  
 Content-type: application/json; charset=UTF-8
 
 {
-  "revision_id": 1,
+  "revisionId": 1,
   "operations": [
-    {
-      "type": "Set",
-      "path": "setter",
-      "value": [
-        {"Base": "KdTqjNIlfKHHmI4Fej7C"}
-      ]
-    },
     {
       "type": "Set",
       "path": "grade",
       "value": "red"
-    },
-    {
-      "type": "Set",
-      "path": "sector",
-      "value": "a"
-    },
-    {
-      "type": "Set",
-      "path": "grade_nr",
-      "value": 8
-    },
-    {
-      "type": "Set",
-      "path": "set_date",
-      "value": 1371023
-    },
-    {
-      "type": "Set",
-      "path": "removed",
-      "value": null
-    },
-    {
-      "type": "Set",
-      "path": "is_draft",
-      "value": null
-    },
-    {
-      "type": "Set",
-      "path": "name",
-      "value": null
     }
   ]
 }
