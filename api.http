@@ -9,9 +9,10 @@ Content-type: application/json; charset=UTF-8
 {
   "type": "Boulder",
   "content": {
-    "grade": "red",
+    "grade": "blue",
     "gradeNr": 42,
     "sector": "kurswand",
+    "set_date": 134778234,
     "setter": [
       {"Base": "KdTqjNIlfKHHmI4Fej7C"}
     ],
@@ -31,7 +32,7 @@ accept: application/json
 Content-type: application/json; charset=UTF-8
 
 {
-  "revisionId": 1,
+  "revisionId": 0,
   "operations": [
     {
       "type": "Set",
