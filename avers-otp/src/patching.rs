@@ -357,6 +357,7 @@ pub fn rebase(content: Value, op: Operation, patches: Vec<Patch>) -> Option<Oper
         match apply(new_content, patch.operation.clone()) {
             Ok(value) => {
                 new_content = value;
+                // TODO do we skip NONE ops?
                 op = op_ot(&new_content, &patch.operation, op?);
             }
             Err(e) => panic!("unexpected failure: {}", e),

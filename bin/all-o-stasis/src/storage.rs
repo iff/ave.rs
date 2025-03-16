@@ -133,6 +133,9 @@ async fn lookup_latest_snapshot(
         .filter(|q| {
             q.for_all([
                 q.field(path!(Snapshot::object_id)).eq(obj_id),
+                // TODO not clear that this is correct
+                // (RevId revId) <- fromMaybe zeroRevId <$> lookupRecentRevision objId
+                // latestSnapshotBetween objId revId maxBound
                 q.field(path!(Snapshot::revision_id))
                     .greater_than_or_equal(0),
             ])
@@ -157,6 +160,7 @@ async fn lookup_latest_snapshot(
             snapshot
         }
     };
+    // let latest_snapshot = lookup_snapshot_between(state, gym, obj_id, 0, high?)
 
     // get all patches which we need to apply on top of the snapshot to
     // arrive at the desired revision
@@ -166,11 +170,13 @@ async fn lookup_latest_snapshot(
     apply_patches(&latest_snapshot, &patches)
 }
 
-async fn lookup_snapshot(
+/// get or create a snapshot between low and high (inclusive)
+async fn lookup_snapshot_between(
     state: &AppState,
     gym: &String,
     obj_id: &ObjectId,
-    rev_id: RevId,
+    low: RevId,
+    high: RevId,
 ) -> Result<Snapshot, AppError> {
     let parent_path = state.db.parent_path("gyms", gym)?;
     let object_stream: BoxStream<FirestoreResult<Snapshot>> = state
@@ -183,8 +189,9 @@ async fn lookup_snapshot(
             q.for_all([
                 q.field(path!(Snapshot::object_id)).eq(obj_id),
                 q.field(path!(Snapshot::revision_id))
-                    .greater_than_or_equal(0),
-                q.field(path!(Snapshot::revision_id)).less_than(rev_id),
+                    .greater_than_or_equal(low),
+                q.field(path!(Snapshot::revision_id))
+                    .less_than_or_equal(high),
             ])
         })
         .limit(1)
@@ -197,20 +204,29 @@ async fn lookup_snapshot(
         .await?;
 
     let snapshots: Vec<Snapshot> = object_stream.try_collect().await?;
-    let latest_snapshot: Snapshot = match snapshots.first() {
-        Some(snapshot) => snapshot.clone(),
+    match snapshots.first() {
+        Some(snapshot) => Ok(snapshot.clone()),
         None => {
-            // XXX we could already create the first snapshot on object creation?
+            // TODO we could already create the first snapshot on object creation?
+            // TODO why is initial snapshot rev = -1?
             let snapshot = Snapshot::new(obj_id.clone());
             store_snapshot(state, gym, &snapshot).await?;
-            snapshot
+            Ok(snapshot)
         }
-    };
+    }
+}
+
+async fn lookup_snapshot(
+    state: &AppState,
+    gym: &String,
+    obj_id: &ObjectId,
+    rev_id: RevId, // inclusive
+) -> Result<Snapshot, AppError> {
+    let latest_snapshot = lookup_snapshot_between(state, gym, obj_id, 0, rev_id).await?;
 
     // get all patches which we need to apply on top of the snapshot to
     // arrive at the desired revision
-    // let patches = patches_after_revision(state, gym, obj_id, latest_snapshot.revision_id)
-    let patches = patches_after_revision(state, gym, obj_id, rev_id)
+    let patches = patches_after_revision(state, gym, obj_id, latest_snapshot.revision_id)
         .await?
         .into_iter()
         .filter(|p| p.revision_id <= rev_id)
@@ -275,7 +291,7 @@ pub async fn apply_object_updates(
     state: &AppState,
     gym: &String,
     obj_id: ObjectId,
-    rev_id: RevId,
+    rev_id: RevId, // TODO this is what? first is 0?
     author: ObjId,
     operations: Vec<Operation>,
     skip_validation: bool,
@@ -284,11 +300,12 @@ pub async fn apply_object_updates(
     // let id = base_id(&obj_id);
 
     // the 'Snapshot' against which the submitted operations were created
+    // this only contains patches until base_snapshot.revision_id
     let base_snapshot = lookup_snapshot(state, gym, &obj_id, rev_id).await?;
 
     // if there are any patches which the client doesn't know about we need
     // to let her know
-    // only patched up to snapshot.revision_id ?
+    // TODO cant we have patches that are not applied above but are now missing?
     let previous_patches = patches_after_revision(state, gym, &obj_id, rev_id).await?;
     let latest_snapshot = apply_patches(&base_snapshot, &previous_patches)?;
 
@@ -385,7 +402,7 @@ async fn save_operation(
     }
 
     let rev_id = snapshot.revision_id + 1;
-    // now we know that the patch can be applied cleanly, so we can save it in the database
+    // now we know that the patch can be applied cleanly, so we can store both
     let new_snapshot = Snapshot {
         object_id: snapshot.object_id.clone(),
         revision_id: rev_id,
