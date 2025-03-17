@@ -5,7 +5,7 @@ use firestore::{FirestoreQueryDirection, FirestoreResult};
 use futures::stream::BoxStream;
 use futures::TryStreamExt;
 use otp::types::{ObjId, Object, ObjectId, Operation, Patch, Pk, RevId, Snapshot};
-use otp::{apply, rebase};
+use otp::{apply, rebase, ZERO_REV_ID};
 use serde_json::{from_value, Value};
 
 use crate::routes::{LookupObjectResponse, PatchObjectResponse};
@@ -133,11 +133,11 @@ async fn lookup_latest_snapshot(
         .filter(|q| {
             q.for_all([
                 q.field(path!(Snapshot::object_id)).eq(obj_id),
-                // TODO not clear that this is correct
+                // TODO not clear that this is correct but most likely just a bit less efficent
                 // (RevId revId) <- fromMaybe zeroRevId <$> lookupRecentRevision objId
                 // latestSnapshotBetween objId revId maxBound
                 q.field(path!(Snapshot::revision_id))
-                    .greater_than_or_equal(0),
+                    .greater_than_or_equal(ZERO_REV_ID),
             ])
         })
         .limit(1)
@@ -222,16 +222,18 @@ async fn lookup_snapshot(
     obj_id: &ObjectId,
     rev_id: RevId, // inclusive
 ) -> Result<Snapshot, AppError> {
-    let latest_snapshot = lookup_snapshot_between(state, gym, obj_id, 0, rev_id).await?;
+    let latest_snapshot = lookup_snapshot_between(state, gym, obj_id, ZERO_REV_ID, rev_id).await?;
 
     // get all patches which we need to apply on top of the snapshot to
     // arrive at the desired revision
-    let patches = patches_after_revision(state, gym, obj_id, latest_snapshot.revision_id)
-        .await?
-        .into_iter()
-        .filter(|p| p.revision_id <= rev_id)
-        .collect();
+    let patches: Vec<Patch> =
+        patches_after_revision(state, gym, obj_id, latest_snapshot.revision_id)
+            .await?
+            .into_iter()
+            .filter(|p| p.revision_id <= rev_id)
+            .collect();
 
+    println!("lookup_snapshot: applying {} patches", patches.len());
     // apply those patches to the snapshot
     apply_patches(&latest_snapshot, &patches)
 }
@@ -342,6 +344,7 @@ pub async fn apply_object_updates(
     //
     // FIXME why using validate here? validation and view update is the same?
     // unless novalidate $ do
+    // FIXME this is the wrong snapshot - we dont return the one with the op applied
     update_boulder_view(state, gym, &latest_snapshot).await?;
 
     Ok(Json(PatchObjectResponse::new(

@@ -1,3 +1,5 @@
+use std::fmt;
+
 use otp::types::ObjectId;
 use serde::{Deserialize, Serialize};
 
@@ -30,9 +32,22 @@ pub struct Boulder {
     grade: String,
     grade_nr: u32,
     pub set_date: usize,
-    #[serde(with = "firestore::serialize_as_null")]
-    pub removed: Option<usize>,
-    #[serde(with = "firestore::serialize_as_null")]
-    pub is_draft: Option<usize>,
-    name: Option<String>,
+    // #[serde(with = "firestore::serialize_as_null")]
+    // pub removed: Option<usize>,
+    pub removed: usize,
+    // #[serde(with = "firestore::serialize_as_null")]
+    // pub is_draft: Option<usize>,
+    pub is_draft: usize,
+    name: String,
+    // name: Option<String>,
+}
+
+impl fmt::Display for Boulder {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Boulder: {}",
+            serde_json::to_string_pretty(self).unwrap()
+        )
+    }
 }

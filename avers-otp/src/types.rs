@@ -1,3 +1,5 @@
+use std::fmt;
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -69,6 +71,24 @@ pub enum Operation {
         /// this is actually a Value::Array, everything else will result in an error
         insert: Value,
     },
+}
+
+impl fmt::Display for Operation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Operation::Set { path, value } => write!(f, "Set: {}, value={:?}", path, value),
+            Operation::Splice {
+                path,
+                index,
+                remove,
+                insert,
+            } => write!(
+                f,
+                "Splice: {} @ {}, remove={}, insert={}",
+                path, index, remove, insert
+            ),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone)]
