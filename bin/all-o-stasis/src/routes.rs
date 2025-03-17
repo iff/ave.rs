@@ -173,6 +173,8 @@ async fn active_boulders(
     State(state): State<AppState>,
     Path(gym): Path<String>,
 ) -> Result<Json<Vec<String>>, AppError> {
+    // return Ok(Json(["jX3VMRdI33qjOkJIphlv".into()].to_vec()));
+
     let parent_path = state.db.parent_path("gyms", gym)?;
     let object_stream: BoxStream<FirestoreResult<Boulder>> = state
         .db
@@ -180,11 +182,17 @@ async fn active_boulders(
         .select()
         .from("boulder_view")
         .parent(&parent_path)
+        // TODO even without filter this returns nothing -- why?
         .filter(|q| {
             q.for_all([
-                q.field(path!(Boulder::removed)).is_null(),
-                q.field(path!(Boulder::is_draft)).is_null(),
+                // BUG: does not return anything even though values are null
+                // q.field(path!(Boulder::removed)).is_null(),
+                // q.field(path!(Boulder::is_draft)).is_null(),
+                // testing also fails
+                // q.field(path!(Boulder::removed)).is_not_null(),
                 // Some(False).and_then(|value| q.field(path!(Boulder::deleted)).eq(value)),
+                q.field(path!(Boulder::removed)).eq(0),
+                q.field(path!(Boulder::is_draft)).eq(0),
             ])
         })
         .order_by([(
@@ -196,6 +204,10 @@ async fn active_boulders(
         .await?;
 
     let as_vec: Vec<Boulder> = object_stream.try_collect().await?;
+    println!("num boulders: {}", as_vec.len());
+    for b in as_vec.clone() {
+        println!("id: {}", b.id.expect(""));
+    }
     Ok(Json(
         as_vec
             .into_iter()

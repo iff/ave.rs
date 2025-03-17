@@ -48,6 +48,15 @@ impl Pk for ObjectId {
     }
 }
 
+impl fmt::Display for ObjectId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ObjectId::Base(obj) => write!(f, "Base: {}", obj),
+            ObjectId::Authorization(obj) => write!( f, "Authorization: {}", obj),
+        }
+    }
+}
+
 // pub fn objectIdParser(objId: String) -> ObjectId {
 //     match objId.chars().next() {
 //         Some(char::is_alphanumeric) => {

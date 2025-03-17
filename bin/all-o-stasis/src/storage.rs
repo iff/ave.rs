@@ -72,6 +72,7 @@ pub(crate) async fn update_boulder_view(
 
     let boulder = from_value::<Boulder>(snapshot.content.clone())
         .map_err(|e| AppError::ParseError(format!("{} in: {}", e, snapshot.content)))?;
+    println!("update_boulder_view: {}", boulder);
     let b: Option<Boulder> = state
         .db
         .fluent()
@@ -204,6 +205,7 @@ async fn lookup_snapshot_between(
         .await?;
 
     let snapshots: Vec<Snapshot> = object_stream.try_collect().await?;
+    println!("lookup_snapshot_between: found {} snapshots for {}", snapshots.len(), obj_id);
     match snapshots.first() {
         Some(snapshot) => Ok(snapshot.clone()),
         None => {
@@ -270,6 +272,10 @@ async fn patches_after_revision(
 }
 
 fn apply_patch_to_snapshot(snapshot: &Snapshot, patch: &Patch) -> Result<Snapshot, AppError> {
+    println!(
+        "apply_patch_to_snapshot: snapshot {}, patch (rev {}) {}",
+        snapshot.content, patch.revision_id, patch.operation
+    );
     Ok(Snapshot {
         object_id: snapshot.object_id.clone(),
         revision_id: patch.revision_id,
@@ -280,7 +286,12 @@ fn apply_patch_to_snapshot(snapshot: &Snapshot, patch: &Patch) -> Result<Snapsho
 fn apply_patches(snapshot: &Snapshot, patches: &Vec<Patch>) -> Result<Snapshot, AppError> {
     let mut s = snapshot.clone();
     for patch in patches {
+        println!(
+            "apply_patches: before snapshot content: {}, {}",
+            s.content, patch.operation
+        );
         s = apply_patch_to_snapshot(&s, patch)?;
+        println!("apply_patches: after snapshot content: {}", s.content);
     }
     // Ok(patches.iter().fold(snapshot.clone(), |snapshot, patch| {
     //     apply_patch_to_snapshot(&snapshot, &patch)?
@@ -304,6 +315,10 @@ pub async fn apply_object_updates(
     // the 'Snapshot' against which the submitted operations were created
     // this only contains patches until base_snapshot.revision_id
     let base_snapshot = lookup_snapshot(state, gym, &obj_id, rev_id).await?;
+    println!(
+        "apply_object_updates: base snapshot content {}",
+        base_snapshot.content
+    );
 
     // if there are any patches which the client doesn't know about we need
     // to let her know
@@ -395,6 +410,10 @@ async fn save_operation(
         return Ok(None);
     };
 
+    println!(
+        "save_operation: snapshot {}, op {}",
+        snapshot.content, new_op
+    );
     // FIXME clone?
     let new_content = apply(snapshot.content.clone(), new_op.clone())?;
     if new_content == snapshot.content {

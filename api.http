@@ -32,12 +32,12 @@ accept: application/json
 Content-type: application/json; charset=UTF-8
 
 {
-  "revisionId": 0,
+  "revisionId": 7,
   "operations": [
     {
       "type": "Set",
-      "path": "grade",
-      "value": "red"
+      "path": "gradeNr",
+      "value": 10
     }
   ]
 }
