@@ -455,6 +455,7 @@ async fn patch_object(
     // TODO where do we get that? ah that comes from the credentials
     let created_by = String::from("some id");
 
+    println!("patch_object: rev id = {}", payload.revision_id);
     let result = apply_object_updates(
         &state,
         &gym,

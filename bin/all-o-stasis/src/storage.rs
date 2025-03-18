@@ -1,6 +1,6 @@
 use crate::types::Boulder;
 use axum::Json;
-use firestore::{path_camel_case, FirestoreQueryDirection, FirestoreResult};
+use firestore::{path, path_camel_case, FirestoreQueryDirection, FirestoreResult};
 use futures::stream::BoxStream;
 use futures::TryStreamExt;
 use otp::types::{ObjId, Object, ObjectId, Operation, Patch, Pk, RevId, Snapshot};
@@ -205,7 +205,9 @@ async fn lookup_snapshot_between(
 
     let snapshots: Vec<Snapshot> = object_stream.try_collect().await?;
     println!(
-        "lookup_snapshot_between: found {} snapshots for {}",
+        "lookup_snapshot_between: low({}) and high({}) found {} snapshots (obj: {})",
+        low,
+        high,
         snapshots.len(),
         obj_id
     );
@@ -238,7 +240,6 @@ async fn lookup_snapshot(
             .filter(|p| p.revision_id <= rev_id)
             .collect();
 
-    println!("lookup_snapshot: applying {} patches", patches.len());
     // apply those patches to the snapshot
     apply_patches(&latest_snapshot, &patches)
 }
@@ -259,7 +260,8 @@ async fn patches_after_revision(
         .filter(|q| {
             q.for_all([
                 q.field(path_camel_case!(Patch::object_id)).eq(obj_id),
-                q.field(path_camel_case!(Patch::revision_id)).greater_than(rev_id),
+                q.field(path_camel_case!(Patch::revision_id))
+                    .greater_than(rev_id),
             ])
         })
         .order_by([(
@@ -271,6 +273,12 @@ async fn patches_after_revision(
         .await?;
 
     let patches: Vec<Patch> = object_stream.try_collect().await?;
+    println!(
+        "patches_after_rev: obj = {}, rev = {}, found {} patches",
+        obj_id,
+        rev_id,
+        patches.len()
+    );
     Ok(patches)
 }
 
@@ -363,7 +371,7 @@ pub async fn apply_object_updates(
     // FIXME why using validate here? validation and view update is the same?
     // unless novalidate $ do
     // FIXME this is the wrong snapshot - we dont return the one with the op applied
-    update_boulder_view(state, gym, &latest_snapshot).await?;
+    // update_boulder_view(state, gym, &latest_snapshot).await?;
 
     Ok(Json(PatchObjectResponse::new(
         previous_patches,
@@ -436,6 +444,8 @@ async fn save_operation(
     store_snapshot(state, gym, &new_snapshot)
         .await?
         .ok_or_else(AppError::Query)?;
+    // TODO moved to here
+    update_boulder_view(state, gym, &new_snapshot).await?;
 
     let patch = Patch {
         object_id,

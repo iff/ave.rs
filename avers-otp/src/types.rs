@@ -31,6 +31,7 @@ pub const ZERO_REV_ID: RevId = 0;
 // TODO this is not the firestore id
 // TODO can't be internally typed (tuple), so externally okay?
 #[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub enum ObjectId {
     /// The base object whose snapshots contain the actual content.
     Base(ObjId),
@@ -52,7 +53,7 @@ impl fmt::Display for ObjectId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ObjectId::Base(obj) => write!(f, "Base: {}", obj),
-            ObjectId::Authorization(obj) => write!( f, "Authorization: {}", obj),
+            ObjectId::Authorization(obj) => write!(f, "Authorization: {}", obj),
         }
     }
 }
@@ -67,6 +68,7 @@ impl fmt::Display for ObjectId {
 
 #[derive(Serialize, Deserialize, Clone, PartialEq)]
 #[serde(tag = "type")]
+#[serde(rename_all = "camelCase")]
 pub enum Operation {
     /// applied to Value::Object for adding, updating and inserting multiple elements in a single op
     Set { path: Path, value: Option<Value> },
@@ -101,6 +103,7 @@ impl fmt::Display for Operation {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct Object {
     #[serde(alias = "_firestore_id")]
     id: Option<ObjId>, // not nice that this has to be empty for id generation to work
@@ -151,6 +154,7 @@ impl Pk for Object {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct Patch {
     pub object_id: ObjectId,
     pub revision_id: RevId,
@@ -167,6 +171,7 @@ impl Pk for Patch {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct Snapshot {
     pub object_id: ObjectId,
     pub revision_id: RevId,

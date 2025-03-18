@@ -12,32 +12,47 @@ Content-type: application/json; charset=UTF-8
     "grade": "blue",
     "gradeNr": 42,
     "sector": "kurswand",
-    "set_date": 134778234,
+    "setDate": 134778234,
     "setter": [
-      {"Base": "KdTqjNIlfKHHmI4Fej7C"}
+      {"base": "Z6sprK5mW9H4ITwMF8NO"}
     ],
-    "removed": null,
-    "is_draft": null,
-    "name": null,
+    "removed": 0,
+    "isDraft": 0,
+    "name": "",
     "id": null
   }
 }
 
-### #get object
-GET https://apiv2.boulderhalle.app/test/objects/KdTqjNIlfKHHmI4Fej7C
-
-### #patch object
-PATCH https://apiv2.boulderhalle.app/test/objects/jX3VMRdI33qjOkJIphlv
+### #post object
+POST https://apiv2.boulderhalle.app/test/objects
 accept: application/json  
 Content-type: application/json; charset=UTF-8
 
 {
-  "revisionId": 7,
+  "type": "Account",
+  "content": {
+    "login": "some",
+    "role": "admin",
+    "email": "",
+    "name": ""
+  }
+}
+
+### #get object
+GET https://apiv2.boulderhalle.app/test/objects/x1aBqL42xPKkN2XsLnI1
+
+### #patch object
+PATCH https://apiv2.boulderhalle.app/test/objects/FaI1zp28CfCswCX4I991
+accept: application/json  
+Content-type: application/json; charset=UTF-8
+
+{
+  "revisionId": 1,
   "operations": [
     {
-      "type": "Set",
+      "type": "set",
       "path": "gradeNr",
-      "value": 10
+      "value": 11
     }
   ]
 }
