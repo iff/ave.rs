@@ -1,7 +1,6 @@
 use crate::types::Boulder;
 use axum::Json;
-use firestore::struct_path::path;
-use firestore::{FirestoreQueryDirection, FirestoreResult};
+use firestore::{path_camel_case, FirestoreQueryDirection, FirestoreResult};
 use futures::stream::BoxStream;
 use futures::TryStreamExt;
 use otp::types::{ObjId, Object, ObjectId, Operation, Patch, Pk, RevId, Snapshot};
@@ -76,7 +75,7 @@ pub(crate) async fn update_boulder_view(
     let b: Option<Boulder> = state
         .db
         .fluent()
-        .update() // TODO test if that inserts if non-existent id otherwise need transaction
+        .update()
         .in_col("boulder_view")
         .document_id(snapshot.object_id.to_pk())
         .parent(&parent_path)
@@ -133,17 +132,17 @@ async fn lookup_latest_snapshot(
         .parent(&parent_path)
         .filter(|q| {
             q.for_all([
-                q.field(path!(Snapshot::object_id)).eq(obj_id),
+                q.field(path_camel_case!(Snapshot::object_id)).eq(obj_id),
                 // TODO not clear that this is correct but most likely just a bit less efficent
                 // (RevId revId) <- fromMaybe zeroRevId <$> lookupRecentRevision objId
                 // latestSnapshotBetween objId revId maxBound
-                q.field(path!(Snapshot::revision_id))
+                q.field(path_camel_case!(Snapshot::revision_id))
                     .greater_than_or_equal(ZERO_REV_ID),
             ])
         })
         .limit(1)
         .order_by([(
-            path!(Snapshot::revision_id),
+            path_camel_case!(Snapshot::revision_id),
             FirestoreQueryDirection::Descending,
         )])
         .obj()
@@ -188,16 +187,16 @@ async fn lookup_snapshot_between(
         .parent(&parent_path)
         .filter(|q| {
             q.for_all([
-                q.field(path!(Snapshot::object_id)).eq(obj_id),
-                q.field(path!(Snapshot::revision_id))
+                q.field(path_camel_case!(Snapshot::object_id)).eq(obj_id),
+                q.field(path_camel_case!(Snapshot::revision_id))
                     .greater_than_or_equal(low),
-                q.field(path!(Snapshot::revision_id))
+                q.field(path_camel_case!(Snapshot::revision_id))
                     .less_than_or_equal(high),
             ])
         })
         .limit(1)
         .order_by([(
-            path!(Snapshot::revision_id),
+            path_camel_case!(Snapshot::revision_id),
             FirestoreQueryDirection::Descending,
         )])
         .obj()
@@ -205,7 +204,11 @@ async fn lookup_snapshot_between(
         .await?;
 
     let snapshots: Vec<Snapshot> = object_stream.try_collect().await?;
-    println!("lookup_snapshot_between: found {} snapshots for {}", snapshots.len(), obj_id);
+    println!(
+        "lookup_snapshot_between: found {} snapshots for {}",
+        snapshots.len(),
+        obj_id
+    );
     match snapshots.first() {
         Some(snapshot) => Ok(snapshot.clone()),
         None => {
@@ -255,12 +258,12 @@ async fn patches_after_revision(
         .parent(&parent_path)
         .filter(|q| {
             q.for_all([
-                q.field(path!(Patch::object_id)).eq(obj_id),
-                q.field(path!(Patch::revision_id)).greater_than(rev_id),
+                q.field(path_camel_case!(Patch::object_id)).eq(obj_id),
+                q.field(path_camel_case!(Patch::revision_id)).greater_than(rev_id),
             ])
         })
         .order_by([(
-            path!(Snapshot::revision_id),
+            path_camel_case!(Snapshot::revision_id),
             FirestoreQueryDirection::Ascending,
         )])
         .obj()

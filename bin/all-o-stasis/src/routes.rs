@@ -4,7 +4,7 @@ use axum::{
     Router,
 };
 use chrono::{DateTime, Utc};
-use firestore::{path, FirestoreQueryDirection, FirestoreResult};
+use firestore::{path_camel_case, FirestoreQueryDirection, FirestoreResult};
 use futures::stream::BoxStream;
 use futures::TryStreamExt;
 use otp::types::ObjectType;
@@ -173,8 +173,6 @@ async fn active_boulders(
     State(state): State<AppState>,
     Path(gym): Path<String>,
 ) -> Result<Json<Vec<String>>, AppError> {
-    // return Ok(Json(["jX3VMRdI33qjOkJIphlv".into()].to_vec()));
-
     let parent_path = state.db.parent_path("gyms", gym)?;
     let object_stream: BoxStream<FirestoreResult<Boulder>> = state
         .db
@@ -182,36 +180,25 @@ async fn active_boulders(
         .select()
         .from("boulder_view")
         .parent(&parent_path)
-        // TODO even without filter this returns nothing -- why?
         .filter(|q| {
             q.for_all([
-                // BUG: does not return anything even though values are null
-                // q.field(path!(Boulder::removed)).is_null(),
-                // q.field(path!(Boulder::is_draft)).is_null(),
-                // testing also fails
-                // q.field(path!(Boulder::removed)).is_not_null(),
-                // Some(False).and_then(|value| q.field(path!(Boulder::deleted)).eq(value)),
-                q.field(path!(Boulder::removed)).eq(0),
-                q.field(path!(Boulder::is_draft)).eq(0),
+                q.field(path_camel_case!(Boulder::removed)).eq(0),
+                q.field(path_camel_case!(Boulder::is_draft)).eq(0),
             ])
         })
-        .order_by([(
-            path!(Boulder::set_date),
-            FirestoreQueryDirection::Descending,
-        )])
+        // .order_by([(
+        //     path_camel_case!(Boulder::set_date),
+        //     FirestoreQueryDirection::Descending,
+        // )])
         .obj()
         .stream_query_with_errors()
         .await?;
 
     let as_vec: Vec<Boulder> = object_stream.try_collect().await?;
-    println!("num boulders: {}", as_vec.len());
-    for b in as_vec.clone() {
-        println!("id: {}", b.id.expect(""));
-    }
     Ok(Json(
         as_vec
             .into_iter()
-            .map(|b| b.id.expect("no id")) // TODO no panic
+            .map(|b| b.id.expect("object in view has no id")) // TODO no panic
             .collect(),
     ))
 }
@@ -246,9 +233,13 @@ async fn accounts(
         .select()
         .from("accounts_view")
         .parent(&parent_path)
-        .filter(|q| q.for_all([q.field(path!(Object::object_type)).eq(ObjectType::Account)]))
+        .filter(|q| {
+            q.for_all([q
+                .field(path_camel_case!(Object::object_type))
+                .eq(ObjectType::Account)])
+        })
         .order_by([(
-            path!(Object::created_at),
+            path_camel_case!(Object::created_at),
             FirestoreQueryDirection::Descending,
         )])
         .obj()
@@ -491,9 +482,9 @@ async fn lookup_patch(
         .parent(&parent_path)
         .filter(|q| {
             q.for_all([
-                q.field(path!(Patch::object_id))
+                q.field(path_camel_case!(Patch::object_id))
                     .eq(ObjectId::Base(id.clone())),
-                q.field(path!(Patch::revision_id)).eq(rev_id),
+                q.field(path_camel_case!(Patch::revision_id)).eq(rev_id),
             ])
         })
         .limit(1)
