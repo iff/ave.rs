@@ -113,32 +113,32 @@ pub fn app(state: AppState) -> Router {
         // health check
         .route("/healthz", get(healthz))
         // app routes
-        .route("/:gym/public-profile/:id", get(public_profile))
+        .route("/{gym}/public-profile/{id}", get(public_profile))
         // collections: json list of object ids
         // serve a list of all active bouldersIds in the gym
-        .route("/:gym/collection/activeBoulders", get(active_boulders))
+        .route("/{gym}/collection/activeBoulders", get(active_boulders))
         // serve a list of all draft bouldersIds in the gym
-        .route("/:gym/collection/draftBoulders", get(draft_boulders))
+        .route("/{gym}/collection/draftBoulders", get(draft_boulders))
         // serve a list of boulderIds that are owned/authored by the user
         // TODO takes credentials?
-        .route("/:gym/collection/ownBoulders", get(own_boulders))
+        .route("/{gym}/collection/ownBoulders", get(own_boulders))
         // serve a list of all accountIds
-        .route("/:gym/collection/accounts", get(accounts))
+        .route("/{gym}/collection/accounts", get(accounts))
         // serve a list of all non-user accountIds
         // TODO takes credentials?
-        .route("/:gym/collection/adminAccounts", get(admin_accounts))
+        .route("/{gym}/collection/adminAccounts", get(admin_accounts))
         // stats
         // everything has to be set?
         //     :> Capture "setterId" ObjId
         //     :> Capture "year" Integer
         //     :> Capture "month" Int -- 1..12
         //     :> Get '[JSON] SetterMonthlyStats
-        .route("/:gym/stats/:setter_id/:year/:month", get(stats))
+        .route("/{gym}/stats/{setter_id}/{year}/{month}", get(stats))
         // TODO what does this do?
         //     :> Get '[JSON] [BoulderStat]
-        .route("/:gym/stats/boulders", get(stats_boulders))
+        .route("/{gym}/stats/boulders", get(stats_boulders))
         // auth
-        .route("/gym/:gym/signup", post(signup))
+        .route("/gym/{gym}/signup", post(signup))
         .merge(api)
         .with_state(state)
         .layer(cors)
@@ -327,29 +327,29 @@ fn api_routes() -> Router<AppState> {
 
     Router::new()
         // create
-        .route("/:gym/objects", post(new_object))
+        .route("/{gym}/objects", post(new_object))
         // lookup (cachable)
-        .route("/:gym/objects/:id", get(lookup_object))
+        .route("/{gym}/objects/{id}", get(lookup_object))
         // patch
-        .route("/:gym/objects/:id", patch(patch_object))
+        .route("/{gym}/objects/{id}", patch(patch_object))
         // lookup patch
-        .route("/:gym/objects/:id/patches/:rev_id", get(lookup_patch))
+        .route("/{gym}/objects/{id}/patches/{rev_id}", get(lookup_patch))
         // unused below
         // delete - not used
-        .route("/:gym/objects/:id", delete(delete_object))
+        .route("/{gym}/objects/{id}", delete(delete_object))
         // changes on object (raw websocket) -- never used?
-        .route("/:gym/objects/:id/changes", get(object_changes))
+        .route("/{gym}/objects/{id}/changes", get(object_changes))
         // create a release -- not used
-        .route("/:gym/objects/:id/releases", post(create_release))
+        .route("/{gym}/objects/{id}/releases", post(create_release))
         // lookup release -- not used
-        .route("/:gym/objects/:id/releases/:rev_id", get(lookup_release))
+        .route("/{gym}/objects/{id}/releases/{rev_id}", get(lookup_release))
         // lookup latest release -- not used
         .route(
-            "/:gym/objects/:id/releases/_latest",
+            "/{gym}/objects/{id}/releases/_latest",
             get(lookup_latest_release),
         )
         // feed (raw websocket) -- never used?
-        .route("/:gym/feed", get(feed))
+        .route("/{gym}/feed", get(feed))
 
     // type ChangeSecret
     //     = "secret"

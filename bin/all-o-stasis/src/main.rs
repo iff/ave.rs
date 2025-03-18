@@ -153,9 +153,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     };
     tracing::debug!("connected to firestore");
 
-    axum::Server::bind(&"0.0.0.0:8080".parse()?)
-        .serve(app(state).into_make_service())
-        .await?;
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await.unwrap();
+    axum::serve(listener, app(state)).await.unwrap();
     tracing::debug!("listening on http://localhost:8080");
 
     Ok(())
