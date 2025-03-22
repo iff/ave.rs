@@ -4,6 +4,7 @@ use firestore::{
     FirestoreDb, FirestoreListenEvent, FirestoreListenerTarget, FirestoreMemListenStateStorage,
     ParentPathBuilder,
 };
+use futures::{SinkExt, StreamExt};
 use otp::types::Patch;
 use std::net::SocketAddr;
 
@@ -18,32 +19,58 @@ pub(crate) async fn handle_socket(
     parent_path: ParentPathBuilder,
     state: AppState,
 ) {
-    // send a ping (unsupported by some browsers) just to kick things off and get a response
-    // TODO do we repeat this every 10 seconds?
-    if socket
-        .send(Message::Ping(Bytes::from_static(&[1, 2, 3])))
-        .await
-        .is_ok()
-    {
-        println!("Pinged {who}...");
-    } else {
-        println!("Could not send ping {who}!");
-        // no Error here since the only thing we can do is to close the connection.
-        // If we can not send messages, there is no way to salvage the statemachine anyway.
+    let (mut sender, mut receiver) = socket.split();
+
+    // ping the client every 10 seconds
+    let mut ping = tokio::spawn(async move {
+        loop {
+            if sender
+                // .send(Message::Text(format!("Server message {i} ...").into()))
+                // TODO what is in the ping message
+                .send(Message::Ping(Bytes::from_static(&[1])))
+                .await
+                .is_err()
+            {
+                // TODO signal abort
+                break;
+            }
+
+            tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+        }
+
         return;
-    }
+    });
+
+    // recieve object ids the client wants to subscibe
+    let mut objects = tokio::spawn(async move {
+        loop {
+            // termination handling?
+            while let Some(Ok(msg)) = receiver.next().await {
+                // add object id to channel
+            }
+        }
+    });
+
+    // tokio::select! {
+    //     rv_a = (&mut ping) => {
+    //         match rv_a {
+    //             Ok(a) => println!("{a} messages sent to {who}"),
+    //             Err(a) => println!("Error sending messages {a:?}")
+    //         }
+    //         return;
+    //     }
+    // }
 
     // TODO can we also stream all patches and filter later?
     // TODO is this setup from scratch for each client? so the ID we use here has to be unique!
-    const TARGET_ID: FirestoreListenerTarget = FirestoreListenerTarget::new(42_u32);
+    const LISTENER_ID: FirestoreListenerTarget = FirestoreListenerTarget::new(42_u32);
 
     // now start streaming patches using firestore listeners: https://github.com/abdolence/firestore-rs/blob/master/examples/listen-changes.rs
-    let listener = state
+    let mut listener = match state
         .db
         .create_listener(FirestoreMemListenStateStorage::new())
-        .await;
-
-    let mut listener = match listener {
+        .await
+    {
         Ok(l) => l,
         Err(..) => return,
     };
@@ -56,7 +83,7 @@ pub(crate) async fn handle_socket(
         // TODO add .filter? here
         .parent(parent_path)
         .listen()
-        .add_target(TARGET_ID, &mut listener);
+        .add_target(LISTENER_ID, &mut listener);
 
     let _ = listener
         .start(|event| async move {
@@ -68,22 +95,25 @@ pub(crate) async fn handle_socket(
                         let obj: Patch = FirestoreDb::deserialize_doc_to::<Patch>(doc)
                             .expect("Deserialized object");
                         println!("As object: {obj}");
+                        // TODO not sure if we have to deserialise or if we can
+                        // send the doc directly
+                        if socket.send(Message::Text(obj)).await.is_ok() {
+                            println!("handle_socket: sent path to client");
+                        } else {
+                            println!("handle_socket: failed to sent patch {obj}");
+                        }
                     }
                 }
                 _ => {
-                    println!("Received a listen response event to handle: {event:?}");
+                    println!(
+                        "handle_socket: received a listen response event to handle: {event:?}"
+                    );
                 }
             }
 
             Ok(())
         })
         .await;
-
-    // // Wait any input until we shutdown
-    // println!(
-    //     "Waiting any other changes. Try firebase console to change in {} now yourself. New doc created id: {:?}",
-    //     TEST_COLLECTION_NAME,new_doc.doc_id
-    // );
 
     let _ = listener.shutdown().await;
 }
