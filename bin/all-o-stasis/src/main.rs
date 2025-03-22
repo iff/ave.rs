@@ -1,6 +1,3 @@
-// https://github.com/abdolence/firestore-rs/blob/master/examples/caching_memory_collections.rs
-// https://github.com/abdolence/firestore-rs/blob/master/examples/nested_collections.rs
-
 use crate::routes::app;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
@@ -15,6 +12,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 mod routes;
 mod storage;
 mod types;
+mod ws;
 use otp::PatchError;
 
 pub fn config_env_var(name: &str) -> Result<String, String> {

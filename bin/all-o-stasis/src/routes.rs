@@ -1,8 +1,16 @@
 use axum::response::Json;
+use axum::routing::any;
 use axum::{
-    extract::Path, extract::State, routing::delete, routing::get, routing::patch, routing::post,
+    extract::ws::WebSocketUpgrade,
+    extract::{Path, State},
+    routing::delete,
+    routing::get,
+    routing::patch,
+    routing::post,
     Router,
 };
+use axum_extra::headers::UserAgent;
+use axum_extra::TypedHeader;
 use chrono::{DateTime, Utc};
 use firestore::{path_camel_case, FirestoreQueryDirection, FirestoreResult};
 use futures::stream::BoxStream;
@@ -11,10 +19,14 @@ use otp::types::ObjectType;
 use otp::types::{ObjId, Object, ObjectId, Operation, Patch, RevId, ROOT_PATH, ZERO_REV_ID};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::net::SocketAddr;
 use tower_http::cors::CorsLayer;
+
+use axum::extract::connect_info::ConnectInfo;
 
 use crate::storage::{apply_object_updates, lookup_object_};
 use crate::types::Boulder;
+use crate::ws::handle_socket;
 use crate::{AppError, AppState};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -325,11 +337,13 @@ fn api_routes() -> Router<AppState> {
         .route("/{gym}/objects/{id}", patch(patch_object))
         // lookup patch
         .route("/{gym}/objects/{id}/patches/{rev_id}", get(lookup_patch))
+        // changes (patches) on object (raw websocket)
+        .route("/{gym}/objects/{id}/changes", get(object_changes))
+        // feed (raw websocket) -- to subscribe to object updates (patches)
+        .route("/{gym}/feed", any(feed))
         // unused below
         // delete - not used
         .route("/{gym}/objects/{id}", delete(delete_object))
-        // changes on object (raw websocket) -- never used?
-        .route("/{gym}/objects/{id}/changes", get(object_changes))
         // create a release -- not used
         .route("/{gym}/objects/{id}/releases", post(create_release))
         // lookup release -- not used
@@ -339,8 +353,6 @@ fn api_routes() -> Router<AppState> {
             "/{gym}/objects/{id}/releases/_latest",
             get(lookup_latest_release),
         )
-        // feed (raw websocket) -- never used?
-        .route("/{gym}/feed", get(feed))
 
     // type ChangeSecret
     //     = "secret"
@@ -510,11 +522,25 @@ async fn object_changes(
 }
 
 async fn feed(
-    State(_state): State<AppState>,
-    Path(_gym): Path<String>,
-) -> Result<Json<Object>, AppError> {
-    // changes are streamed realtime to the client
-    Err(AppError::NotImplemented())
+    State(state): State<AppState>,
+    Path(gym): Path<String>,
+    ws: WebSocketUpgrade,
+    // user_agent: Option<TypedHeader<TypedHeader::headers::UserAgent>>,
+    user_agent: Option<TypedHeader<UserAgent>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    // ) -> impl IntoResponse {
+) -> Result<(), AppError> {
+    let user_agent = if let Some(TypedHeader(user_agent)) = user_agent {
+        user_agent.to_string()
+    } else {
+        String::from("Unknown browser")
+    };
+    println!("`{user_agent}` at {addr} connected.");
+    // finalize the upgrade process by returning upgrade callback.
+    // we can customize the callback by sending additional info such as address.
+    let parent_path = state.db.parent_path("gyms", gym)?;
+    let _ = ws.on_upgrade(move |socket| handle_socket(socket, addr, parent_path, state));
+    Ok(())
 }
 
 // XXX below not implemented in Avers

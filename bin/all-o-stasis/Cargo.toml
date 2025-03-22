@@ -5,7 +5,8 @@ edition = "2021"
 
 [dependencies]
 otp = { path = "../../avers-otp", version = "0.1.0" }
-axum = "0.8.1"
+axum = { version = "0.8.1", features = ["ws"] }
+axum-extra = { version = "0.10.0", features = ["typed-header"] }
 chrono = "0.4.38"
 firestore = "0.44"
 futures = "0.3"

@@ -1,6 +1,6 @@
 use crate::types::Boulder;
 use axum::Json;
-use firestore::{path, path_camel_case, FirestoreQueryDirection, FirestoreResult};
+use firestore::{path_camel_case, FirestoreQueryDirection, FirestoreResult};
 use futures::stream::BoxStream;
 use futures::TryStreamExt;
 use otp::types::{ObjId, Object, ObjectId, Operation, Patch, Pk, RevId, Snapshot};

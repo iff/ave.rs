@@ -170,6 +170,16 @@ impl Pk for Patch {
     }
 }
 
+impl fmt::Display for Patch {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Patch: {}@{} ops={}",
+            self.object_id, self.revision_id, self.operation
+        )
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Snapshot {
