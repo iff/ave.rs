@@ -1,4 +1,4 @@
-use axum::response::Json;
+use axum::response::{IntoResponse, Json};
 use axum::routing::any;
 use axum::{
     extract::ws::WebSocketUpgrade,
@@ -525,22 +525,19 @@ async fn feed(
     State(state): State<AppState>,
     Path(gym): Path<String>,
     ws: WebSocketUpgrade,
-    // user_agent: Option<TypedHeader<TypedHeader::headers::UserAgent>>,
     user_agent: Option<TypedHeader<UserAgent>>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    // ) -> impl IntoResponse {
-) -> Result<(), AppError> {
+) -> impl IntoResponse {
     let user_agent = if let Some(TypedHeader(user_agent)) = user_agent {
         user_agent.to_string()
     } else {
         String::from("Unknown browser")
     };
-    println!("`{user_agent}` at {addr} connected.");
+    tracing::debug!("`{user_agent}` at {addr} connected.");
     // finalize the upgrade process by returning upgrade callback.
-    // we can customize the callback by sending additional info such as address.
-    let parent_path = state.db.parent_path("gyms", gym)?;
-    let _ = ws.on_upgrade(move |socket| handle_socket(socket, addr, parent_path, state));
-    Ok(())
+    // TODO expect
+    let parent_path = state.db.parent_path("gyms", gym).expect("need a gym");
+    ws.on_upgrade(move |socket| handle_socket(socket, addr, state, parent_path))
 }
 
 // XXX below not implemented in Avers

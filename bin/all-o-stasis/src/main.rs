@@ -6,6 +6,7 @@ use axum::response::Response;
 use firestore::errors::FirestoreError;
 use firestore::FirestoreDb;
 use serde_json::json;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -130,8 +131,13 @@ enum OtError {
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     tracing_subscriber::registry()
         .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "all-o-stasis=debug,tower_http=debug,firestore=debug".into()),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                format!(
+                    "{}=debug,tower_http=debug,firestore=debug",
+                    env!("CARGO_CRATE_NAME")
+                )
+                .into()
+            }),
         )
         .with(tracing_subscriber::fmt::layer())
         .init();
@@ -152,7 +158,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     tracing::debug!("connected to firestore");
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await.unwrap();
-    axum::serve(listener, app(state)).await.unwrap();
+    axum::serve(
+        listener,
+        app(state).into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await
+    .unwrap();
     tracing::debug!("listening on http://localhost:8080");
 
     Ok(())
