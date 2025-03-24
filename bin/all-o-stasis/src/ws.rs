@@ -35,7 +35,7 @@ pub(crate) async fn handle_socket(
                 break;
             }
 
-            tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
         }
     });
 
@@ -46,13 +46,54 @@ pub(crate) async fn handle_socket(
             while let Some(Ok(msg)) = receiver.next().await {
                 // TODO add object id to channel
                 // message looks like: 169.254.169.126:40748 subscribing to object id ["+","FaI1zp28CfCswCX4I991"]
-                tracing::debug!(
-                    "{who} subscribing to object id {}",
-                    msg.into_text().expect("parsing object id")
-                )
+                // changeFeedSubscription(h, ["+", id]);
+                match msg {
+                    Message::Text(t) => {
+                        let json: Vec<String> =
+                            serde_json::from_str(&t).expect("json subscribe message");
+
+                        if let [op, obj_id] = &json[..] {
+                            if op == "+" {
+                                tracing::debug!("{who} subscribing to object id {obj_id}");
+                                // this panics, why?
+                                // tx.send(obj_id.clone()).unwrap();
+                            } else {
+                                tracing::debug!(">>> {who} send an unxepected op {op}");
+                            }
+                        } else {
+                            tracing::debug!(">>> {who} sent unexpected subscribe message {json:?}");
+                        }
+                    }
+                    Message::Binary(_) => tracing::debug!(">>> {who} send binary data!"),
+                    Message::Close(c) => {
+                        if let Some(cf) = c {
+                            tracing::debug!(
+                                ">>> {} sent close with code {} and reason `{}`",
+                                who,
+                                cf.code,
+                                cf.reason
+                            );
+                        } else {
+                            tracing::debug!(
+                                ">>> {who} somehow sent close message without CloseFrame"
+                            );
+                        }
+                        break;
+                    }
+                    Message::Pong(v) => {
+                        tracing::debug!(">>> {who} sent pong with {v:?}");
+                    }
+                    Message::Ping(v) => {
+                        tracing::debug!(">>> {who} sent pong with {v:?}");
+                    }
+                }
             }
         }
     });
+
+    // TODO thread to listen to objids
+    // let received = rx.recv().unwrap();
+    // and listen for doc changes
 
     // tokio::select! {
     //     rv_a = (&mut ping) => {
@@ -102,6 +143,7 @@ pub(crate) async fn handle_socket(
 
                         // FIXME cant move sender
                         let msg = Message::Text(serde_json::to_string(&obj).expect("").into());
+                        // put in channel?
                         // if sender.send(msg).await.is_ok() {
                         //     tracing::debug!("handle_socket: sent path to client");
                         // } else {
