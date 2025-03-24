@@ -7,6 +7,7 @@ use firestore::{
 use futures::{SinkExt, StreamExt};
 use otp::types::Patch;
 use std::net::SocketAddr;
+use std::sync::mpsc;
 
 //allows to split the websocket stream into separate TX and RX branches
 // use futures::{sink::SinkExt, stream::StreamExt};
@@ -20,6 +21,7 @@ pub(crate) async fn handle_socket(
     parent_path: ParentPathBuilder,
 ) {
     let (mut sender, mut receiver) = socket.split();
+    let (tx, rx) = mpsc::channel();
     // let sender_arc = Arc::new(Mutex::new(sender));
 
     // ping the client every 10 seconds
@@ -44,19 +46,17 @@ pub(crate) async fn handle_socket(
         loop {
             // termination handling?
             while let Some(Ok(msg)) = receiver.next().await {
-                // TODO add object id to channel
-                // message looks like: 169.254.169.126:40748 subscribing to object id ["+","FaI1zp28CfCswCX4I991"]
-                // changeFeedSubscription(h, ["+", id]);
                 match msg {
                     Message::Text(t) => {
+                        // message looks like: 169.254.169.126:40748 subscribing to object id ["+","FaI1zp28CfCswCX4I991"]
+                        // changeFeedSubscription(h, ["+", id]);
                         let json: Vec<String> =
                             serde_json::from_str(&t).expect("json subscribe message");
 
                         if let [op, obj_id] = &json[..] {
                             if op == "+" {
                                 tracing::debug!("{who} subscribing to object id {obj_id}");
-                                // this panics, why?
-                                // tx.send(obj_id.clone()).unwrap();
+                                tx.send(obj_id.clone() as String).unwrap();
                             } else {
                                 tracing::debug!(">>> {who} send an unxepected op {op}");
                             }
@@ -162,37 +162,3 @@ pub(crate) async fn handle_socket(
 
     let _ = listener.shutdown().await;
 }
-
-// helper to print contents of messages to stdout. Has special treatment for Close.
-// fn process_message(msg: Message, who: SocketAddr) -> ControlFlow<(), ()> {
-//     match msg {
-//         Message::Text(t) => {
-//             println!(">>> {who} sent str: {t:?}");
-//         }
-//         Message::Binary(d) => {
-//             println!(">>> {} sent {} bytes: {:?}", who, d.len(), d);
-//         }
-//         Message::Close(c) => {
-//             if let Some(cf) = c {
-//                 println!(
-//                     ">>> {} sent close with code {} and reason `{}`",
-//                     who, cf.code, cf.reason
-//                 );
-//             } else {
-//                 println!(">>> {who} somehow sent close message without CloseFrame");
-//             }
-//             return ControlFlow::Break(());
-//         }
-//
-//         Message::Pong(v) => {
-//             println!(">>> {who} sent pong with {v:?}");
-//         }
-//         // You should never need to manually handle Message::Ping, as axum's websocket library
-//         // will do so for you automagically by replying with Pong and copying the v according to
-//         // spec. But if you need the contents of the pings you can see them here.
-//         Message::Ping(v) => {
-//             println!(">>> {who} sent ping with {v:?}");
-//         }
-//     }
-//     ControlFlow::Continue(())
-// }
