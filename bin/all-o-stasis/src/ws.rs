@@ -5,39 +5,117 @@ use firestore::{
     ParentPathBuilder,
 };
 use futures::{SinkExt, StreamExt};
-use otp::types::Patch;
+use otp::types::{ObjectId, Patch};
 use std::net::SocketAddr;
-use std::sync::mpsc;
-
-//allows to split the websocket stream into separate TX and RX branches
-// use futures::{sink::SinkExt, stream::StreamExt};
+use tokio::sync::mpsc;
 
 use crate::AppState;
 
 pub(crate) async fn handle_socket(
-    mut socket: WebSocket,
+    socket: WebSocket,  // FIXME why not mut?
     who: SocketAddr,
     state: AppState,
     parent_path: ParentPathBuilder,
 ) {
     let (mut sender, mut receiver) = socket.split();
-    let (tx, rx) = mpsc::channel();
-    // let sender_arc = Arc::new(Mutex::new(sender));
+    let (tx, mut rx) = mpsc::channel(100);
+
+    let (send_tx, mut send_rx) = mpsc::channel(100);
+    let send_tx_patch = send_tx.clone();
+
+    // TODO is this setup from scratch for each client? so the ID we use here has to be unique?
+    const LISTENER_ID: FirestoreListenerTarget = FirestoreListenerTarget::new(42_u32);
+
+    // now start streaming patches using firestore listeners: https://github.com/abdolence/firestore-rs/blob/master/examples/listen-changes.rs
+    let mut listener = match state
+        .db
+        .create_listener(FirestoreMemListenStateStorage::new())
+        .await
+    {
+        Ok(l) => l,
+        Err(..) => return,
+    };
+
+    let _ = state
+        .db
+        .fluent()
+        .select()
+        // TODO do we really send out patches and not objects from the views?
+        // client needs to have an otp impl as well I guess?
+        .from("patches")
+        // TODO add .filter? eg. obj_id in recieved object ids to listen?
+        .parent(parent_path)
+        .listen()
+        .add_target(LISTENER_ID, &mut listener);
+
+    let _ = listener
+        .start(|event| async move {
+            match event {
+                FirestoreListenEvent::DocumentChange(ref doc_change) => {
+                    tracing::debug!("document changed: {doc_change:?}");
+
+                    if let Some(doc) = &doc_change.document {
+                        // here we need the object id so we need to parse
+                        let obj: Patch = FirestoreDb::deserialize_doc_to::<Patch>(doc)
+                            .expect("deserialized object");
+                        tracing::debug!("sending patch {}", obj);
+
+                        let msg = Message::Text(serde_json::to_string(&obj).expect("").into());
+
+                        // put in channel?
+                        // send_tx_patch.send(msg).await.unwrap();
+                        // patches_tx.send(obj).unwrap();
+
+                        // let sent = match msender.try_lock() {
+                        //     Ok(s) => s.send(msg).await.is_ok(),
+                        //     Err(_) => false,
+                        // };
+
+                        // if sender.send(msg).await.is_ok() {
+                        //     tracing::debug!("handle_socket: sent path to client");
+                        // } else {
+                        //     tracing::debug!("handle_socket: failed to sent patch {obj}");
+                        // }
+                    }
+                }
+                _ => {
+                    tracing::debug!("received a listen response event to handle: {event:?}");
+                }
+            }
+
+            Ok(())
+        })
+        .await;
+
+    // TODO here we need to send out patches somehow
+    let _patches = tokio::spawn(async move {
+        let mut objs: Vec<String> = Vec::new();
+
+        loop {
+            if let Ok(obj_id) = rx.try_recv() {
+                objs.push(obj_id)
+            };
+        }
+    });
 
     // ping the client every 10 seconds
     let _ping = tokio::spawn(async move {
         loop {
-            // TODO what is in the ping message
-            if sender
+            send_tx
                 .send(Message::Ping(Bytes::from_static(&[1])))
                 .await
-                .is_err()
-            {
+                .unwrap();
+            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+        }
+    });
+
+    // keep on sending out what we get on the send channel
+    let _ws_send = tokio::spawn(async move {
+        while let Ok(msg) = send_rx.try_recv() {
+            if sender.send(msg).await.is_err() {
                 // TODO signal abort
                 break;
             }
-
-            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
         }
     });
 
@@ -56,7 +134,7 @@ pub(crate) async fn handle_socket(
                         if let [op, obj_id] = &json[..] {
                             if op == "+" {
                                 tracing::debug!("{who} subscribing to object id {obj_id}");
-                                tx.send(obj_id.clone() as String).unwrap();
+                                tx.send(obj_id.clone() as String).await.unwrap();
                             } else {
                                 tracing::debug!(">>> {who} send an unxepected op {op}");
                             }
@@ -91,10 +169,6 @@ pub(crate) async fn handle_socket(
         }
     });
 
-    // TODO thread to listen to objids
-    // let received = rx.recv().unwrap();
-    // and listen for doc changes
-
     // tokio::select! {
     //     rv_a = (&mut ping) => {
     //         match rv_a {
@@ -104,61 +178,6 @@ pub(crate) async fn handle_socket(
     //         return;
     //     }
     // }
-
-    // TODO can we also stream all patches and filter later?
-    // TODO is this setup from scratch for each client? so the ID we use here has to be unique!
-    const LISTENER_ID: FirestoreListenerTarget = FirestoreListenerTarget::new(42_u32);
-
-    // now start streaming patches using firestore listeners: https://github.com/abdolence/firestore-rs/blob/master/examples/listen-changes.rs
-    let mut listener = match state
-        .db
-        .create_listener(FirestoreMemListenStateStorage::new())
-        .await
-    {
-        Ok(l) => l,
-        Err(..) => return,
-    };
-
-    let _ = state
-        .db
-        .fluent()
-        .select()
-        .from("patches")
-        // TODO add .filter? here
-        .parent(parent_path)
-        .listen()
-        .add_target(LISTENER_ID, &mut listener);
-
-    let _ = listener
-        .start(|event| async move {
-            match event {
-                FirestoreListenEvent::DocumentChange(ref doc_change) => {
-                    tracing::debug!("document changed: {doc_change:?}");
-
-                    if let Some(doc) = &doc_change.document {
-                        // here we need the object id so we need to parse
-                        let obj: Patch = FirestoreDb::deserialize_doc_to::<Patch>(doc)
-                            .expect("deserialized object");
-                        tracing::debug!("sending patch {}", obj);
-
-                        // FIXME cant move sender
-                        let msg = Message::Text(serde_json::to_string(&obj).expect("").into());
-                        // put in channel?
-                        // if sender.send(msg).await.is_ok() {
-                        //     tracing::debug!("handle_socket: sent path to client");
-                        // } else {
-                        //     tracing::debug!("handle_socket: failed to sent patch {obj}");
-                        // }
-                    }
-                }
-                _ => {
-                    tracing::debug!("received a listen response event to handle: {event:?}");
-                }
-            }
-
-            Ok(())
-        })
-        .await;
 
     let _ = listener.shutdown().await;
 }
