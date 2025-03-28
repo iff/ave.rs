@@ -1,8 +1,8 @@
 use axum::body::Bytes;
 use axum::extract::ws::{Message, WebSocket};
 use firestore::{
-    FirestoreDb, FirestoreListenEvent, FirestoreListenerTarget, FirestoreMemListenStateStorage,
-    ParentPathBuilder,
+    FirestoreDb, FirestoreListenEvent, FirestoreListener, FirestoreListenerTarget,
+    FirestoreMemListenStateStorage, ParentPathBuilder,
 };
 use futures::{SinkExt, StreamExt};
 use otp::types::{ObjectId, Patch};
@@ -11,91 +11,101 @@ use tokio::sync::mpsc;
 
 use crate::AppState;
 
-pub(crate) async fn handle_socket(
-    socket: WebSocket,  // FIXME why not mut?
-    who: SocketAddr,
+async fn patch_listener(
     state: AppState,
     parent_path: ParentPathBuilder,
-) {
-    let (mut sender, mut receiver) = socket.split();
-    let (tx, mut rx) = mpsc::channel(100);
-
-    let (send_tx, mut send_rx) = mpsc::channel(100);
-    let send_tx_patch = send_tx.clone();
-
+) -> Option<FirestoreListener<FirestoreDb, FirestoreMemListenStateStorage>> {
     // TODO is this setup from scratch for each client? so the ID we use here has to be unique?
     const LISTENER_ID: FirestoreListenerTarget = FirestoreListenerTarget::new(42_u32);
 
     // now start streaming patches using firestore listeners: https://github.com/abdolence/firestore-rs/blob/master/examples/listen-changes.rs
+    // do we have enough mem?
     let mut listener = match state
         .db
         .create_listener(FirestoreMemListenStateStorage::new())
         .await
     {
         Ok(l) => l,
-        Err(..) => return,
+        Err(..) => return None,
     };
 
     let _ = state
         .db
         .fluent()
         .select()
-        // TODO do we really send out patches and not objects from the views?
-        // client needs to have an otp impl as well I guess?
         .from("patches")
-        // TODO add .filter? eg. obj_id in recieved object ids to listen?
         .parent(parent_path)
         .listen()
         .add_target(LISTENER_ID, &mut listener);
 
-    let _ = listener
-        .start(|event| async move {
-            match event {
-                FirestoreListenEvent::DocumentChange(ref doc_change) => {
-                    tracing::debug!("document changed: {doc_change:?}");
+    Some(listener)
+}
 
-                    if let Some(doc) = &doc_change.document {
-                        // here we need the object id so we need to parse
-                        let obj: Patch = FirestoreDb::deserialize_doc_to::<Patch>(doc)
-                            .expect("deserialized object");
-                        tracing::debug!("sending patch {}", obj);
+pub(crate) async fn handle_socket(
+    socket: WebSocket, // FIXME why not mut?
+    who: SocketAddr,
+    state: AppState,
+    parent_path: ParentPathBuilder,
+) {
+    let (mut sender, mut receiver) = socket.split();
 
-                        let msg = Message::Text(serde_json::to_string(&obj).expect("").into());
+    // TODO use unbounded channel?
+    // channel for subscriptions
+    let (tx, mut rx) = mpsc::channel(100);
 
-                        // put in channel?
-                        // send_tx_patch.send(msg).await.unwrap();
-                        // patches_tx.send(obj).unwrap();
+    // TODO use unbounded channel?
+    // channel for messages to be sent back
+    let (send_tx, mut send_rx) = mpsc::channel(100);
 
-                        // let sent = match msender.try_lock() {
-                        //     Ok(s) => s.send(msg).await.is_ok(),
-                        //     Err(_) => false,
-                        // };
-
-                        // if sender.send(msg).await.is_ok() {
-                        //     tracing::debug!("handle_socket: sent path to client");
-                        // } else {
-                        //     tracing::debug!("handle_socket: failed to sent patch {obj}");
-                        // }
-                    }
-                }
-                _ => {
-                    tracing::debug!("received a listen response event to handle: {event:?}");
-                }
-            }
-
-            Ok(())
-        })
-        .await;
+    let mut listener = match patch_listener(state, parent_path).await {
+        Some(listener) => listener,
+        None => return,
+    };
 
     // TODO here we need to send out patches somehow
+    let send_tx_patch = send_tx.clone();
     let _patches = tokio::spawn(async move {
         let mut objs: Vec<String> = Vec::new();
+
+        let _ = listener
+            .start(|event| async move {
+                match event {
+                    FirestoreListenEvent::DocumentChange(ref doc_change) => {
+                        tracing::debug!("document changed: {doc_change:?}");
+
+                        if let Some(doc) = &doc_change.document {
+                            // here we need the object id so we need to parse
+                            let obj: Patch = FirestoreDb::deserialize_doc_to::<Patch>(doc)
+                                .expect("deserialized object");
+                            tracing::debug!("sending patch {}", obj);
+
+                            // TODO only if object id is in subs
+
+                            let msg = Message::Text(serde_json::to_string(&obj).expect("").into());
+                            if send_tx_patch.send(msg).await.is_ok() {
+                                tracing::debug!("handle_socket: sent patch to client");
+                            } else {
+                                tracing::debug!("handle_socket: failed to sent patch {obj}");
+                            }
+                        }
+                    }
+                    _ => {
+                        tracing::debug!("received a listen response event to handle: {event:?}");
+                    }
+                }
+
+                Ok(())
+            })
+            .await;
 
         loop {
             if let Ok(obj_id) = rx.try_recv() {
                 objs.push(obj_id)
             };
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
         }
+
+        // let _ = listener.shutdown().await;
     });
 
     // ping the client every 10 seconds
@@ -178,6 +188,4 @@ pub(crate) async fn handle_socket(
     //         return;
     //     }
     // }
-
-    let _ = listener.shutdown().await;
 }
