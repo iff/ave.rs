@@ -68,33 +68,39 @@ pub(crate) async fn handle_socket(
         let mut objs: Vec<String> = Vec::new();
 
         let _ = listener
-            .start(|event| async move {
-                match event {
-                    FirestoreListenEvent::DocumentChange(ref doc_change) => {
-                        tracing::debug!("document changed: {doc_change:?}");
+            .start(move |event| {
+                let send_tx_patch_ = send_tx_patch.clone();
+                async move {
+                    match event {
+                        FirestoreListenEvent::DocumentChange(ref doc_change) => {
+                            tracing::debug!("document changed: {doc_change:?}");
 
-                        if let Some(doc) = &doc_change.document {
-                            // here we need the object id so we need to parse
-                            let obj: Patch = FirestoreDb::deserialize_doc_to::<Patch>(doc)
-                                .expect("deserialized object");
-                            tracing::debug!("sending patch {}", obj);
+                            if let Some(doc) = &doc_change.document {
+                                // here we need the object id so we need to parse
+                                let obj: Patch = FirestoreDb::deserialize_doc_to::<Patch>(doc)
+                                    .expect("deserialized object");
+                                tracing::debug!("sending patch {}", obj);
 
-                            // TODO only if object id is in subs
+                                // TODO only if object id is in subs
 
-                            let msg = Message::Text(serde_json::to_string(&obj).expect("").into());
-                            if send_tx_patch.send(msg).await.is_ok() {
-                                tracing::debug!("handle_socket: sent patch to client");
-                            } else {
-                                tracing::debug!("handle_socket: failed to sent patch {obj}");
+                                let msg =
+                                    Message::Text(serde_json::to_string(&obj).expect("").into());
+                                if send_tx_patch_.send(msg).await.is_ok() {
+                                    tracing::debug!("handle_socket: sent patch to client");
+                                } else {
+                                    tracing::debug!("handle_socket: failed to sent patch {obj}");
+                                }
                             }
                         }
+                        _ => {
+                            tracing::debug!(
+                                "received a listen response event to handle: {event:?}"
+                            );
+                        }
                     }
-                    _ => {
-                        tracing::debug!("received a listen response event to handle: {event:?}");
-                    }
-                }
 
-                Ok(())
+                    Ok(())
+                }
             })
             .await;
 
