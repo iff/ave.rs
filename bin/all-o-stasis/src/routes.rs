@@ -1,3 +1,4 @@
+use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json};
 use axum::routing::any;
 use axum::{
@@ -9,9 +10,12 @@ use axum::{
     routing::post,
     Router,
 };
+use axum_extra::extract::cookie::Cookie;
+use axum_extra::extract::CookieJar;
 use axum_extra::headers::UserAgent;
 use axum_extra::TypedHeader;
 use chrono::{DateTime, Utc};
+use cookie::time::Duration;
 use firestore::{path_camel_case, FirestoreQueryDirection, FirestoreResult};
 use futures::stream::BoxStream;
 use futures::TryStreamExt;
@@ -63,6 +67,19 @@ pub(crate) struct LookupObjectResponse {
     pub content: Value,
 }
 
+// #[derive(Serialize, Deserialize, Clone)]
+// struct LookupSessionBody {
+//     #[serde(rename = "type")]
+//     session_id: String,
+// }
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct LookupSessionResponse {
+    session_id: String,
+    session_object_id: ObjId,
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct CreateObjectResponse {
@@ -98,6 +115,16 @@ impl PatchObjectResponse {
             resulting_patches,
         }
     }
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct Session {
+    session_id: String,
+    session_obj_id: ObjId,
+    #[serde(alias = "_firestore_created")]
+    session_created_at: Option<DateTime<Utc>>,
+    session_last_accessed_at: DateTime<Utc>,
 }
 
 /* avers.js uses:
@@ -329,6 +356,8 @@ fn api_routes() -> Router<AppState> {
     // type Cacheable a = Headers '[Header "Cache-Control" Text, Header "ETag" Text] a
 
     Router::new()
+        // lookup session
+        .route("/{gym}/session", get(lookup_session))
         // create
         .route("/{gym}/objects", post(new_object))
         // lookup (cachable)
@@ -393,6 +422,51 @@ fn api_routes() -> Router<AppState> {
     //     :> Get '[OctetStream] (Headers '[Header "Content-Type" Text] BlobContent)
 }
 
+async fn lookup_session(
+    State(state): State<AppState>,
+    Path(gym): Path<String>,
+    // Json(payload): axum::extract::Json<LookupSessionBody>,
+    jar: CookieJar,
+) -> Result<impl IntoResponse, AppError> {
+    // ) -> Result<(CookieJar, Json<LookupSessionResponse>), AppError> {
+    // session <- reqAvers aversH $ lookupSession sId
+    //
+    // setCookie <- mkSetCookie sId
+    // pure $ addHeader setCookie $ LookupSessionResponse
+    //     { lsrSessionId = sessionId session
+    //     , lsrSessionObjId = sessionObjId session
+    //     }
+
+    // TODO where to get this from?
+    // let session_id = jar.get("session").ok_or(Err(StatusCode::UNAUTHORIZED))?;
+    let session_id = String::from("some session");
+    let parent_path = state.db.parent_path("gyms", gym)?;
+    let session: Session = state
+        .db
+        .fluent()
+        .select()
+        .by_id_in("sessions")
+        .parent(&parent_path)
+        .obj()
+        .one(&session_id)
+        .await?
+        .ok_or(AppError::Query())?;
+
+    let cookie = Cookie::build(("session", session_id.clone()))
+        // .domain("api?")
+        .path("/")
+        .max_age(Duration::weeks(52))
+        .secure(true)
+        .http_only(true);
+
+    Ok((
+        jar.add(cookie),
+        Json(LookupSessionResponse {
+            session_id: session.session_id,
+            session_object_id: session.session_obj_id,
+        }),
+    ))
+}
 async fn new_object(
     State(state): State<AppState>,
     Path(gym): Path<String>,
