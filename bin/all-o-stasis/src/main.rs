@@ -39,6 +39,8 @@ enum AppError {
     NotImplemented(),
     // unable to parse json content into type
     ParseError(String),
+    // No session found
+    NoSession(),
 }
 
 impl From<FirestoreError> for AppError {
@@ -106,6 +108,7 @@ impl IntoResponse for AppError {
             AppError::NotImplemented() => {
                 (StatusCode::NOT_IMPLEMENTED, "not implemented".to_string())
             }
+            AppError::NoSession() => (StatusCode::NOT_FOUND, "session not found".to_string()),
         };
 
         let body = Json(json!({

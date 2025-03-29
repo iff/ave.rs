@@ -1,4 +1,3 @@
-use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json};
 use axum::routing::any;
 use axum::{
@@ -76,8 +75,8 @@ pub(crate) struct LookupObjectResponse {
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct LookupSessionResponse {
-    session_id: String,
-    session_object_id: ObjId,
+    id: String,
+    obj_id: ObjId,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -428,15 +427,6 @@ async fn lookup_session(
     // Json(payload): axum::extract::Json<LookupSessionBody>,
     jar: CookieJar,
 ) -> Result<impl IntoResponse, AppError> {
-    // ) -> Result<(CookieJar, Json<LookupSessionResponse>), AppError> {
-    // session <- reqAvers aversH $ lookupSession sId
-    //
-    // setCookie <- mkSetCookie sId
-    // pure $ addHeader setCookie $ LookupSessionResponse
-    //     { lsrSessionId = sessionId session
-    //     , lsrSessionObjId = sessionObjId session
-    //     }
-
     // TODO where to get this from?
     // let session_id = jar.get("session").ok_or(Err(StatusCode::UNAUTHORIZED))?;
     let session_id = String::from("some session");
@@ -450,20 +440,20 @@ async fn lookup_session(
         .obj()
         .one(&session_id)
         .await?
-        .ok_or(AppError::Query())?;
+        .ok_or(AppError::NoSession())?;
 
     let cookie = Cookie::build(("session", session_id.clone()))
         // .domain("api?")
         .path("/")
         .max_age(Duration::weeks(52))
-        .secure(true)
+        .secure(true) // TODO not sure about this
         .http_only(true);
 
     Ok((
         jar.add(cookie),
         Json(LookupSessionResponse {
-            session_id: session.session_id,
-            session_object_id: session.session_obj_id,
+            id: session.session_id,
+            obj_id: session.session_obj_id,
         }),
     ))
 }
