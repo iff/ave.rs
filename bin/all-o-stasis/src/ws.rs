@@ -79,16 +79,16 @@ pub(crate) async fn handle_socket(
                                 // here we need the object id so we need to parse
                                 let obj: Patch = FirestoreDb::deserialize_doc_to::<Patch>(doc)
                                     .expect("deserialized object");
-                                tracing::debug!("sending patch {}", obj);
+                                // tracing::debug!("sending patch {}", obj);
 
                                 // TODO only if object id is in subs
 
                                 let msg =
                                     Message::Text(serde_json::to_string(&obj).expect("").into());
-                                if send_tx_patch_.send(msg).await.is_ok() {
-                                    tracing::debug!("handle_socket: sent patch to client");
-                                } else {
-                                    tracing::debug!("handle_socket: failed to sent patch {obj}");
+                                let ps = send_tx_patch_.send(msg).await;
+                                if let Err(err) = ps {
+                                    tracing::debug!("error: failed to sent patch with {err}");
+                                    // TODO break
                                 }
                             }
                         }
@@ -117,10 +117,11 @@ pub(crate) async fn handle_socket(
     // ping the client every 10 seconds
     let _ping = tokio::spawn(async move {
         loop {
-            send_tx
-                .send(Message::Ping(Bytes::from_static(&[1])))
-                .await
-                .unwrap();
+            let sp = send_tx.send(Message::Ping(Bytes::from_static(&[1]))).await;
+            if let Err(err) = sp {
+                tracing::debug!("error: failed to send ping with {err}");
+                break;
+            }
             tokio::time::sleep(std::time::Duration::from_secs(10)).await;
         }
     });
@@ -128,7 +129,9 @@ pub(crate) async fn handle_socket(
     // keep on sending out what we get on the send channel
     let _ws_send = tokio::spawn(async move {
         while let Ok(msg) = send_rx.try_recv() {
-            if sender.send(msg).await.is_err() {
+            let s = sender.send(msg).await;
+            if let Err(err) = s {
+                tracing::debug!("error: failed send message over websocket with {err}");
                 // TODO signal abort
                 break;
             }
@@ -150,7 +153,11 @@ pub(crate) async fn handle_socket(
                         if let [op, obj_id] = &json[..] {
                             if op == "+" {
                                 tracing::debug!("{who} subscribing to object id {obj_id}");
-                                tx.send(obj_id.clone() as String).await.unwrap();
+                                let ps = tx.send(obj_id.clone() as String).await;
+                                if let Err(err) = ps {
+                                    tracing::debug!("failed to send subscribe: {}", err);
+                                    break;
+                                }
                             } else {
                                 tracing::debug!(">>> {who} send an unxepected op {op}");
                             }
