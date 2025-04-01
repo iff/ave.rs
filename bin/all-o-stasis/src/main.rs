@@ -26,6 +26,7 @@ struct AppState {
 }
 
 // The kinds of errors we can hit in our application.
+#[derive(Debug)]
 enum AppError {
     // Ot operations fail
     // TODO decide what OT errors we expose and handle those here

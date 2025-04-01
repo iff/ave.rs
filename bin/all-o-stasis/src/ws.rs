@@ -83,13 +83,14 @@ pub(crate) async fn handle_socket(
 
                                 // TODO only if object id is in subs
 
-                                let msg =
-                                    Message::Text(serde_json::to_string(&obj).expect("").into());
-                                let ps = send_tx_patch_.send(msg).await;
-                                if let Err(err) = ps {
-                                    tracing::debug!("error: failed to sent patch with {err}");
-                                    // TODO break
-                                }
+                                // let msg = Message::Text(
+                                //     serde_json::to_string(&obj).expect("encode message").into(),
+                                // );
+                                // let ps = send_tx_patch_.send(msg).await;
+                                // if let Err(err) = ps {
+                                //     tracing::debug!("error: failed to sent patch with {err}");
+                                //     // TODO break
+                                // }
                             }
                         }
                         _ => {

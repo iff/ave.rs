@@ -204,6 +204,16 @@ impl Pk for Snapshot {
     }
 }
 
+impl fmt::Display for Snapshot {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Snapshot: {}@{} content={}",
+            self.object_id, self.revision_id, self.content
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

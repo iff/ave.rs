@@ -36,6 +36,11 @@ async fn store_patch(
         .execute()
         .await?;
 
+    match p.clone() {
+        Some(p) => tracing::debug!("storing: {p}"),
+        None => tracing::debug!("failed to store: {patch}"),
+    }
+
     Ok(p)
 }
 
@@ -55,6 +60,11 @@ async fn store_snapshot(
         .object(snapshot)
         .execute()
         .await?;
+
+    match p.clone() {
+        Some(p) => tracing::debug!("storing: {p}"),
+        None => tracing::debug!("failed to store: {snapshot}"),
+    }
 
     Ok(p)
 }
@@ -104,6 +114,7 @@ pub(crate) async fn lookup_object_(
         .await?
         .ok_or(AppError::Query())?;
 
+    tracing::debug!("looking up last snapshot for obj={id}");
     let snapshot = lookup_latest_snapshot(state, gym, &ObjectId::Base(id.clone())).await?;
     let created_at = obj.created_at.ok_or(AppError::Query())?;
 
@@ -150,17 +161,19 @@ async fn lookup_latest_snapshot(
         .await?;
 
     let snapshots: Vec<Snapshot> = object_stream.try_collect().await?;
-    // TODO handle non-existing snapshot here as well?
     let latest_snapshot: Snapshot = match snapshots.first() {
-        Some(snapshot) => snapshot.clone(),
+        Some(snapshot) => {
+            tracing::debug!("found {snapshot}");
+            snapshot.clone()
+        }
         None => {
+            tracing::debug!("no snapshot found");
             // XXX we could already create the first snapshot on object creation?
             let snapshot = Snapshot::new(obj_id.clone());
             store_snapshot(state, gym, &snapshot).await?;
             snapshot
         }
     };
-    // let latest_snapshot = lookup_snapshot_between(state, gym, obj_id, 0, high?)
 
     // get all patches which we need to apply on top of the snapshot to
     // arrive at the desired revision
@@ -204,12 +217,9 @@ async fn lookup_snapshot_between(
         .await?;
 
     let snapshots: Vec<Snapshot> = object_stream.try_collect().await?;
-    println!(
-        "lookup_snapshot_between: low({}) and high({}) found {} snapshots (obj: {})",
-        low,
-        high,
+    tracing::debug!(
+        "snapshots ({low} <= s <= {high}): {} snapshots, obj={obj_id}",
         snapshots.len(),
-        obj_id
     );
     match snapshots.first() {
         Some(snapshot) => Ok(snapshot.clone()),
@@ -273,36 +283,27 @@ async fn patches_after_revision(
         .await?;
 
     let patches: Vec<Patch> = object_stream.try_collect().await?;
-    println!(
-        "patches_after_rev: obj = {}, rev = {}, found {} patches",
-        obj_id,
-        rev_id,
+    tracing::debug!(
+        "patches after rev ({rev_id}): {}, obj = {obj_id}",
         patches.len()
     );
     Ok(patches)
 }
 
 fn apply_patch_to_snapshot(snapshot: &Snapshot, patch: &Patch) -> Result<Snapshot, AppError> {
-    println!(
-        "apply_patch_to_snapshot: snapshot {}, patch (rev {}) {}",
-        snapshot.content, patch.revision_id, patch.operation
-    );
-    Ok(Snapshot {
+    let s = Snapshot {
         object_id: snapshot.object_id.clone(),
         revision_id: patch.revision_id,
         content: apply(snapshot.content.clone(), patch.operation.clone())?,
-    })
+    };
+    tracing::debug!("applying patch={patch} to {snapshot} results in snapshot={s}");
+    Ok(s)
 }
 
 fn apply_patches(snapshot: &Snapshot, patches: &Vec<Patch>) -> Result<Snapshot, AppError> {
     let mut s = snapshot.clone();
     for patch in patches {
-        println!(
-            "apply_patches: before snapshot content: {}, {}",
-            s.content, patch.operation
-        );
         s = apply_patch_to_snapshot(&s, patch)?;
-        println!("apply_patches: after snapshot content: {}", s.content);
     }
     // Ok(patches.iter().fold(snapshot.clone(), |snapshot, patch| {
     //     apply_patch_to_snapshot(&snapshot, &patch)?
@@ -325,11 +326,9 @@ pub async fn apply_object_updates(
 
     // the 'Snapshot' against which the submitted operations were created
     // this only contains patches until base_snapshot.revision_id
+    tracing::debug!("looking up base_snapshot@rev{rev_id}");
     let base_snapshot = lookup_snapshot(state, gym, &obj_id, rev_id).await?;
-    println!(
-        "apply_object_updates: base snapshot content {}",
-        base_snapshot.content
-    );
+    tracing::debug!("base_snapshot={base_snapshot}");
 
     // if there are any patches which the client doesn't know about we need
     // to let her know
@@ -418,16 +417,15 @@ async fn save_operation(
     validate: bool,
 ) -> Result<Option<Patch>, AppError> {
     let Some(new_op) = rebase(base_content, op, previous_patches) else {
+        tracing::debug!("error: rebase failed!");
         return Ok(None);
     };
 
-    println!(
-        "save_operation: snapshot {}, op {}",
-        snapshot.content, new_op
-    );
+    tracing::debug!("save_operation: {snapshot}, op={new_op}");
     // FIXME clone?
     let new_content = apply(snapshot.content.clone(), new_op.clone())?;
     if new_content == snapshot.content {
+        tracing::debug!("skipping save operation: content did not change");
         return Ok(None);
     }
     if validate {

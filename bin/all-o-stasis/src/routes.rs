@@ -326,8 +326,6 @@ async fn signup(
 }
 
 fn api_routes() -> Router<AppState> {
-    // TODO for now I will not support blobs and no signup creds?
-
     //  General structure of endpoint definitions
     //
     //  The definition of an endpoint would be too much to put on a single line,
@@ -355,8 +353,15 @@ fn api_routes() -> Router<AppState> {
     // type Cacheable a = Headers '[Header "Cache-Control" Text, Header "ETag" Text] a
 
     Router::new()
+        // change secret -- TODO needed? to set an empty secret?
+        // .route("/{gym}/secret", post(change_secret))
+        // create session
+        // .route("/{gym}/session", post(create_session))
         // lookup session
         .route("/{gym}/session", get(lookup_session))
+        // delete session
+        .route("/{gym}/session", delete(delete_session))
+        //
         // create
         .route("/{gym}/objects", post(new_object))
         // lookup (cachable)
@@ -419,6 +424,22 @@ fn api_routes() -> Router<AppState> {
     //     = "blobs" :> Capture "blobId" BlobId :> "content"
     //     :> Credentials
     //     :> Get '[OctetStream] (Headers '[Header "Content-Type" Text] BlobContent)
+}
+
+// async fn create_session(
+//     State(state): State<AppState>,
+//     Path(gym): Path<String>,
+//     Json(payload): axum::extract::Json<CreateSessionBody>,
+//     jar: CookieJar,
+// ) -> Result<impl IntoResponse, AppError> {
+//     Err(AppError::NoSession())
+// }
+
+async fn delete_session(
+    State(state): State<AppState>,
+    Path(gym): Path<String>,
+) -> Result<(), AppError> {
+    Err(AppError::NoSession())
 }
 
 async fn lookup_session(
@@ -531,7 +552,11 @@ async fn patch_object(
     // TODO where do we get that? ah that comes from the credentials
     let created_by = String::from("some id");
 
-    println!("patch_object: rev id = {}", payload.revision_id);
+    tracing::debug!(
+        "patch object ({id}@{}): {} operations",
+        payload.revision_id,
+        payload.operations.len()
+    );
     let result = apply_object_updates(
         &state,
         &gym,
