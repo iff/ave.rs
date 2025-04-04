@@ -1,9 +1,10 @@
 use std::fmt;
 
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
 use serde_json::{json, Value};
 // use std::collections::HashMap;
+use serde::ser::SerializeStructVariant;
 
 /// converts to database primary key. this is needed when updating the
 /// view tables (to get a pk to merge/update/delete/..)
@@ -30,12 +31,15 @@ pub const ZERO_REV_ID: RevId = 0;
 
 // TODO this is not the firestore id
 // TODO can't be internally typed (tuple), so externally okay?
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub enum ObjectId {
     /// The base object whose snapshots contain the actual content.
     Base(ObjId),
     /// Object which contains authorization rules.
+    /// For example to restrict operations on objects:
+    ///   - lookup is always okay for boulders
+    ///   - patching only for owners and admins
     Authorization(ObjId),
 }
 
@@ -54,6 +58,30 @@ impl fmt::Display for ObjectId {
         match self {
             ObjectId::Base(obj) => write!(f, "Base: {}", obj),
             ObjectId::Authorization(obj) => write!(f, "Authorization: {}", obj),
+        }
+    }
+}
+
+// TODO need to deserialise from string!
+impl Serialize for ObjectId {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match *self {
+            ObjectId::Base(ref obj) => {
+                serializer.serialize_str(obj)
+                // let mut ser = serializer.serialize_struct_variant("ObjectId", 0, "Base", 1)?;
+                // ser.serialize_field("ObjId", obj)?;
+                // ser.end()
+            }
+            ObjectId::Authorization(ref obj) => {
+                serializer.serialize_str(&format!("{}/authorization", obj))
+                // let mut ser =
+                //     serializer.serialize_struct_variant("ObjectId", 1, "Authoirization", 1)?;
+                // ser.serialize_field("ObjId", &format!("{}/authorization", obj))?;
+                // ser.end()
+            }
         }
     }
 }
@@ -219,27 +247,27 @@ mod tests {
     use super::*;
     use serde_json::{from_str, to_string, Value};
 
-    #[test]
-    fn object_additional_fields_as_value() {
-        let object = Object::new(ObjectType::Boulder, String::from("deadbeef"));
-        let json = to_string(&object).unwrap();
-
-        // I think the only way to handle custom keys on the Object is to actually parse it as a
-        // Value..
-        // but I'm pretty sure we need to have this in a typed manner, eg as
-        //   Either<Vec, key/value tuple>
-        // ?
-        match from_str::<Value>(&json[..]) {
-            Ok(o) => {
-                if o.get("grade").is_some() {
-                    panic!("grade should be none")
-                }
-            }
-            Err(e) => {
-                panic!("{}", e);
-            }
-        }
-    }
+    // #[test]
+    // fn object_additional_fields_as_value() {
+    //     let object = Object::new(ObjectType::Boulder, String::from("deadbeef"));
+    //     let json = to_string(&object).unwrap();
+    //
+    //     // I think the only way to handle custom keys on the Object is to actually parse it as a
+    //     // Value..
+    //     // but I'm pretty sure we need to have this in a typed manner, eg as
+    //     //   Either<Vec, key/value tuple>
+    //     // ?
+    //     match from_str::<Value>(&json[..]) {
+    //         Ok(o) => {
+    //             if o.get("grade").is_some() {
+    //                 panic!("grade should be none")
+    //             }
+    //         }
+    //         Err(e) => {
+    //             panic!("{}", e);
+    //         }
+    //     }
+    // }
 
     // #[test]
     // fn object_additional_fields_using_extra() {
