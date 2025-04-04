@@ -1,24 +1,14 @@
 use std::fmt;
 
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-// use std::collections::HashMap;
-use serde::ser::SerializeStructVariant;
-
-/// converts to database primary key. this is needed when updating the
-/// view tables (to get a pk to merge/update/delete/..)
-pub trait Pk {
-    fn to_pk(&self) -> String;
-}
 
 pub type Path = String;
 
 // This path refers to the root of an object. It is only used in 'Set'
 // operations.
 pub const ROOT_PATH: &str = "";
-
-pub type ObjId = String;
 
 // The root object id is used for object created internally or when there
 // is no applicable creator.
@@ -29,70 +19,7 @@ pub type RevId = i64;
 // The 'RevId' which is used for the initial snapshot.
 pub const ZERO_REV_ID: RevId = 0;
 
-// TODO this is not the firestore id
-// TODO can't be internally typed (tuple), so externally okay?
-#[derive(Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub enum ObjectId {
-    /// The base object whose snapshots contain the actual content.
-    Base(ObjId),
-    /// Object which contains authorization rules.
-    /// For example to restrict operations on objects:
-    ///   - lookup is always okay for boulders
-    ///   - patching only for owners and admins
-    Authorization(ObjId),
-}
-
-// TODO parsing?
-impl Pk for ObjectId {
-    fn to_pk(&self) -> String {
-        match self {
-            ObjectId::Base(obj_id) => obj_id.to_string(),
-            ObjectId::Authorization(obj_id) => obj_id.to_string() + "/authorization",
-        }
-    }
-}
-
-impl fmt::Display for ObjectId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ObjectId::Base(obj) => write!(f, "Base: {}", obj),
-            ObjectId::Authorization(obj) => write!(f, "Authorization: {}", obj),
-        }
-    }
-}
-
-// TODO need to deserialise from string!
-impl Serialize for ObjectId {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        match *self {
-            ObjectId::Base(ref obj) => {
-                serializer.serialize_str(obj)
-                // let mut ser = serializer.serialize_struct_variant("ObjectId", 0, "Base", 1)?;
-                // ser.serialize_field("ObjId", obj)?;
-                // ser.end()
-            }
-            ObjectId::Authorization(ref obj) => {
-                serializer.serialize_str(&format!("{}/authorization", obj))
-                // let mut ser =
-                //     serializer.serialize_struct_variant("ObjectId", 1, "Authoirization", 1)?;
-                // ser.serialize_field("ObjId", &format!("{}/authorization", obj))?;
-                // ser.end()
-            }
-        }
-    }
-}
-
-// pub fn objectIdParser(objId: String) -> ObjectId {
-//     match objId.chars().next() {
-//         Some(char::is_alphanumeric) => {
-//             todo!()
-//         }
-//     }
-// }
+pub type ObjectId = String;
 
 #[derive(Serialize, Deserialize, Clone, PartialEq)]
 #[serde(tag = "type")]
@@ -134,11 +61,11 @@ impl fmt::Display for Operation {
 #[serde(rename_all = "camelCase")]
 pub struct Object {
     #[serde(alias = "_firestore_id")]
-    id: Option<ObjId>, // not nice that this has to be empty for id generation to work
+    id: Option<ObjectId>, // not nice that this has to be empty for id generation to work
     #[serde(alias = "_firestore_created")]
     pub created_at: Option<DateTime<Utc>>, // Option<FirestoreTimestamp>,
     pub object_type: ObjectType,
-    pub created_by: ObjId,
+    pub created_by: ObjectId,
     // delete the object which has a very different meaning from deleting a boulder
     pub deleted: Option<bool>,
 }
@@ -151,7 +78,7 @@ pub enum ObjectType {
 }
 
 impl Object {
-    pub fn new(object_type: ObjectType, created_by: ObjId) -> Object {
+    pub fn new(object_type: ObjectType, created_by: ObjectId) -> Object {
         // TODO generete random id? (see Avers/Storage.hs)
         // or use firestore ids
         // TODO should we only allow to create Objects with non-optional id?
@@ -175,27 +102,15 @@ impl Object {
     }
 }
 
-impl Pk for Object {
-    fn to_pk(&self) -> String {
-        self.id.as_ref().expect("").to_string()
-    }
-}
-
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Patch {
     pub object_id: ObjectId,
     pub revision_id: RevId,
-    pub author_id: ObjId,
+    pub author_id: ObjectId,
     #[serde(alias = "_firestore_created")]
     pub created_at: Option<DateTime<Utc>>, //Option<FirestoreTimestamp>,
     pub operation: Operation,
-}
-
-impl Pk for Patch {
-    fn to_pk(&self) -> String {
-        self.object_id.to_pk() + "@" + &self.revision_id.to_string()[..]
-    }
 }
 
 impl fmt::Display for Patch {
@@ -223,12 +138,6 @@ impl Snapshot {
             revision_id: -1,
             content: json!({}),
         }
-    }
-}
-
-impl Pk for Snapshot {
-    fn to_pk(&self) -> String {
-        self.object_id.to_pk() + "@" + &self.revision_id.to_string()[..]
     }
 }
 

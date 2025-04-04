@@ -3,7 +3,7 @@ use axum::Json;
 use firestore::{path_camel_case, FirestoreQueryDirection, FirestoreResult};
 use futures::stream::BoxStream;
 use futures::TryStreamExt;
-use otp::types::{ObjId, Object, ObjectId, Operation, Patch, Pk, RevId, Snapshot};
+use otp::types::{Object, ObjectId, Operation, Patch, RevId, Snapshot};
 use otp::{apply, rebase, ZERO_REV_ID};
 use serde_json::{from_value, Value};
 
@@ -87,7 +87,7 @@ pub(crate) async fn update_boulder_view(
         .fluent()
         .update()
         .in_col("boulder_view")
-        .document_id(snapshot.object_id.to_pk())
+        .document_id(snapshot.object_id.clone())
         .parent(&parent_path)
         .object(&boulder)
         .execute()
@@ -100,7 +100,7 @@ pub(crate) async fn update_boulder_view(
 pub(crate) async fn lookup_object_(
     state: &AppState,
     gym: &String,
-    id: ObjId,
+    id: ObjectId,
 ) -> Result<Json<LookupObjectResponse>, AppError> {
     let parent_path = state.db.parent_path("gyms", gym)?;
     let obj: Object = state
@@ -115,7 +115,7 @@ pub(crate) async fn lookup_object_(
         .ok_or(AppError::Query())?;
 
     tracing::debug!("looking up last snapshot for obj={id}");
-    let snapshot = lookup_latest_snapshot(state, gym, &ObjectId::Base(id.clone())).await?;
+    let snapshot = lookup_latest_snapshot(state, gym, &id.clone()).await?;
     let created_at = obj.created_at.ok_or(AppError::Query())?;
 
     Ok(Json(LookupObjectResponse {
@@ -144,9 +144,6 @@ async fn lookup_latest_snapshot(
         .filter(|q| {
             q.for_all([
                 q.field(path_camel_case!(Snapshot::object_id)).eq(obj_id),
-                // TODO not clear that this is correct but most likely just a bit less efficent
-                // (RevId revId) <- fromMaybe zeroRevId <$> lookupRecentRevision objId
-                // latestSnapshotBetween objId revId maxBound
                 q.field(path_camel_case!(Snapshot::revision_id))
                     .greater_than_or_equal(ZERO_REV_ID),
             ])
@@ -317,7 +314,7 @@ pub async fn apply_object_updates(
     gym: &String,
     obj_id: ObjectId,
     rev_id: RevId, // TODO this is what? first is 0?
-    author: ObjId,
+    author: ObjectId,
     operations: Vec<Operation>,
     skip_validation: bool,
 ) -> Result<Json<PatchObjectResponse>, AppError> {
@@ -409,7 +406,7 @@ async fn save_operation(
     state: &AppState,
     gym: &String,
     object_id: ObjectId,
-    author_id: ObjId,
+    author_id: ObjectId,
     base_content: Value,
     snapshot: &Snapshot,
     previous_patches: Vec<Patch>,

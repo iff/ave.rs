@@ -19,7 +19,7 @@ use firestore::{path_camel_case, FirestoreQueryDirection, FirestoreResult};
 use futures::stream::BoxStream;
 use futures::TryStreamExt;
 use otp::types::ObjectType;
-use otp::types::{ObjId, Object, ObjectId, Operation, Patch, RevId, ROOT_PATH, ZERO_REV_ID};
+use otp::types::{Object, ObjectId, Operation, Patch, RevId, ROOT_PATH, ZERO_REV_ID};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::net::SocketAddr;
@@ -57,11 +57,11 @@ struct CreateObjectBody {
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct LookupObjectResponse {
-    pub id: ObjId,
+    pub id: ObjectId,
     #[serde(rename = "type")]
     pub ot_type: String,
     pub created_at: DateTime<Utc>,
-    pub created_by: ObjId,
+    pub created_by: ObjectId,
     pub revision_id: RevId,
     pub content: Value,
 }
@@ -76,13 +76,13 @@ pub(crate) struct LookupObjectResponse {
 #[serde(rename_all = "camelCase")]
 struct LookupSessionResponse {
     id: String,
-    obj_id: ObjId,
+    obj_id: ObjectId,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct CreateObjectResponse {
-    id: ObjId,
+    id: ObjectId,
     ot_type: ObjectType,
     content: Value,
 }
@@ -120,7 +120,7 @@ impl PatchObjectResponse {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Session {
     session_id: String,
-    session_obj_id: ObjId,
+    session_obj_id: ObjectId,
     #[serde(alias = "_firestore_created")]
     session_created_at: Option<DateTime<Utc>>,
     session_last_accessed_at: DateTime<Utc>,
@@ -508,7 +508,7 @@ async fn new_object(
         value: Some(content.clone()),
     };
     let patch = Patch {
-        object_id: ObjectId::Base(obj.id()),
+        object_id: obj.id(),
         revision_id: ZERO_REV_ID,
         author_id: created_by,
         created_at: None,
@@ -560,7 +560,7 @@ async fn patch_object(
     let result = apply_object_updates(
         &state,
         &gym,
-        ObjectId::Base(id),
+        id,
         payload.revision_id,
         created_by,
         payload.operations,
@@ -584,8 +584,7 @@ async fn lookup_patch(
         .parent(&parent_path)
         .filter(|q| {
             q.for_all([
-                q.field(path_camel_case!(Patch::object_id))
-                    .eq(ObjectId::Base(id.clone())),
+                q.field(path_camel_case!(Patch::object_id)).eq(id.clone()),
                 q.field(path_camel_case!(Patch::revision_id)).eq(rev_id),
             ])
         })
