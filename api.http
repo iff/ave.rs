@@ -14,7 +14,7 @@ Content-type: application/json; charset=UTF-8
     "sector": "kurswand",
     "setDate": 134778234,
     "setter": [
-      {"base": "Z6sprK5mW9H4ITwMF8NO"}
+      "jQM2sWvHUbpbZvUk7TTf"
     ],
     "removed": 0,
     "isDraft": 0,
@@ -31,18 +31,18 @@ Content-type: application/json; charset=UTF-8
 {
   "type": "Account",
   "content": {
-    "login": "some",
+    "login": "iff",
     "role": "admin",
-    "email": "",
+    "email": "yves.ineichen@gmail.com",
     "name": ""
   }
 }
 
 ### #get object
-GET https://apiv2.boulderhalle.app/test/objects/x1aBqL42xPKkN2XsLnI1
+GET https://apiv2.boulderhalle.app/test/objects/YbfCHjTuOo3SZFD96ZKf
 
 ### #patch object
-PATCH https://apiv2.boulderhalle.app/test/objects/FaI1zp28CfCswCX4I991
+PATCH https://apiv2.boulderhalle.app/test/objects/YbfCHjTuOo3SZFD96ZKf
 accept: application/json  
 Content-type: application/json; charset=UTF-8
 
