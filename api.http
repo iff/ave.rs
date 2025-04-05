@@ -14,7 +14,7 @@ Content-type: application/json; charset=UTF-8
     "sector": "kurswand",
     "setDate": 134778234,
     "setter": [
-      "jQM2sWvHUbpbZvUk7TTf"
+      "5xKABKbRG5fRyjwbidYF"
     ],
     "removed": 0,
     "isDraft": 0,
@@ -39,10 +39,10 @@ Content-type: application/json; charset=UTF-8
 }
 
 ### #get object
-GET https://apiv2.boulderhalle.app/test/objects/YbfCHjTuOo3SZFD96ZKf
+GET https://apiv2.boulderhalle.app/test/objects/of5APRPra9mPB4Ig8zfz
 
 ### #patch object
-PATCH https://apiv2.boulderhalle.app/test/objects/YbfCHjTuOo3SZFD96ZKf
+PATCH https://apiv2.boulderhalle.app/test/objects/of5APRPra9mPB4Ig8zfz
 accept: application/json  
 Content-type: application/json; charset=UTF-8
 

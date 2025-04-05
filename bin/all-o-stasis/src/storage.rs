@@ -54,7 +54,7 @@ async fn store_snapshot(
         .db
         .fluent()
         .insert()
-        .into("snapshot")
+        .into("snapshots")
         .generate_document_id() // FIXME do generate an id here?
         .parent(&parent_path)
         .object(snapshot)
