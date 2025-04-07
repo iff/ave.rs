@@ -448,10 +448,13 @@ async fn lookup_session(
     // Json(payload): axum::extract::Json<LookupSessionBody>,
     jar: CookieJar,
 ) -> Result<impl IntoResponse, AppError> {
-    // TODO where to get this from?
-    // let session_id = jar.get("session").ok_or(Err(StatusCode::UNAUTHORIZED))?;
-    let session_id = String::from("some session");
     let parent_path = state.db.parent_path("gyms", gym)?;
+    // TODO NoSession correct here?
+    let session_id = jar
+        .get("session")
+        .ok_or(AppError::NoSession())?
+        .value()
+        .to_owned();
     let session: Session = state
         .db
         .fluent()
