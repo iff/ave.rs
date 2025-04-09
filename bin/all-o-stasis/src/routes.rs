@@ -27,7 +27,10 @@ use tower_http::cors::CorsLayer;
 
 use axum::extract::connect_info::ConnectInfo;
 
-use crate::storage::{apply_object_updates, lookup_object_};
+use crate::storage::{
+    apply_object_updates, lookup_object_, ACCOUNTS_VIEW_COLLECTION, BOULDER_VIEW_COLLECTION,
+    OBJECTS_COLLECTION, PATCHES_COLLECTION, SESSIONS_COLLECTION,
+};
 use crate::types::Boulder;
 use crate::ws::handle_socket;
 use crate::{AppError, AppState};
@@ -216,7 +219,7 @@ async fn active_boulders(
         .db
         .fluent()
         .select()
-        .from("boulder_view")
+        .from(BOULDER_VIEW_COLLECTION)
         .parent(&parent_path)
         .filter(|q| {
             q.for_all([
@@ -269,7 +272,7 @@ async fn accounts(
         .db
         .fluent()
         .select()
-        .from("accounts_view")
+        .from(ACCOUNTS_VIEW_COLLECTION)
         .parent(&parent_path)
         .filter(|q| {
             q.for_all([q
@@ -459,7 +462,7 @@ async fn lookup_session(
         .db
         .fluent()
         .select()
-        .by_id_in("sessions")
+        .by_id_in(SESSIONS_COLLECTION)
         .parent(&parent_path)
         .obj()
         .one(&session_id)
@@ -498,7 +501,7 @@ async fn new_object(
         .db
         .fluent()
         .insert()
-        .into("objects")
+        .into(OBJECTS_COLLECTION)
         .generate_document_id()
         .parent(&parent_path)
         .object(&obj)
@@ -521,7 +524,7 @@ async fn new_object(
         .db
         .fluent()
         .insert()
-        .into("patches")
+        .into(PATCHES_COLLECTION)
         .generate_document_id()
         .parent(&parent_path)
         .object(&patch)
@@ -583,7 +586,7 @@ async fn lookup_patch(
         .db
         .fluent()
         .select()
-        .from("patches")
+        .from(PATCHES_COLLECTION)
         .parent(&parent_path)
         .filter(|q| {
             q.for_all([

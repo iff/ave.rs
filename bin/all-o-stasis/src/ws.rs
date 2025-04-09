@@ -9,6 +9,7 @@ use otp::types::{ObjectId, Patch};
 use std::net::SocketAddr;
 use tokio::sync::mpsc;
 
+use crate::storage::PATCHES_COLLECTION;
 use crate::AppState;
 
 async fn patch_listener(
@@ -33,7 +34,7 @@ async fn patch_listener(
         .db
         .fluent()
         .select()
-        .from("patches")
+        .from(PATCHES_COLLECTION)
         .parent(parent_path)
         .listen()
         .add_target(LISTENER_ID, &mut listener);

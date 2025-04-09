@@ -10,13 +10,13 @@ use serde_json::{from_value, Value};
 use crate::routes::{LookupObjectResponse, PatchObjectResponse};
 use crate::{AppError, AppState};
 
-// fn base_id(obj_id: &ObjectId) -> ObjId {
-//     match obj_id {
-//         ObjectId::Base(id) => id.clone(),
-//         ObjectId::Release(id, _) => id.clone(),
-//         ObjectId::Authorization(id) => id.clone(),
-//     }
-// }
+pub const ACCOUNTS_VIEW_COLLECTION: &str = "accounts_view";
+// TODO boulders or boulder?
+pub const BOULDER_VIEW_COLLECTION: &str = "boulder_view";
+pub const OBJECTS_COLLECTION: &str = "objects";
+pub const PATCHES_COLLECTION: &str = "patches";
+pub const SESSIONS_COLLECTION: &str = "sessions";
+pub const SNAPSHOTS_COLLECTION: &str = "snapshots";
 
 // TODO generic store op using templates and table name?
 async fn store_patch(
@@ -29,7 +29,7 @@ async fn store_patch(
         .db
         .fluent()
         .insert()
-        .into("patches")
+        .into(PATCHES_COLLECTION)
         .generate_document_id() // FIXME do generate an id here?
         .parent(&parent_path)
         .object(patch)
@@ -54,7 +54,7 @@ async fn store_snapshot(
         .db
         .fluent()
         .insert()
-        .into("snapshots")
+        .into(SNAPSHOTS_COLLECTION)
         .generate_document_id() // FIXME do generate an id here?
         .parent(&parent_path)
         .object(snapshot)
@@ -86,7 +86,7 @@ pub(crate) async fn update_boulder_view(
         .db
         .fluent()
         .update()
-        .in_col("boulder_view")
+        .in_col(BOULDER_VIEW_COLLECTION)
         .document_id(snapshot.object_id.clone())
         .parent(&parent_path)
         .object(&boulder)
@@ -107,7 +107,7 @@ pub(crate) async fn lookup_object_(
         .db
         .fluent()
         .select()
-        .by_id_in("objects")
+        .by_id_in(OBJECTS_COLLECTION)
         .parent(&parent_path)
         .obj()
         .one(&id)
@@ -139,7 +139,7 @@ async fn lookup_latest_snapshot(
         .db
         .fluent()
         .select()
-        .from("snapshots")
+        .from(SNAPSHOTS_COLLECTION)
         .parent(&parent_path)
         .filter(|q| {
             q.for_all([
@@ -193,7 +193,7 @@ async fn lookup_snapshot_between(
         .db
         .fluent()
         .select()
-        .from("snapshots")
+        .from(SNAPSHOTS_COLLECTION)
         .parent(&parent_path)
         .filter(|q| {
             q.for_all([
@@ -262,7 +262,7 @@ async fn patches_after_revision(
         .db
         .fluent()
         .select()
-        .from("patches")
+        .from(PATCHES_COLLECTION)
         .parent(&parent_path)
         .filter(|q| {
             q.for_all([
