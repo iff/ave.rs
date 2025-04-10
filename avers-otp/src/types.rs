@@ -75,6 +75,7 @@ pub struct Object {
 pub enum ObjectType {
     Account,
     Boulder,
+    Passport,
 }
 
 impl Object {

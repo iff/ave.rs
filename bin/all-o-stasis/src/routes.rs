@@ -29,8 +29,8 @@ use axum::extract::connect_info::ConnectInfo;
 
 use crate::passport::{passport_routes, Session};
 use crate::storage::{
-    apply_object_updates, lookup_object_, ACCOUNTS_VIEW_COLLECTION, BOULDERS_VIEW_COLLECTION,
-    OBJECTS_COLLECTION, PATCHES_COLLECTION, SESSIONS_COLLECTION,
+    apply_object_updates, lookup_object_, store_patch, ACCOUNTS_VIEW_COLLECTION,
+    BOULDERS_VIEW_COLLECTION, OBJECTS_COLLECTION, PATCHES_COLLECTION, SESSIONS_COLLECTION,
 };
 use crate::types::Boulder;
 use crate::ws::handle_socket;
@@ -489,7 +489,7 @@ async fn new_object(
     let content = payload.content;
     let obj = Object::new(ot_type.clone(), created_by.clone());
 
-    let parent_path = state.db.parent_path("gyms", gym)?;
+    let parent_path = state.db.parent_path("gyms", gym.clone())?;
     let obj: Option<Object> = state
         .db
         .fluent()
@@ -513,16 +513,7 @@ async fn new_object(
         created_at: None,
         operation: op,
     };
-    let patch: Option<Patch> = state
-        .db
-        .fluent()
-        .insert()
-        .into(PATCHES_COLLECTION)
-        .generate_document_id()
-        .parent(&parent_path)
-        .object(&patch)
-        .execute()
-        .await?;
+    let patch = store_patch(&state, &gym, &patch).await?;
     let _ = patch.ok_or_else(AppError::Query)?;
 
     // TODO needs to also view update..

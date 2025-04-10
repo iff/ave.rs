@@ -7,12 +7,21 @@ use axum::{
     Json, Router,
 };
 use chrono::{DateTime, Duration, Utc};
-use otp::{types::ObjectId, Operation, ROOT_OBJ_ID};
+use firestore::{path_camel_case, FirestoreResult};
+use futures::{stream::BoxStream, TryStreamExt};
+use otp::{
+    types::{ObjectId, ObjectType, Patch},
+    Object, Operation, ROOT_OBJ_ID, ROOT_PATH, ZERO_REV_ID,
+};
 use sendgrid::v3::*;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    storage::{apply_object_updates, lookup_latest_snapshot, save_session},
+    storage::{
+        apply_object_updates, lookup_latest_snapshot, save_session, store_patch,
+        ACCOUNTS_VIEW_COLLECTION, OBJECTS_COLLECTION,
+    },
+    types::Account,
     word_list::make_security_code,
     AppError, AppState,
 };
@@ -85,6 +94,10 @@ pub(crate) fn passport_routes() -> Router<AppState> {
         .route("/{gym}/login/verify", get(await_passport_confirmation))
 }
 
+fn new_id(len: usize) -> String {
+    todo!()
+}
+
 fn generate_email(
     pc_realm: String,
     api_domain: String,
@@ -102,7 +115,7 @@ fn generate_email(
         copy and paste this URL into your browser.";
 }
 
-fn send_email(subject: String) {
+async fn send_email(subject: String) {
     let mut cool_header = HashMap::with_capacity(2);
     cool_header.insert(String::from("text/plain"), String::from("indeed"));
 
@@ -119,7 +132,7 @@ fn send_email(subject: String) {
 
     let api_key = ::std::env::var("SG_API_KEY").unwrap();
     let sender = Sender::new(api_key, None);
-    let code = sender.blocking_send(&m);
+    let code = sender.send(&m).await;
     println!("{:?}", code);
 }
 
@@ -128,24 +141,74 @@ async fn create_passport(
     Path(gym): Path<String>,
     Json(payload): axum::extract::Json<CreatePassportBody>,
 ) -> Result<Json<CreatePassportResponse>, AppError> {
-    return Err(AppError::NotImplemented());
+    let parent_path = state.db.parent_path("gyms", gym.clone())?;
 
     // 1. Lookup account by email. If no such account exists, create a new one
+    let account_stream: BoxStream<FirestoreResult<Account>> = state
+        .db
+        .fluent()
+        .select()
+        .from(ACCOUNTS_VIEW_COLLECTION)
+        .parent(&parent_path)
+        .filter(|q| {
+            q.for_all([q
+                .field(path_camel_case!(Account::email))
+                .eq(payload.email.clone())])
+        })
+        .limit(1)
+        .obj()
+        .stream_query_with_errors()
+        .await?;
+
+    let accounts: Vec<Account> = account_stream.try_collect().await?;
+    let account = match accounts.first() {
+        Some(account) => Ok(account.clone()),
+        None => Err(AppError::Query()),
+    }?;
+    let account_id = account.id.expect("object in view has no id");
 
     // 2. Create a new Passport object.
-    let security_code = make_security_code();
+    let security_code = make_security_code().expect("TODO");
     let confirmation_token = new_id(16);
 
-    // passportId <- reqAvers2 aversH $ do
-    //     Avers.createObject passportObjectType rootObjId $ Passport
-    //         { passportAccountId = accId
-    //         , passportSecurityCode = securityCode
-    //         , passportConfirmationToken = confirmationToken
-    //         , passportValidity = PVUnconfirmed
-    //         }
+    // TODO refactor into create_object (with payload)
+    let obj = Object::new(ObjectType::Passport, ROOT_OBJ_ID.to_owned());
+    let obj: Option<Object> = state
+        .db
+        .fluent()
+        .insert()
+        .into(OBJECTS_COLLECTION)
+        .generate_document_id()
+        .parent(&parent_path)
+        .object(&obj)
+        .execute()
+        .await?;
+    let obj = obj.ok_or_else(AppError::Query)?;
+
+    let passport = Passport {
+        account_id: account_id.clone(),
+        security_code: security_code.clone(),
+        confirmation_token,
+        validity: PassportValidity::PVUnconfirmed,
+    };
+    let op = Operation::Set {
+        path: ROOT_PATH.to_string(),
+        value: Some(serde_json::to_value(passport.clone()).expect("serialising passport")),
+    };
+    let patch = Patch {
+        object_id: obj.id(),
+        revision_id: ZERO_REV_ID,
+        author_id: account_id,
+        created_at: None,
+        operation: op,
+    };
+    let patch = store_patch(&state, &gym, &patch).await?;
+    let _ = patch.ok_or_else(AppError::Query)?;
+
+    let passport_id = obj.id();
 
     // 3. Send email
-    send();
+    // send();
 
     // let partToContent :: Part -> Value
     //     partToContent part = object
@@ -178,6 +241,10 @@ async fn create_passport(
     // print response
 
     // 4. Send response
+    Ok(Json(CreatePassportResponse {
+        passport_id,
+        security_code,
+    }))
 }
 
 async fn confirm_passport(
@@ -264,7 +331,7 @@ async fn await_passport_confirmation(
     // The Passport object is valid.
     // Create a new session for the account in the Passport object.
     let now = chrono::offset::Utc::now();
-    let session_id = newId(80);
+    let session_id = new_id(80);
     save_session(
         &state,
         &gym,

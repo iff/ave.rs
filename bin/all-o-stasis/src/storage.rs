@@ -45,7 +45,7 @@ pub(crate) async fn save_session(
 }
 
 // TODO generic store op using templates and table name?
-async fn store_patch(
+pub(crate) async fn store_patch(
     state: &AppState,
     gym: &String,
     patch: &Patch,
@@ -144,6 +144,9 @@ pub(crate) async fn update_view(
                 .object(&boulder)
                 .execute()
                 .await?;
+        }
+        ObjectType::Passport => {
+            // no view table
         }
     };
 

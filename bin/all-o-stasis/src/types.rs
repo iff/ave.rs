@@ -14,10 +14,11 @@ pub enum AccountRole {
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Account {
+    #[serde(alias = "_firestore_id")]
+    pub id: Option<String>,
     login: String,
     role: AccountRole,
-    #[serde(with = "firestore::serialize_as_null")]
-    email: Option<String>,
+    pub email: String,
     #[serde(with = "firestore::serialize_as_null")]
     name: Option<String>,
 }
