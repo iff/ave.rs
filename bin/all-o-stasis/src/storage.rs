@@ -1,3 +1,4 @@
+use crate::passport::Session;
 use crate::types::Boulder;
 use axum::Json;
 use firestore::{path_camel_case, FirestoreQueryDirection, FirestoreResult};
@@ -7,7 +8,7 @@ use otp::types::{Object, ObjectId, Operation, Patch, RevId, Snapshot};
 use otp::{apply, rebase, ZERO_REV_ID};
 use serde_json::{from_value, Value};
 
-use crate::routes::{LookupObjectResponse, PatchObjectResponse, Session};
+use crate::routes::{LookupObjectResponse, PatchObjectResponse};
 use crate::{AppError, AppState};
 
 pub const ACCOUNTS_VIEW_COLLECTION: &str = "accounts_view";
