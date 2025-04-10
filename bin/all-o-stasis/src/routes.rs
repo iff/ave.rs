@@ -28,7 +28,7 @@ use tower_http::cors::CorsLayer;
 use axum::extract::connect_info::ConnectInfo;
 
 use crate::storage::{
-    apply_object_updates, lookup_object_, ACCOUNTS_VIEW_COLLECTION, BOULDER_VIEW_COLLECTION,
+    apply_object_updates, lookup_object_, ACCOUNTS_VIEW_COLLECTION, BOULDERS_VIEW_COLLECTION,
     OBJECTS_COLLECTION, PATCHES_COLLECTION, SESSIONS_COLLECTION,
 };
 use crate::types::Boulder;
@@ -219,7 +219,7 @@ async fn active_boulders(
         .db
         .fluent()
         .select()
-        .from(BOULDER_VIEW_COLLECTION)
+        .from(BOULDERS_VIEW_COLLECTION)
         .parent(&parent_path)
         .filter(|q| {
             q.for_all([

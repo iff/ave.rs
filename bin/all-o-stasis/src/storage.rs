@@ -11,8 +11,7 @@ use crate::routes::{LookupObjectResponse, PatchObjectResponse};
 use crate::{AppError, AppState};
 
 pub const ACCOUNTS_VIEW_COLLECTION: &str = "accounts_view";
-// TODO boulders or boulder?
-pub const BOULDER_VIEW_COLLECTION: &str = "boulder_view";
+pub const BOULDERS_VIEW_COLLECTION: &str = "boulders_view";
 pub const OBJECTS_COLLECTION: &str = "objects";
 pub const PATCHES_COLLECTION: &str = "patches";
 pub const SESSIONS_COLLECTION: &str = "sessions";
@@ -86,7 +85,7 @@ pub(crate) async fn update_boulder_view(
         .db
         .fluent()
         .update()
-        .in_col(BOULDER_VIEW_COLLECTION)
+        .in_col(BOULDERS_VIEW_COLLECTION)
         .document_id(snapshot.object_id.clone())
         .parent(&parent_path)
         .object(&boulder)
