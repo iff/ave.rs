@@ -127,7 +127,7 @@ pub(crate) async fn lookup_object_(
     }))
 }
 
-async fn lookup_latest_snapshot(
+pub(crate) async fn lookup_latest_snapshot(
     state: &AppState,
     gym: &String,
     obj_id: &ObjectId,

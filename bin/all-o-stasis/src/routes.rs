@@ -27,6 +27,7 @@ use tower_http::cors::CorsLayer;
 
 use axum::extract::connect_info::ConnectInfo;
 
+use crate::passport::passport_routes;
 use crate::storage::{
     apply_object_updates, lookup_object_, ACCOUNTS_VIEW_COLLECTION, BOULDERS_VIEW_COLLECTION,
     OBJECTS_COLLECTION, PATCHES_COLLECTION, SESSIONS_COLLECTION,
@@ -147,6 +148,7 @@ pub fn app(state: AppState) -> Router {
     // let cors = CorsLayer::new().allow_origin(Any)..allow_credentials(true);
 
     let api = api_routes();
+    let passport = passport_routes();
 
     Router::new()
         // git revision sha
@@ -181,6 +183,7 @@ pub fn app(state: AppState) -> Router {
         // auth
         .route("/gym/{gym}/signup", post(signup))
         .merge(api)
+        .merge(passport)
         .with_state(state)
         .layer(cors)
 }

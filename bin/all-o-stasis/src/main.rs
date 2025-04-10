@@ -44,6 +44,7 @@ enum AppError {
     ParseError(String),
     // No session found
     NoSession(),
+    NotAuthorized(),
 }
 
 impl From<FirestoreError> for AppError {
@@ -112,6 +113,7 @@ impl IntoResponse for AppError {
                 (StatusCode::NOT_IMPLEMENTED, "not implemented".to_string())
             }
             AppError::NoSession() => (StatusCode::NOT_FOUND, "session not found".to_string()),
+            AppError::NotAuthorized() => (StatusCode::BAD_REQUEST, "not authorized".to_string()),
         };
 
         let body = Json(json!({
