@@ -120,6 +120,18 @@ async fn send_email(
         .set_subject(&subject)
         .add_content(Content::new().set_content_type("text/html").set_value(body));
 
+    // TODO
+    // let partToContent :: Part -> Value
+    //     partToContent part = object
+    //         [ "type" .= ("text/plain" :: Text) -- partType part
+    //         , "value" .= LT.decodeUtf8 (partContent part)
+    //         ]
+    //
+    // let toPersonalization addr = object
+    //         [ "to" .= [ object [ "email" .= addressEmail addr ] ]
+    //         , "subject" .= subject
+    //         ]
+
     let api_key = ::std::env::var("SG_API_KEY").unwrap();
     let sender = Sender::new(api_key, None);
     let code = sender.send(&m).await;
@@ -211,36 +223,6 @@ async fn create_passport(
         confirmation_token.clone(),
     )
     .await?;
-
-    // let partToContent :: Part -> Value
-    //     partToContent part = object
-    //         [ "type" .= ("text/plain" :: Text) -- partType part
-    //         , "value" .= LT.decodeUtf8 (partContent part)
-    //         ]
-    //
-    // let subject = fromMaybe "???" $ lookup "Subject" (mailHeaders mail)
-    //
-    // let toPersonalization addr = object
-    //         [ "to" .= [ object [ "email" .= addressEmail addr ] ]
-    //         , "subject" .= subject
-    //         ]
-    //
-    // print $ mailParts mail
-    // let body = object
-    //         [ "personalizations" .= map toPersonalization (mailTo mail)
-    //         , "from" .= object
-    //             [ "email" .= addressEmail (mailFrom mail)
-    //             ]
-    //         , "content" .= concatMap (map partToContent) (mailParts mail)
-    //         ]
-    //
-    // let request = setRequestBodyJSON body
-    //         $ setRequestHeader "Content-Type" ["application/json"]
-    //         $ setRequestHeader "Authorization" ["Bearer " <> T.encodeUtf8 apiKey]
-    //         $ "POST https://api.sendgrid.com/v3/mail/send"
-    //
-    // response <- httpLBS request
-    // print response
 
     // 4. Send response
     Ok(Json(CreatePassportResponse {
