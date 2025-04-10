@@ -10,9 +10,11 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+mod passport;
 mod routes;
 mod storage;
 mod types;
+mod word_list;
 mod ws;
 use otp::PatchError;
 
