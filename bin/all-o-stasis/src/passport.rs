@@ -98,42 +98,34 @@ fn new_id(len: usize) -> String {
     todo!()
 }
 
-fn generate_email(
-    pc_realm: String,
+async fn send_email(
+    email: String,
     api_domain: String,
     passport_id: String,
     security_code: String,
     confirmation_token: String,
-) {
+) -> Result<(), AppError> {
     let confirmation_url = format!(
-        "{api_domain}/login/confirm?passportId={passport_id}&confirmationToken={confirmation_token}",
+        "https://apiv2.boulderhalle.app/{api_domain}/login/confirm?passportId={passport_id}&confirmationToken={confirmation_token}",
     );
-    let subject = format!("{pc_realm} Login Verification (code: \"{security_code}\")",);
-    let body = "Verify your email to log on to the {pc_realm}\n\
+    let subject = format!("{api_domain} Login Verification (code: \"{security_code}\")",);
+    let body = format!(
+        "Verify your email to log on to the {api_domain}\n\
         We have received a login attempt with the following code: \n{security_code}\n\
         complete the login process, please click the URL below: \n{confirmation_url}\n\
-        copy and paste this URL into your browser.";
-}
+        copy and paste this URL into your browser."
+    );
 
-async fn send_email(subject: String) {
-    let mut cool_header = HashMap::with_capacity(2);
-    cool_header.insert(String::from("text/plain"), String::from("indeed"));
-
-    let p = Personalization::new(Email::new("test@example.com")).add_headers(cool_header);
-
-    let m = Message::new(Email::new("g@gmail.com"))
+    let m = Message::new(Email::new(email))
         .set_subject(&subject)
-        .add_content(
-            Content::new()
-                .set_content_type("text/html")
-                .set_value("Test"),
-        )
-        .add_personalization(p);
+        .add_content(Content::new().set_content_type("text/html").set_value(body));
 
     let api_key = ::std::env::var("SG_API_KEY").unwrap();
     let sender = Sender::new(api_key, None);
     let code = sender.send(&m).await;
-    println!("{:?}", code);
+    tracing::debug!("{:?}", code);
+
+    Ok(())
 }
 
 async fn create_passport(
@@ -163,7 +155,10 @@ async fn create_passport(
     let accounts: Vec<Account> = account_stream.try_collect().await?;
     let account = match accounts.first() {
         Some(account) => Ok(account.clone()),
-        None => Err(AppError::Query()),
+        None => {
+            // TODO create a new account
+            Err(AppError::Query())
+        }
     }?;
     let account_id = account.id.expect("object in view has no id");
 
@@ -188,7 +183,7 @@ async fn create_passport(
     let passport = Passport {
         account_id: account_id.clone(),
         security_code: security_code.clone(),
-        confirmation_token,
+        confirmation_token: confirmation_token.clone(),
         validity: PassportValidity::PVUnconfirmed,
     };
     let op = Operation::Set {
@@ -208,7 +203,14 @@ async fn create_passport(
     let passport_id = obj.id();
 
     // 3. Send email
-    // send();
+    send_email(
+        payload.email,
+        gym.clone(),
+        passport_id.clone(),
+        security_code.clone(),
+        confirmation_token.clone(),
+    )
+    .await?;
 
     // let partToContent :: Part -> Value
     //     partToContent part = object

@@ -1638,6 +1638,6 @@ pub(crate) fn make_security_code() -> Option<String> {
         .into_iter()
         .collect::<Vec<_>>();
 
-    let word = words.join("");
+    let word = words.join(" ");
     Some(word.to_lowercase())
 }
