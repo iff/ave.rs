@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt};
 
 use axum::{
     extract::{Path, Query, State},
@@ -6,15 +6,34 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use otp::{types::ObjectId, ROOT_PATH};
+use chrono::{DateTime, Duration, Utc};
+use otp::{types::ObjectId, Operation, ROOT_OBJ_ID};
 use sendgrid::v3::*;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    storage::{apply_object_updates, lookup_latest_snapshot},
+    storage::{apply_object_updates, lookup_latest_snapshot, save_session},
     word_list::make_security_code,
     AppError, AppState,
 };
+
+pub type SessionId = String;
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct Session {
+    pub id: SessionId,
+    pub obj_id: ObjectId,
+    #[serde(alias = "_firestore_created")]
+    pub created_at: Option<DateTime<Utc>>,
+    pub last_accessed_at: DateTime<Utc>,
+}
+
+impl fmt::Display for Session {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Session: {} obj_id={}", self.id, self.obj_id)
+    }
+}
 
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -211,9 +230,11 @@ async fn await_passport_confirmation(
     // jar: CookieJar,
 ) -> Result<impl IntoResponse, AppError> {
     let snapshot = lookup_latest_snapshot(&state, &gym, &pport.passport_id.clone()).await?;
-    let passport: Passport = serde_json::from(snapshot.content);
+    let passport: Passport = serde_json::from_value(snapshot.content).or(Err(
+        AppError::ParseError("failed to parse object into Passport".to_string()),
+    ))?;
 
-    loop {
+    let (account_id, revision_id) = loop {
         match passport.validity {
             PassportValidity::PVValid => {
                 break (passport.account_id, snapshot.revision_id);
@@ -226,24 +247,39 @@ async fn await_passport_confirmation(
                 return Err(AppError::NotAuthorized());
             }
         }
-    }
+    };
 
+    let op = Operation::Set {
+        path: "validity".to_string(),
+        value: Some(
+            serde_json::to_value(&PassportValidity::PVExpired).expect("serialising PVExpired"),
+        ),
+    };
     apply_object_updates(
         &state,
         &gym,
-        passport_id,
+        pport.passport_id,
         revision_id,
-        root_object_id,
-        "[Set { opPath = validity, opValue = Just (toJSON PVExpired) }]",
-        False,
+        ROOT_OBJ_ID.to_string(),
+        [op].to_vec(),
+        false,
     );
 
     // The Passport object is valid.
     // Create a new session for the account in the Passport object.
-    let now = getCurrentTime();
-    let sess_id = newId(80);
-    save_session(session_id, account_id, now, now)?;
-    // reqAvers2 aversH $ saveSession $ Session sessId accId now now
+    let now = chrono::offset::Utc::now();
+    let session_id = newId(80);
+    save_session(
+        &state,
+        &gym,
+        &Session {
+            id: session_id,
+            obj_id: account_id,
+            created_at: Some(now),
+            last_accessed_at: now,
+        },
+    )
+    .await?;
 
     // setCookie <- mkSetCookie sessId
 

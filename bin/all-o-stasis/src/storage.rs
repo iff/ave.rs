@@ -7,7 +7,7 @@ use otp::types::{Object, ObjectId, Operation, Patch, RevId, Snapshot};
 use otp::{apply, rebase, ZERO_REV_ID};
 use serde_json::{from_value, Value};
 
-use crate::routes::{LookupObjectResponse, PatchObjectResponse};
+use crate::routes::{LookupObjectResponse, PatchObjectResponse, Session};
 use crate::{AppError, AppState};
 
 pub const ACCOUNTS_VIEW_COLLECTION: &str = "accounts_view";
@@ -16,6 +16,32 @@ pub const OBJECTS_COLLECTION: &str = "objects";
 pub const PATCHES_COLLECTION: &str = "patches";
 pub const SESSIONS_COLLECTION: &str = "sessions";
 pub const SNAPSHOTS_COLLECTION: &str = "snapshots";
+
+// TODO generic store op using templates and table name?
+pub(crate) async fn save_session(
+    state: &AppState,
+    gym: &String,
+    session: &Session,
+) -> Result<Option<Patch>, AppError> {
+    let parent_path = state.db.parent_path("gyms", gym)?;
+    let p: Option<Patch> = state
+        .db
+        .fluent()
+        .insert()
+        .into(SESSIONS_COLLECTION)
+        .generate_document_id() // FIXME do generate an id here?
+        .parent(&parent_path)
+        .object(session)
+        .execute()
+        .await?;
+
+    match p.clone() {
+        Some(p) => tracing::debug!("storing: {p}"),
+        None => tracing::debug!("failed to store: {session}"),
+    }
+
+    Ok(p)
+}
 
 // TODO generic store op using templates and table name?
 async fn store_patch(

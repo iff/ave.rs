@@ -27,7 +27,7 @@ use tower_http::cors::CorsLayer;
 
 use axum::extract::connect_info::ConnectInfo;
 
-use crate::passport::passport_routes;
+use crate::passport::{passport_routes, Session};
 use crate::storage::{
     apply_object_updates, lookup_object_, ACCOUNTS_VIEW_COLLECTION, BOULDERS_VIEW_COLLECTION,
     OBJECTS_COLLECTION, PATCHES_COLLECTION, SESSIONS_COLLECTION,
@@ -118,16 +118,6 @@ impl PatchObjectResponse {
             resulting_patches,
         }
     }
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct Session {
-    session_id: String,
-    session_obj_id: ObjectId,
-    #[serde(alias = "_firestore_created")]
-    session_created_at: Option<DateTime<Utc>>,
-    session_last_accessed_at: DateTime<Utc>,
 }
 
 /* avers.js uses:
@@ -482,8 +472,8 @@ async fn lookup_session(
     Ok((
         jar.add(cookie),
         Json(LookupSessionResponse {
-            id: session.session_id,
-            obj_id: session.session_obj_id,
+            id: session.id,
+            obj_id: session.obj_id,
         }),
     ))
 }
