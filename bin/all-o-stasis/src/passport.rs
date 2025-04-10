@@ -183,44 +183,40 @@ async fn create_passport(
 async fn confirm_passport(
     State(state): State<AppState>,
     Path(gym): Path<String>,
-    Query(p): Query<ConfirmPassport>,
-) -> Result<(), AppError> {
-    Err(AppError::NotImplemented())
+    Query(pport): Query<ConfirmPassport>,
+) -> Result<impl IntoResponse, AppError> {
+    let snapshot = lookup_latest_snapshot(&state, &gym, &pport.passport_id.clone()).await?;
+    let passport: Passport = serde_json::from_value(snapshot.content).or(Err(
+        AppError::ParseError("failed to parse object into Passport".to_string()),
+    ))?;
 
-    //     -- Query params in Servant are always optional (Maybe), but we require them here.
-    // passportId <- case mbPassportId of
-    //     Nothing -> throwError err400 { errBody = "passportId missing" }
-    //     Just pId -> pure $ ObjId pId
-    //
-    // confirmationToken <- case mbConfirmationToken of
-    //     Nothing -> throwError err400 { errBody = "confirmationToken missing" }
-    //     Just x -> pure x
-    //
-    // -- Lookup the latest snapshot of the Passport object.
-    // (Snapshot{..}, Passport{..}) <- reqAvers2 aversH $ do
-    //     snapshot <- lookupLatestSnapshot (BaseObjectId passportId)
-    //     passport <- case parseValueAs passportObjectType (snapshotContent snapshot) of
-    //         Left e  -> throwError e
-    //         Right x -> pure x
-    //
-    //     pure (snapshot, passport)
-    //
-    // -- Check the confirmationToken. Fail if it doesn't match.
-    // when (confirmationToken /= passportConfirmationToken) $ do
-    //     throwError err400 { errBody = "wrong confirmation token" }
-    //
-    // -- Patch the "validity" field to mark the Passport as valid.
-    // void $ reqAvers2 aversH $ applyObjectUpdates
-    //     (BaseObjectId passportId)
-    //     snapshotRevisionId
-    //     rootObjId
-    //     [Set { opPath = "validity", opValue = Just (toJSON PVValid) }]
-    //     False
-    //
-    // -- Apparently this is how you do a 30x redirect in Servant…
-    // throwError $ err301
-    //     { errHeaders = [("Location", T.encodeUtf8 (_pcAppDomain pc) <> "/email-confirmed")]
-    //     }
+    if pport.confirmation_token != passport.confirmation_token {
+        return Err(AppError::NotAuthorized());
+    } else {
+        // mark as valid
+        let op = Operation::Set {
+            path: "validity".to_string(),
+            value: Some(
+                serde_json::to_value(&PassportValidity::PVValid).expect("serialising PVExpired"),
+            ),
+        };
+        apply_object_updates(
+            &state,
+            &gym,
+            pport.passport_id,
+            snapshot.revision_id,
+            ROOT_OBJ_ID.to_string(),
+            [op].to_vec(),
+            false,
+        );
+
+        // -- Apparently this is how you do a 30x redirect in Servant…
+        // throwError $ err301
+        //     { errHeaders = [("Location", T.encodeUtf8 (_pcAppDomain pc) <> "/email-confirmed")]
+        //     }
+
+        Ok(())
+    }
 }
 
 async fn await_passport_confirmation(
