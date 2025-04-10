@@ -1,10 +1,10 @@
 use crate::passport::Session;
-use crate::types::Boulder;
+use crate::types::{Account, Boulder};
 use axum::Json;
 use firestore::{path_camel_case, FirestoreQueryDirection, FirestoreResult};
 use futures::stream::BoxStream;
 use futures::TryStreamExt;
-use otp::types::{Object, ObjectId, Operation, Patch, RevId, Snapshot};
+use otp::types::{Object, ObjectId, ObjectType, Operation, Patch, RevId, Snapshot};
 use otp::{apply, rebase, ZERO_REV_ID};
 use serde_json::{from_value, Value};
 
@@ -95,31 +95,59 @@ async fn store_snapshot(
     Ok(p)
 }
 
-pub(crate) async fn update_boulder_view(
+pub(crate) async fn update_view(
     state: &AppState,
     gym: &String,
     snapshot: &Snapshot,
-) -> Result<Option<Boulder>, AppError> {
+) -> Result<(), AppError> {
     let parent_path = state.db.parent_path("gyms", gym)?;
 
-    // TODO we could match object content_type to decide which view to update
-    // for now we only have boulders
-
-    let boulder = from_value::<Boulder>(snapshot.content.clone())
-        .map_err(|e| AppError::ParseError(format!("{} in: {}", e, snapshot.content)))?;
-    println!("update_boulder_view: {}", boulder);
-    let b: Option<Boulder> = state
+    // lookup object to find out what type it is
+    let obj: Object = state
         .db
         .fluent()
-        .update()
-        .in_col(BOULDERS_VIEW_COLLECTION)
-        .document_id(snapshot.object_id.clone())
+        .select()
+        .by_id_in(OBJECTS_COLLECTION)
         .parent(&parent_path)
-        .object(&boulder)
-        .execute()
-        .await?;
+        .obj()
+        .one(&snapshot.object_id)
+        .await?
+        .ok_or(AppError::Query())?;
 
-    Ok(b)
+    match obj.object_type {
+        ObjectType::Account => {
+            let account = from_value::<Account>(snapshot.content.clone())
+                .map_err(|e| AppError::ParseError(format!("{} in: {}", e, snapshot.content)))?;
+
+            let _: Option<Account> = state
+                .db
+                .fluent()
+                .update()
+                .in_col(ACCOUNTS_VIEW_COLLECTION)
+                .document_id(snapshot.object_id.clone())
+                .parent(&parent_path)
+                .object(&account)
+                .execute()
+                .await?;
+        }
+        ObjectType::Boulder => {
+            let boulder = from_value::<Boulder>(snapshot.content.clone())
+                .map_err(|e| AppError::ParseError(format!("{} in: {}", e, snapshot.content)))?;
+
+            let _: Option<Boulder> = state
+                .db
+                .fluent()
+                .update()
+                .in_col(BOULDERS_VIEW_COLLECTION)
+                .document_id(snapshot.object_id.clone())
+                .parent(&parent_path)
+                .object(&boulder)
+                .execute()
+                .await?;
+        }
+    };
+
+    Ok(())
 }
 
 /// generic object lookup in `gym` with `id`
@@ -465,8 +493,9 @@ async fn save_operation(
     store_snapshot(state, gym, &new_snapshot)
         .await?
         .ok_or_else(AppError::Query)?;
+
     // TODO moved to here
-    update_boulder_view(state, gym, &new_snapshot).await?;
+    update_view(state, gym, &new_snapshot).await?;
 
     let patch = Patch {
         object_id,
