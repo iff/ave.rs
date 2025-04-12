@@ -58,9 +58,9 @@ struct Passport {
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 enum PassportValidity {
-    PVUnconfirmed,
-    PVValid,
-    PVExpired,
+    Unconfirmed,
+    Valid,
+    Expired,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -199,7 +199,7 @@ async fn create_passport(
         account_id: account_id.clone(),
         security_code: security_code.clone(),
         confirmation_token: confirmation_token.clone(),
-        validity: PassportValidity::PVUnconfirmed,
+        validity: PassportValidity::Unconfirmed,
     };
     let op = Operation::Set {
         path: ROOT_PATH.to_string(),
@@ -251,7 +251,7 @@ async fn confirm_passport(
         let op = Operation::Set {
             path: "validity".to_string(),
             value: Some(
-                serde_json::to_value(&PassportValidity::PVValid).expect("serialising PVExpired"),
+                serde_json::to_value(&PassportValidity::Valid).expect("serialising PVExpired"),
             ),
         };
         let _ = apply_object_updates(
@@ -284,14 +284,14 @@ async fn await_passport_confirmation(
 
     let (account_id, revision_id) = loop {
         match passport.validity {
-            PassportValidity::PVValid => {
+            PassportValidity::Valid => {
                 break (passport.account_id, snapshot.revision_id);
             }
-            PassportValidity::PVUnconfirmed => {
+            PassportValidity::Unconfirmed => {
                 // sleep a bit and then retry
                 tokio::time::sleep(std::time::Duration::from_secs(500)).await;
             }
-            PassportValidity::PVExpired => {
+            PassportValidity::Expired => {
                 return Err(AppError::NotAuthorized());
             }
         }
@@ -300,7 +300,7 @@ async fn await_passport_confirmation(
     let op = Operation::Set {
         path: "validity".to_string(),
         value: Some(
-            serde_json::to_value(&PassportValidity::PVExpired).expect("serialising PVExpired"),
+            serde_json::to_value(&PassportValidity::Expired).expect("serialising PVExpired"),
         ),
     };
     let _ = apply_object_updates(
