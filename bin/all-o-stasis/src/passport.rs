@@ -12,16 +12,16 @@ use cookie::Cookie;
 use firestore::{path_camel_case, FirestoreResult};
 use futures::{stream::BoxStream, TryStreamExt};
 use otp::{
-    types::{ObjectId, ObjectType, Patch},
-    Object, Operation, ROOT_OBJ_ID, ROOT_PATH, ZERO_REV_ID,
+    types::{ObjectId, ObjectType},
+    Operation, ROOT_OBJ_ID,
 };
 use sendgrid::v3::*;
 use serde::{Deserialize, Serialize};
 
 use crate::{
     storage::{
-        apply_object_updates, create_object, lookup_latest_snapshot, save_session, store_patch,
-        ACCOUNTS_VIEW_COLLECTION, OBJECTS_COLLECTION,
+        apply_object_updates, create_object, lookup_latest_snapshot, save_session,
+        ACCOUNTS_VIEW_COLLECTION,
     },
     types::{Account, AccountRole},
     word_list::make_security_code,
@@ -118,25 +118,16 @@ async fn send_email(
         copy and paste this URL into your browser."
     );
 
-    let m = Message::new(Email::new(email))
-        .set_from(Email::new("auth@boulderhalle.app".to_string()))
+    let p = Personalization::new(Email::new(email.clone()));
+
+    let m = Message::new(Email::new("auth@boulderhalle.app".to_string()))
         .set_subject(&subject)
-        .add_content(Content::new().set_content_type("text/html").set_value(body));
+        .add_content(Content::new().set_content_type("text/html").set_value(body))
+        .add_personalization(p);
 
-    // TODO
-    // let partToContent :: Part -> Value
-    //     partToContent part = object
-    //         [ "type" .= ("text/plain" :: Text) -- partType part
-    //         , "value" .= LT.decodeUtf8 (partContent part)
-    //         ]
-    //
-    // let toPersonalization addr = object
-    //         [ "to" .= [ object [ "email" .= addressEmail addr ] ]
-    //         , "subject" .= subject
-    //         ]
-
-    let api_key = ::std::env::var("SG_API_KEY").unwrap();
+    let api_key = ::std::env::var("SG_API_KEY").expect("no sendgrid api key");
     let sender = Sender::new(api_key, None);
+    tracing::debug!("sending message to {email}");
     let code = sender.send(&m).await;
     tracing::debug!("{:?}", code);
 
@@ -204,7 +195,7 @@ async fn create_passport(
         validity: PassportValidity::Unconfirmed,
     };
     let value = serde_json::to_value(passport.clone()).expect("serialising passport");
-    let obj = create_object(&state, &gym, account_id, ObjectType::Account, value).await?;
+    let obj = create_object(&state, &gym, account_id, ObjectType::Passport, value).await?;
 
     let passport_id = obj.id();
 
