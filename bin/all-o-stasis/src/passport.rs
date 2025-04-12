@@ -1,12 +1,14 @@
-use std::{collections::HashMap, fmt};
+use std::fmt;
 
 use axum::{
     extract::{Path, Query, State},
-    response::IntoResponse,
+    response::{IntoResponse, Redirect},
     routing::{get, post},
     Json, Router,
 };
-use chrono::{DateTime, Duration, Utc};
+use axum_extra::extract::CookieJar;
+use chrono::{DateTime, Utc};
+use cookie::Cookie;
 use firestore::{path_camel_case, FirestoreResult};
 use futures::{stream::BoxStream, TryStreamExt};
 use otp::{
@@ -117,6 +119,7 @@ async fn send_email(
     );
 
     let m = Message::new(Email::new(email))
+        .set_from(Email::new("auth@boulderhalle.app".to_string()))
         .set_subject(&subject)
         .add_content(Content::new().set_content_type("text/html").set_value(body));
 
@@ -242,7 +245,7 @@ async fn confirm_passport(
     ))?;
 
     if pport.confirmation_token != passport.confirmation_token {
-        return Err(AppError::NotAuthorized());
+        Err(AppError::NotAuthorized())
     } else {
         // mark as valid
         let op = Operation::Set {
@@ -251,7 +254,7 @@ async fn confirm_passport(
                 serde_json::to_value(&PassportValidity::PVValid).expect("serialising PVExpired"),
             ),
         };
-        apply_object_updates(
+        let _ = apply_object_updates(
             &state,
             &gym,
             pport.passport_id,
@@ -259,14 +262,12 @@ async fn confirm_passport(
             ROOT_OBJ_ID.to_string(),
             [op].to_vec(),
             false,
-        );
+        )
+        .await?;
 
-        // -- Apparently this is how you do a 30x redirect in Servant…
-        // throwError $ err301
-        //     { errHeaders = [("Location", T.encodeUtf8 (_pcAppDomain pc) <> "/email-confirmed")]
-        //     }
-
-        Ok(())
+        Ok(Redirect::permanent(&format!(
+            "https://apiv2.boulderhalle.app/{gym}/email-confirmed"
+        )))
     }
 }
 
@@ -274,7 +275,7 @@ async fn await_passport_confirmation(
     State(state): State<AppState>,
     Path(gym): Path<String>,
     Query(pport): Query<AwaitPassportConfirmation>,
-    // jar: CookieJar,
+    jar: CookieJar,
 ) -> Result<impl IntoResponse, AppError> {
     let snapshot = lookup_latest_snapshot(&state, &gym, &pport.passport_id.clone()).await?;
     let passport: Passport = serde_json::from_value(snapshot.content).or(Err(
@@ -302,7 +303,7 @@ async fn await_passport_confirmation(
             serde_json::to_value(&PassportValidity::PVExpired).expect("serialising PVExpired"),
         ),
     };
-    apply_object_updates(
+    let _ = apply_object_updates(
         &state,
         &gym,
         pport.passport_id,
@@ -310,7 +311,8 @@ async fn await_passport_confirmation(
         ROOT_OBJ_ID.to_string(),
         [op].to_vec(),
         false,
-    );
+    )
+    .await?;
 
     // The Passport object is valid.
     // Create a new session for the account in the Passport object.
@@ -320,7 +322,7 @@ async fn await_passport_confirmation(
         &state,
         &gym,
         &Session {
-            id: session_id,
+            id: session_id.clone(),
             obj_id: account_id,
             created_at: Some(now),
             last_accessed_at: now,
@@ -332,13 +334,13 @@ async fn await_passport_confirmation(
 
     // -- 4. Respond with the session cookie and status=200
     // pure $ addHeader setCookie NoContent
-    let cookie = Cookie::build(("session", session_id.clone()))
-        // .domain("api?")
-        .path("/")
-        .max_age(Duration::weeks(52))
-        .secure(true) // TODO not sure about this
-        .http_only(true);
+    // let cookie = Cookie::build(("session", session_id.clone()))
+    //     // .domain("api?")
+    //     .path("/")
+    //     .max_age(Duration::weeks(52))
+    //     .secure(true) // TODO not sure about this
+    //     .http_only(true);
 
     // FIXME just add to header?
-    Ok(jar.add(cookie))
+    Ok(jar.add(Cookie::new("session", session_id.clone())))
 }
