@@ -20,10 +20,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     storage::{
-        apply_object_updates, lookup_latest_snapshot, save_session, store_patch,
+        apply_object_updates, create_object, lookup_latest_snapshot, save_session, store_patch,
         ACCOUNTS_VIEW_COLLECTION, OBJECTS_COLLECTION,
     },
-    types::Account,
+    types::{Account, AccountRole},
     word_list::make_security_code,
     AppError, AppState,
 };
@@ -168,32 +168,34 @@ async fn create_passport(
         .await?;
 
     let accounts: Vec<Account> = account_stream.try_collect().await?;
-    let account = match accounts.first() {
-        Some(account) => Ok(account.clone()),
+    let maybe_account_id: Result<ObjectId, AppError> = match accounts.first() {
+        Some(account) => Ok(account.clone().id.expect("object has no id")),
         None => {
-            // TODO create a new account
-            Err(AppError::Query())
+            let account = Account {
+                id: None,
+                email: payload.email.clone(),
+                role: AccountRole::User,
+                login: "aaa".to_string(),
+                name: None,
+            };
+            let value = serde_json::to_value(account.clone()).expect("serialising account");
+            let obj = create_object(
+                &state,
+                &gym,
+                ROOT_OBJ_ID.to_owned(),
+                ObjectType::Account,
+                value,
+            )
+            .await?;
+
+            Ok(obj.id())
         }
-    }?;
-    let account_id = account.id.expect("object in view has no id");
+    };
+    let account_id = maybe_account_id.or(Err(AppError::Query()))?;
 
     // 2. Create a new Passport object.
-    let security_code = make_security_code().expect("TODO");
+    let security_code = make_security_code().expect("security code creation failed");
     let confirmation_token = new_id(16);
-
-    // TODO refactor into create_object (with payload)
-    let obj = Object::new(ObjectType::Passport, ROOT_OBJ_ID.to_owned());
-    let obj: Option<Object> = state
-        .db
-        .fluent()
-        .insert()
-        .into(OBJECTS_COLLECTION)
-        .generate_document_id()
-        .parent(&parent_path)
-        .object(&obj)
-        .execute()
-        .await?;
-    let obj = obj.ok_or_else(AppError::Query)?;
 
     let passport = Passport {
         account_id: account_id.clone(),
@@ -201,19 +203,8 @@ async fn create_passport(
         confirmation_token: confirmation_token.clone(),
         validity: PassportValidity::Unconfirmed,
     };
-    let op = Operation::Set {
-        path: ROOT_PATH.to_string(),
-        value: Some(serde_json::to_value(passport.clone()).expect("serialising passport")),
-    };
-    let patch = Patch {
-        object_id: obj.id(),
-        revision_id: ZERO_REV_ID,
-        author_id: account_id,
-        created_at: None,
-        operation: op,
-    };
-    let patch = store_patch(&state, &gym, &patch).await?;
-    let _ = patch.ok_or_else(AppError::Query)?;
+    let value = serde_json::to_value(passport.clone()).expect("serialising passport");
+    let obj = create_object(&state, &gym, account_id, ObjectType::Account, value).await?;
 
     let passport_id = obj.id();
 

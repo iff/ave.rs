@@ -128,7 +128,7 @@ pub(crate) async fn create_object(
         created_at: None,
         operation: op,
     };
-    let patch = store_patch(&state, &gym, &patch).await?;
+    let patch = store_patch(state, gym, &patch).await?;
     let _ = patch.ok_or_else(AppError::Query)?;
 
     update_view(state, gym, &obj.id(), &value).await?;
