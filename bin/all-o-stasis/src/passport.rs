@@ -8,7 +8,7 @@ use axum::{
 };
 use axum_extra::extract::CookieJar;
 use chrono::{DateTime, Utc};
-use cookie::Cookie;
+use cookie::{time::Duration, Cookie};
 use firestore::{path_camel_case, FirestoreResult};
 use futures::{stream::BoxStream, TryStreamExt};
 use otp::{
@@ -33,7 +33,8 @@ pub type SessionId = String;
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Session {
-    pub id: SessionId,
+    #[serde(alias = "_firestore_id")]
+    pub id: Option<SessionId>,
     pub obj_id: ObjectId,
     #[serde(alias = "_firestore_created")]
     pub created_at: Option<DateTime<Utc>>,
@@ -42,7 +43,12 @@ pub(crate) struct Session {
 
 impl fmt::Display for Session {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Session: {} obj_id={}", self.id, self.obj_id)
+        write!(
+            f,
+            "Session: {} obj_id={}",
+            self.id.clone().expect("id cant be missing"),
+            self.obj_id
+        )
     }
 }
 
@@ -312,15 +318,21 @@ async fn await_passport_confirmation(
         &state,
         &gym,
         &Session {
-            id: new_id(80),
+            id: None,
             obj_id: account_id,
             created_at: None,
             last_accessed_at: chrono::offset::Utc::now(),
         },
+        &new_id(80),
     )
     .await?
     .ok_or_else(AppError::Query)?; // FIXME error
 
     // respond with the session cookie and status=200
-    Ok(jar.add(Cookie::new("session", session.id)))
+    let cookie = Cookie::build(("session", session.id.expect("session has id")))
+        .path("/")
+        .max_age(Duration::weeks(52))
+        .secure(true) // TODO not sure about this
+        .http_only(true);
+    Ok(jar.add(cookie))
 }

@@ -472,7 +472,7 @@ async fn lookup_session(
     Ok((
         jar.add(cookie),
         Json(LookupSessionResponse {
-            id: session.id,
+            id: session.id.expect("session has id"),
             obj_id: session.obj_id,
         }),
     ))
