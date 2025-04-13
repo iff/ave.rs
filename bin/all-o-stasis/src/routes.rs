@@ -63,7 +63,7 @@ struct CreateObjectBody {
 pub(crate) struct LookupObjectResponse {
     pub id: ObjectId,
     #[serde(rename = "type")]
-    pub ot_type: String,
+    pub ot_type: ObjectType,
     pub created_at: DateTime<Utc>,
     pub created_by: ObjectId,
     pub revision_id: RevId,

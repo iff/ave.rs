@@ -221,7 +221,7 @@ pub(crate) async fn lookup_object_(
 
     Ok(Json(LookupObjectResponse {
         id,
-        ot_type: "boulder".to_string(), //obj.object_type.to_string(),
+        ot_type: obj.object_type,
         created_at,
         created_by: obj.created_by,
         revision_id: snapshot.revision_id,

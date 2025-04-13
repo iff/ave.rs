@@ -72,6 +72,7 @@ pub struct Object {
 
 // here we fix types to those instead of doing a generic str to type "cast"
 #[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
 pub enum ObjectType {
     Account,
     Boulder,
