@@ -23,14 +23,14 @@ pub(crate) async fn save_session(
     state: &AppState,
     gym: &String,
     session: &Session,
-) -> Result<Option<Patch>, AppError> {
+) -> Result<Option<Session>, AppError> {
     let parent_path = state.db.parent_path("gyms", gym)?;
-    let p: Option<Patch> = state
+    let p: Option<Session> = state
         .db
         .fluent()
         .insert()
         .into(SESSIONS_COLLECTION)
-        .generate_document_id() // FIXME do generate an id here?
+        .generate_document_id()
         .parent(&parent_path)
         .object(session)
         .execute()

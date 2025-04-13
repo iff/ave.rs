@@ -111,18 +111,29 @@ async fn send_email(
         "https://apiv2.boulderhalle.app/{api_domain}/login/confirm?passportId={passport_id}&confirmationToken={confirmation_token}",
     );
     let subject = format!("{api_domain} Login Verification (code: \"{security_code}\")",);
-    let body = format!(
-        "Verify your email to log on to the {api_domain}\n\
-        We have received a login attempt with the following code: \n{security_code}\n\
-        complete the login process, please click the URL below: \n{confirmation_url}\n\
-        copy and paste this URL into your browser."
-    );
+    let body = [
+        format!("Verify your email to log on to the {api_domain}"),
+        "<br/>".to_string(),
+        "We have received a login attempt with the following code:".to_string(),
+        "<br/>".to_string(),
+        security_code,
+        "<br/>".to_string(),
+        "complete the login process, please click the URL below:".to_string(),
+        "<br/>".to_string(),
+        format!("<a href={confirmation_url}>{confirmation_url}</a>"),
+        "<br/>".to_string(),
+        "copy and paste this URL into your browser.".to_string(),
+    ];
 
     let p = Personalization::new(Email::new(email.clone()));
 
     let m = Message::new(Email::new("auth@boulderhalle.app".to_string()))
         .set_subject(&subject)
-        .add_content(Content::new().set_content_type("text/html").set_value(body))
+        .add_content(
+            Content::new()
+                .set_content_type("text/html")
+                .set_value(body.join("<br/>")),
+        )
         .add_personalization(p);
 
     let api_key = ::std::env::var("SG_API_KEY").expect("no sendgrid api key");
@@ -247,9 +258,10 @@ async fn confirm_passport(
         )
         .await?;
 
-        Ok(Redirect::permanent(&format!(
-            "https://apiv2.boulderhalle.app/{gym}/email-confirmed"
-        )))
+        // FIXME we need the app url
+        Ok(Redirect::permanent(
+            "https://all-o-stasis-oxy.vercel.app/email-confirmed",
+        ))
     }
 }
 
@@ -259,19 +271,18 @@ async fn await_passport_confirmation(
     Query(pport): Query<AwaitPassportConfirmation>,
     jar: CookieJar,
 ) -> Result<impl IntoResponse, AppError> {
-    let snapshot = lookup_latest_snapshot(&state, &gym, &pport.passport_id.clone()).await?;
-    let passport: Passport = serde_json::from_value(snapshot.content).or(Err(
-        AppError::ParseError("failed to parse object into Passport".to_string()),
-    ))?;
-
     let (account_id, revision_id) = loop {
+        let snapshot = lookup_latest_snapshot(&state, &gym, &pport.passport_id.clone()).await?;
+        let passport: Passport = serde_json::from_value(snapshot.content).or(Err(
+            AppError::ParseError("failed to parse object into Passport".to_string()),
+        ))?;
+
         match passport.validity {
             PassportValidity::Valid => {
                 break (passport.account_id, snapshot.revision_id);
             }
             PassportValidity::Unconfirmed => {
-                // sleep a bit and then retry
-                tokio::time::sleep(std::time::Duration::from_secs(500)).await;
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
             }
             PassportValidity::Expired => {
                 return Err(AppError::NotAuthorized());
@@ -296,33 +307,20 @@ async fn await_passport_confirmation(
     )
     .await?;
 
-    // The Passport object is valid.
-    // Create a new session for the account in the Passport object.
-    let now = chrono::offset::Utc::now();
-    let session_id = new_id(80);
-    save_session(
+    // create a new session for the account in the Passport object
+    let session = save_session(
         &state,
         &gym,
         &Session {
-            id: session_id.clone(),
+            id: new_id(80),
             obj_id: account_id,
-            created_at: Some(now),
-            last_accessed_at: now,
+            created_at: None,
+            last_accessed_at: chrono::offset::Utc::now(),
         },
     )
-    .await?;
+    .await?
+    .ok_or_else(AppError::Query)?; // FIXME error
 
-    // setCookie <- mkSetCookie sessId
-
-    // -- 4. Respond with the session cookie and status=200
-    // pure $ addHeader setCookie NoContent
-    // let cookie = Cookie::build(("session", session_id.clone()))
-    //     // .domain("api?")
-    //     .path("/")
-    //     .max_age(Duration::weeks(52))
-    //     .secure(true) // TODO not sure about this
-    //     .http_only(true);
-
-    // FIXME just add to header?
-    Ok(jar.add(Cookie::new("session", session_id.clone())))
+    // respond with the session cookie and status=200
+    Ok(jar.add(Cookie::new("session", session.id)))
 }
