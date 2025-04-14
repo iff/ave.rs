@@ -342,7 +342,7 @@ async fn accounts(
         .db
         .fluent()
         .select()
-        .from(BOULDERS_VIEW_COLLECTION)
+        .from(ACCOUNTS_VIEW_COLLECTION)
         .parent(&parent_path)
         .obj()
         .stream_query_with_errors()
