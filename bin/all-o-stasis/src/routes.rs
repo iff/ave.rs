@@ -15,7 +15,7 @@ use axum_extra::headers::UserAgent;
 use axum_extra::TypedHeader;
 use chrono::{DateTime, Utc};
 use cookie::time::Duration;
-use firestore::{path_camel_case, FirestoreQueryDirection, FirestoreResult};
+use firestore::{path_camel_case, FirestoreResult};
 use futures::stream::BoxStream;
 use futures::TryStreamExt;
 use otp::types::ObjectType;
@@ -75,12 +75,6 @@ pub(crate) struct LookupObjectResponse {
     pub revision_id: RevId,
     pub content: Value,
 }
-
-// #[derive(Serialize, Deserialize, Clone)]
-// struct LookupSessionBody {
-//     #[serde(rename = "type")]
-//     session_id: String,
-// }
 
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -271,10 +265,6 @@ async fn active_boulders(
                 q.field(path_camel_case!(Boulder::is_draft)).eq(0),
             ])
         })
-        // .order_by([(
-        //     path_camel_case!(Boulder::set_date),
-        //     FirestoreQueryDirection::Descending,
-        // )])
         .obj()
         .stream_query_with_errors()
         .await?;
@@ -441,9 +431,6 @@ fn api_routes() -> Router<AppState> {
         .route("/{gym}/objects/{id}/changes", get(object_changes))
         // feed (raw websocket) -- to subscribe to object updates (patches)
         .route("/{gym}/feed", any(feed))
-        // unused below
-        // delete - not used
-        .route("/{gym}/objects/{id}", delete(delete_object))
 }
 
 async fn lookup_session(
@@ -488,8 +475,8 @@ async fn lookup_session(
 async fn new_object(
     State(state): State<AppState>,
     Path(gym): Path<String>,
-    Json(payload): axum::extract::Json<CreateObjectBody>,
     jar: CookieJar,
+    Json(payload): axum::extract::Json<CreateObjectBody>,
 ) -> Result<Json<CreateObjectResponse>, AppError> {
     let session_id = jar.get("session");
     let created_by = author_from_session(&state, &gym, session_id).await?;
@@ -548,8 +535,8 @@ async fn lookup_object(
 async fn patch_object(
     State(state): State<AppState>,
     Path((gym, id)): Path<(String, String)>,
-    Json(payload): axum::extract::Json<PatchObjectBody>,
     jar: CookieJar,
+    Json(payload): axum::extract::Json<PatchObjectBody>,
 ) -> Result<Json<PatchObjectResponse>, AppError> {
     let session_id = jar.get("session");
     let created_by = author_from_session(&state, &gym, session_id).await?;
@@ -628,34 +615,4 @@ async fn feed(
     // TODO expect
     let parent_path = state.db.parent_path("gyms", gym).expect("need a gym");
     ws.on_upgrade(move |socket| handle_socket(socket, addr, state, parent_path))
-}
-
-// XXX below not implemented in Avers
-
-async fn delete_object(
-    State(_state): State<AppState>,
-    Path((_gym, _id)): Path<(String, String)>,
-) -> Result<Json<Object>, AppError> {
-    Err(AppError::NotImplemented())
-}
-
-async fn create_release(
-    State(_state): State<AppState>,
-    Path((_gym, _id)): Path<(String, String)>,
-) -> Result<Json<Object>, AppError> {
-    Err(AppError::NotImplemented())
-}
-
-async fn lookup_release(
-    State(_state): State<AppState>,
-    Path((_gym, _id, _rev_id)): Path<(String, String, String)>,
-) -> Result<Json<Object>, AppError> {
-    Err(AppError::NotImplemented())
-}
-
-async fn lookup_latest_release(
-    State(_state): State<AppState>,
-    Path((_gym, _id, _rev_id)): Path<(String, String, String)>,
-) -> Result<Json<Object>, AppError> {
-    Err(AppError::NotImplemented())
 }
