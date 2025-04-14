@@ -3,7 +3,6 @@ use axum::routing::any;
 use axum::{
     extract::ws::WebSocketUpgrade,
     extract::{Path, State},
-    routing::delete,
     routing::get,
     routing::patch,
     routing::post,
@@ -307,10 +306,12 @@ async fn own_boulders(
     State(state): State<AppState>,
     Path(gym): Path<String>,
     jar: CookieJar,
-) -> Result<Json<ObjectId>, AppError> {
+) -> Result<Json<Vec<ObjectId>>, AppError> {
     let session_id = jar.get("session");
     let own = author_from_session(&state, &gym, session_id).await?;
-    // TODO return [] if not found
+    if own == ROOT_OBJ_ID {
+        return Ok(Json(Vec::new()));
+    }
 
     let parent_path = state.db.parent_path("gyms", gym)?;
     let object_stream: BoxStream<FirestoreResult<Boulder>> = state
@@ -436,7 +437,6 @@ fn api_routes() -> Router<AppState> {
 async fn lookup_session(
     State(state): State<AppState>,
     Path(gym): Path<String>,
-    // Json(payload): axum::extract::Json<LookupSessionBody>,
     jar: CookieJar,
 ) -> Result<impl IntoResponse, AppError> {
     let parent_path = state.db.parent_path("gyms", gym)?;
@@ -458,7 +458,6 @@ async fn lookup_session(
         .ok_or(AppError::NoSession())?;
 
     let cookie = Cookie::build(("session", session_id.clone()))
-        // .domain("api?")
         .path("/")
         .max_age(Duration::weeks(52))
         .secure(true) // TODO not sure about this
@@ -589,15 +588,6 @@ async fn lookup_patch(
     }
 }
 
-// XXX maybe don't needed
-
-async fn object_changes(
-    State(_state): State<AppState>,
-    Path((_gym, _id)): Path<(String, String)>,
-) -> Result<Json<Object>, AppError> {
-    Err(AppError::NotImplemented())
-}
-
 async fn feed(
     State(state): State<AppState>,
     Path(gym): Path<String>,
@@ -615,4 +605,13 @@ async fn feed(
     // TODO expect
     let parent_path = state.db.parent_path("gyms", gym).expect("need a gym");
     ws.on_upgrade(move |socket| handle_socket(socket, addr, state, parent_path))
+}
+
+// XXX maybe don't needed
+
+async fn object_changes(
+    State(_state): State<AppState>,
+    Path((_gym, _id)): Path<(String, String)>,
+) -> Result<Json<Object>, AppError> {
+    Err(AppError::NotImplemented())
 }
