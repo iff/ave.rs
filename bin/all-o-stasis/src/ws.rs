@@ -6,8 +6,10 @@ use firestore::{
 };
 use futures::{SinkExt, StreamExt};
 use otp::types::{ObjectId, Patch};
+use std::error::Error;
 use std::net::SocketAddr;
-use tokio::sync::mpsc;
+use std::sync::Arc;
+use tokio::sync::{mpsc, mpsc::Sender, Mutex};
 
 use crate::storage::PATCHES_COLLECTION;
 use crate::AppState;
@@ -42,6 +44,43 @@ async fn patch_listener(
     Some(listener)
 }
 
+async fn handle_listener_event(
+    event: FirestoreListenEvent,
+    send_tx_patch: Sender<Message>,
+) -> Result<(), Box<dyn Error + Send + Sync>> {
+    match event {
+        FirestoreListenEvent::DocumentChange(ref doc_change) => {
+            tracing::debug!("document changed: {doc_change:?}");
+
+            if let Some(doc) = &doc_change.document {
+                // here we need the object id so we need to parse
+                let patch: Patch =
+                    FirestoreDb::deserialize_doc_to::<Patch>(doc).expect("deserialized object");
+                tracing::debug!("sending patch {}", patch);
+
+                // only if object id is in subs
+                // if objs.lock().unwrap().contains(&patch.object_id) {
+                let msg = Message::Text(
+                    serde_json::to_string(&patch)
+                        .expect("encode message")
+                        .into(),
+                );
+                let ps = send_tx_patch.send(msg).await;
+                if let Err(err) = ps {
+                    tracing::debug!("error: failed to sent patch with {err}");
+                    // TODO break
+                }
+                // }
+            }
+        }
+        _ => {
+            tracing::debug!("received a listen response event to handle: {event:?}");
+        }
+    }
+
+    Ok(())
+}
+
 pub(crate) async fn handle_socket(
     socket: WebSocket, // FIXME why not mut?
     who: SocketAddr,
@@ -63,56 +102,22 @@ pub(crate) async fn handle_socket(
         None => return,
     };
 
-    // TODO here we need to send out patches somehow
+    let objs: Arc<Mutex<Vec<ObjectId>>> = Arc::new(Mutex::new(Vec::new()));
+    let objs_clone = Arc::clone(&objs);
     let send_tx_patch = send_tx.clone();
     let _patches = tokio::spawn(async move {
-        let mut objs: Vec<String> = Vec::new();
-
         let _ = listener
-            .start(move |event| {
-                let send_tx_patch_ = send_tx_patch.clone();
-                async move {
-                    match event {
-                        FirestoreListenEvent::DocumentChange(ref doc_change) => {
-                            tracing::debug!("document changed: {doc_change:?}");
-
-                            if let Some(doc) = &doc_change.document {
-                                // here we need the object id so we need to parse
-                                let obj: Patch = FirestoreDb::deserialize_doc_to::<Patch>(doc)
-                                    .expect("deserialized object");
-                                // tracing::debug!("sending patch {}", obj);
-
-                                // TODO only if object id is in subs
-
-                                // let msg = Message::Text(
-                                //     serde_json::to_string(&obj).expect("encode message").into(),
-                                // );
-                                // let ps = send_tx_patch_.send(msg).await;
-                                // if let Err(err) = ps {
-                                //     tracing::debug!("error: failed to sent patch with {err}");
-                                //     // TODO break
-                                // }
-                            }
-                        }
-                        _ => {
-                            tracing::debug!(
-                                "received a listen response event to handle: {event:?}"
-                            );
-                        }
-                    }
-
-                    Ok(())
-                }
-            })
+            .start(move |event| handle_listener_event(event, send_tx_patch.clone()))
             .await;
 
         loop {
             if let Ok(obj_id) = rx.try_recv() {
-                objs.push(obj_id)
+                objs.lock().await.push(obj_id)
             };
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
         }
 
+        // clean shutdown?
         // let _ = listener.shutdown().await;
     });
 
@@ -131,11 +136,25 @@ pub(crate) async fn handle_socket(
     // keep on sending out what we get on the send channel
     let _ws_send = tokio::spawn(async move {
         while let Ok(msg) = send_rx.try_recv() {
-            let s = sender.send(msg).await;
-            if let Err(err) = s {
-                tracing::debug!("error: failed send message over websocket with {err}");
-                // TODO signal abort
-                break;
+            let patch = match msg.clone() {
+                Message::Text(t) => {
+                    let patch: Patch = serde_json::from_str(&t).expect("parsing patch");
+                    patch
+                }
+                _ => {
+                    tracing::debug!("error: received unexpected message from listener (not text)");
+                    break;
+                }
+            };
+
+            // TODO we could check in the listener?
+            if objs_clone.lock().await.contains(&patch.object_id) {
+                let s = sender.send(msg).await;
+                if let Err(err) = s {
+                    tracing::debug!("error: failed send message over websocket with {err}");
+                    // TODO signal abort
+                    break;
+                }
             }
         }
     });
