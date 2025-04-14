@@ -29,14 +29,16 @@ use axum::extract::connect_info::ConnectInfo;
 
 use crate::passport::{passport_routes, Session};
 use crate::storage::{
-    apply_object_updates, lookup_object_, store_patch, ACCOUNTS_VIEW_COLLECTION,
-    BOULDERS_VIEW_COLLECTION, OBJECTS_COLLECTION, PATCHES_COLLECTION, SESSIONS_COLLECTION,
+    apply_object_updates, lookup_latest_snapshot, lookup_object_, store_patch,
+    ACCOUNTS_VIEW_COLLECTION, BOULDERS_VIEW_COLLECTION, OBJECTS_COLLECTION, PATCHES_COLLECTION,
+    SESSIONS_COLLECTION,
 };
-use crate::types::Boulder;
+use crate::types::{Account, Boulder};
 use crate::ws::handle_socket;
 use crate::{AppError, AppState};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
 struct BoulderStat {
     set_on: u32,
     removed_on: Option<u32>,
@@ -46,12 +48,14 @@ struct BoulderStat {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
 struct PublicProfile {
     name: String,
     avatar: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 struct CreateObjectBody {
     #[serde(rename = "type")]
     ot_type: ObjectType,
@@ -196,11 +200,23 @@ async fn healthz(State(state): State<AppState>) -> Result<&'static str, AppError
 
 async fn public_profile(
     State(state): State<AppState>,
-    Path((gym, _id)): Path<(String, String)>,
-) -> Result<Json<Object>, AppError> {
-    // TODO
-    let _parent_path = state.db.parent_path("gyms", gym)?;
-    Err(AppError::NotImplemented())
+    Path((gym, id)): Path<(String, String)>,
+) -> Result<Json<PublicProfile>, AppError> {
+    let snapshot = lookup_latest_snapshot(&state, &gym, &id).await?;
+    let account: Account = serde_json::from_value(snapshot.content).or(Err(
+        AppError::ParseError("failed to parse object".to_string()),
+    ))?;
+
+    let name = if let Some(name) = account.name {
+        name
+    } else {
+        "".to_string()
+    };
+
+    Ok(Json(PublicProfile {
+        name,
+        avatar: Some(account.email), // TODO gravatar
+    }))
 }
 
 async fn active_boulders(
