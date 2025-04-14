@@ -22,6 +22,7 @@ use otp::types::ObjectType;
 use otp::types::{Object, ObjectId, Operation, Patch, RevId, ROOT_PATH, ZERO_REV_ID};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use std::net::SocketAddr;
 use tower_http::cors::CorsLayer;
 
@@ -213,9 +214,13 @@ async fn public_profile(
         "".to_string()
     };
 
+    let mut hashed_email = Sha256::new();
+    hashed_email.update(account.email.trim());
+    let avatar = format!("https://gravatar.com/avatar/{:X}", hashed_email.finalize());
+
     Ok(Json(PublicProfile {
         name,
-        avatar: Some(account.email), // TODO gravatar
+        avatar: Some(avatar),
     }))
 }
 
