@@ -20,6 +20,7 @@ use futures::stream::BoxStream;
 use futures::TryStreamExt;
 use otp::types::ObjectType;
 use otp::types::{Object, ObjectId, Operation, Patch, RevId, ROOT_PATH, ZERO_REV_ID};
+use otp::ROOT_OBJ_ID;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -34,7 +35,7 @@ use crate::storage::{
     ACCOUNTS_VIEW_COLLECTION, BOULDERS_VIEW_COLLECTION, OBJECTS_COLLECTION, PATCHES_COLLECTION,
     SESSIONS_COLLECTION,
 };
-use crate::types::{Account, Boulder};
+use crate::types::{Account, AccountRole, Boulder};
 use crate::ws::handle_socket;
 use crate::{AppError, AppState};
 
@@ -125,6 +126,35 @@ impl PatchObjectResponse {
     }
 }
 
+async fn author_from_session(
+    state: &AppState,
+    gym: &String,
+    session_id: Option<&Cookie<'static>>,
+) -> Result<String, AppError> {
+    let session_id = if let Some(session_id) = session_id {
+        session_id.value().to_owned()
+    } else {
+        return Ok(ROOT_OBJ_ID.to_owned());
+    };
+
+    let parent_path = state.db.parent_path("gyms", gym)?;
+    let session: Option<Session> = state
+        .db
+        .fluent()
+        .select()
+        .by_id_in(SESSIONS_COLLECTION)
+        .parent(&parent_path)
+        .obj()
+        .one(&session_id)
+        .await?;
+
+    if let Some(session) = session {
+        Ok(session.obj_id)
+    } else {
+        Ok(ROOT_OBJ_ID.to_string())
+    }
+}
+
 /* avers.js uses:
  *
  * POST      /objects
@@ -175,10 +205,10 @@ pub fn app(state: AppState) -> Router {
         // TODO what does this do?
         //     :> Get '[JSON] [BoulderStat]
         .route("/{gym}/stats/boulders", get(stats_boulders))
-        // auth
-        .route("/gym/{gym}/signup", post(signup))
+        //
         .merge(api)
         .merge(passport)
+        //
         .with_state(state)
         .layer(cors)
 }
@@ -261,28 +291,88 @@ async fn active_boulders(
 async fn draft_boulders(
     State(state): State<AppState>,
     Path(gym): Path<String>,
-) -> Result<Json<Object>, AppError> {
-    // TODO just do that with a query
-    let _parent_path = state.db.parent_path("gyms", gym)?;
-    Err(AppError::NotImplemented())
+) -> Result<Json<ObjectId>, AppError> {
+    let parent_path = state.db.parent_path("gyms", gym)?;
+    let object_stream: BoxStream<FirestoreResult<Boulder>> = state
+        .db
+        .fluent()
+        .select()
+        .from(BOULDERS_VIEW_COLLECTION)
+        .parent(&parent_path)
+        .filter(|q| q.for_all([q.field(path_camel_case!(Boulder::is_draft)).neq(0)]))
+        .obj()
+        .stream_query_with_errors()
+        .await?;
+
+    let as_vec: Vec<Boulder> = object_stream.try_collect().await?;
+    Ok(Json(
+        as_vec
+            .into_iter()
+            .map(|b| b.id.expect("object in view has no id")) // TODO no panic
+            .collect(),
+    ))
 }
 
 async fn own_boulders(
     State(state): State<AppState>,
     Path(gym): Path<String>,
-) -> Result<Json<Object>, AppError> {
-    // TODO just do that with a query
-    // FIXME needs owner ObjId
-    let _parent_path = state.db.parent_path("gyms", gym)?;
-    Err(AppError::NotImplemented())
+    jar: CookieJar,
+) -> Result<Json<ObjectId>, AppError> {
+    let session_id = jar.get("session");
+    let own = author_from_session(&state, &gym, session_id).await?;
+    // TODO return [] if not found
+
+    let parent_path = state.db.parent_path("gyms", gym)?;
+    let object_stream: BoxStream<FirestoreResult<Boulder>> = state
+        .db
+        .fluent()
+        .select()
+        .from(BOULDERS_VIEW_COLLECTION)
+        .parent(&parent_path)
+        .filter(|q| q.for_all([q.field(path_camel_case!(Boulder::id)).eq(own.to_owned())]))
+        .obj()
+        .stream_query_with_errors()
+        .await?;
+
+    let as_vec: Vec<Boulder> = object_stream.try_collect().await?;
+    Ok(Json(
+        as_vec
+            .into_iter()
+            .map(|b| b.id.expect("object in view has no id")) // TODO no panic
+            .collect(),
+    ))
 }
 
 async fn accounts(
     State(state): State<AppState>,
     Path(gym): Path<String>,
-) -> Result<Json<Vec<Object>>, AppError> {
+) -> Result<Json<Vec<ObjectId>>, AppError> {
     let parent_path = state.db.parent_path("gyms", gym)?;
-    let object_stream: BoxStream<FirestoreResult<Object>> = state
+    let object_stream: BoxStream<FirestoreResult<Account>> = state
+        .db
+        .fluent()
+        .select()
+        .from(BOULDERS_VIEW_COLLECTION)
+        .parent(&parent_path)
+        .obj()
+        .stream_query_with_errors()
+        .await?;
+
+    let as_vec: Vec<Account> = object_stream.try_collect().await?;
+    Ok(Json(
+        as_vec
+            .into_iter()
+            .map(|b| b.id.expect("object in view has no id")) // TODO no panic
+            .collect(),
+    ))
+}
+
+async fn admin_accounts(
+    State(state): State<AppState>,
+    Path(gym): Path<String>,
+) -> Result<Json<Vec<ObjectId>>, AppError> {
+    let parent_path = state.db.parent_path("gyms", gym)?;
+    let object_stream: BoxStream<FirestoreResult<Account>> = state
         .db
         .fluent()
         .select()
@@ -290,29 +380,20 @@ async fn accounts(
         .parent(&parent_path)
         .filter(|q| {
             q.for_all([q
-                .field(path_camel_case!(Object::object_type))
-                .eq(ObjectType::Account)])
+                .field(path_camel_case!(Account::role))
+                .eq(AccountRole::Admin)])
         })
-        .order_by([(
-            path_camel_case!(Object::created_at),
-            FirestoreQueryDirection::Descending,
-        )])
         .obj()
         .stream_query_with_errors()
         .await?;
 
-    let as_vec: Vec<Object> = object_stream.try_collect().await?;
-    Ok(Json(as_vec))
-}
-
-async fn admin_accounts(
-    State(state): State<AppState>,
-    Path(gym): Path<String>,
-) -> Result<Json<Object>, AppError> {
-    // TODO
-    // TODO just do that with a query
-    let _parent_path = state.db.parent_path("gyms", gym)?;
-    Err(AppError::NotImplemented())
+    let as_vec: Vec<Account> = object_stream.try_collect().await?;
+    Ok(Json(
+        as_vec
+            .into_iter()
+            .map(|b| b.id.expect("object in view has no id")) // TODO no panic
+            .collect(),
+    ))
 }
 
 async fn stats(
@@ -333,51 +414,20 @@ async fn stats_boulders(
     Err(AppError::NotImplemented())
 }
 
-async fn signup(
-    State(_state): State<AppState>,
-    Json(_payload): Json<Value>,
-) -> Result<Json<Object>, AppError> {
-    // TODO needs gym
-    // TODO
-    Err(AppError::NotImplemented())
-}
-
 fn api_routes() -> Router<AppState> {
-    //  General structure of endpoint definitions
-    //
-    //  The definition of an endpoint would be too much to put on a single line,
-    //  so it is split into multiple lines according to a fixed schema. Each line
-    //  represents a particular aspect of the request/response. Lines can be omitted
-    //  if they don't apply to the endpoint.
-    //
-    //   <path> including any captured components
-    //   <credentials>
-    //   <headers>
-    //   <cache validation token>
-    //   <request body>
-    //   <method and response>
-    //
-    //
-    //
-    //  | The cache validator token when passed in the request. The server will
-    //  use it to determine if the cached response on the client can be reused
-    //  or not.
+    // | The cache validator token when passed in the request. The server will
+    // use it to determine if the cached response on the client can be reused
+    // or not.
     // type CacheValidationToken = Header "If-None-Match" Text
     //
     //
     // | Includes @Cache-Control@ and @ETag@ headers in the response to mark
-    //  it as cacheable by the client.
+    // it as cacheable by the client.
     // type Cacheable a = Headers '[Header "Cache-Control" Text, Header "ETag" Text] a
 
     Router::new()
-        // change secret -- TODO needed? to set an empty secret?
-        // .route("/{gym}/secret", post(change_secret))
-        // create session
-        // .route("/{gym}/session", post(create_session))
         // lookup session
         .route("/{gym}/session", get(lookup_session))
-        // delete session
-        .route("/{gym}/session", delete(delete_session))
         //
         // create
         .route("/{gym}/objects", post(new_object))
@@ -394,69 +444,6 @@ fn api_routes() -> Router<AppState> {
         // unused below
         // delete - not used
         .route("/{gym}/objects/{id}", delete(delete_object))
-        // create a release -- not used
-        .route("/{gym}/objects/{id}/releases", post(create_release))
-        // lookup release -- not used
-        .route("/{gym}/objects/{id}/releases/{rev_id}", get(lookup_release))
-        // lookup latest release -- not used
-        .route(
-            "/{gym}/objects/{id}/releases/_latest",
-            get(lookup_latest_release),
-        )
-
-    // type ChangeSecret
-    //     = "secret"
-    //     :> Credentials
-    //     :> ReqBody '[JSON] ChangeSecretBody
-    //     :> Post '[JSON] ()
-    //
-    // type CreateSession
-    //     = "session"
-    //     :> ReqBody '[JSON] CreateSessionBody
-    //     :> Post '[JSON] (Headers '[Header "Set-Cookie" SetCookie] CreateSessionResponse)
-    //
-    // type LookupSession
-    //     = "session"
-    //     :> SessionId
-    //     :> Get '[JSON] (Headers '[Header "Set-Cookie" SetCookie] LookupSessionResponse)
-    //
-    // type DeleteSession
-    //     = "session"
-    //     :> SessionId
-    //     :> Delete '[JSON] (Headers '[Header "Set-Cookie" SetCookie] ())
-    //
-    // type UploadBlob
-    //     = "blobs"
-    //     :> Credentials
-    //     :> Header "Content-Type" Text
-    //     :> ReqBody '[OctetStream] BlobContent
-    //     :> Post '[JSON] UploadBlobResponse
-    //
-    // type LookupBlob
-    //     = "blobs" :> Capture "blobId" BlobId
-    //     :> Credentials
-    //     :> Get '[JSON] LookupBlobResponse
-    //
-    // type LookupBlobContent
-    //     = "blobs" :> Capture "blobId" BlobId :> "content"
-    //     :> Credentials
-    //     :> Get '[OctetStream] (Headers '[Header "Content-Type" Text] BlobContent)
-}
-
-// async fn create_session(
-//     State(state): State<AppState>,
-//     Path(gym): Path<String>,
-//     Json(payload): axum::extract::Json<CreateSessionBody>,
-//     jar: CookieJar,
-// ) -> Result<impl IntoResponse, AppError> {
-//     Err(AppError::NoSession())
-// }
-
-async fn delete_session(
-    State(state): State<AppState>,
-    Path(gym): Path<String>,
-) -> Result<(), AppError> {
-    Err(AppError::NoSession())
 }
 
 async fn lookup_session(
@@ -502,9 +489,10 @@ async fn new_object(
     State(state): State<AppState>,
     Path(gym): Path<String>,
     Json(payload): axum::extract::Json<CreateObjectBody>,
+    jar: CookieJar,
 ) -> Result<Json<CreateObjectResponse>, AppError> {
-    // TODO where do we get that? ah that comes from the credentials
-    let created_by = String::from("some id");
+    let session_id = jar.get("session");
+    let created_by = author_from_session(&state, &gym, session_id).await?;
 
     let ot_type = payload.ot_type;
     let content = payload.content;
@@ -538,8 +526,10 @@ async fn new_object(
     let _ = patch.ok_or_else(AppError::Query)?;
 
     // TODO needs to also view update..
-    // TODO why not create a snapshot?
+    //   why dont we here?
     // update_boulder_view(state, gym, content);
+    //
+    // TODO why not create a snapshot?
 
     Ok(Json(CreateObjectResponse {
         id: obj.id(),
@@ -559,9 +549,10 @@ async fn patch_object(
     State(state): State<AppState>,
     Path((gym, id)): Path<(String, String)>,
     Json(payload): axum::extract::Json<PatchObjectBody>,
+    jar: CookieJar,
 ) -> Result<Json<PatchObjectResponse>, AppError> {
-    // TODO where do we get that? ah that comes from the credentials
-    let created_by = String::from("some id");
+    let session_id = jar.get("session");
+    let created_by = author_from_session(&state, &gym, session_id).await?;
 
     tracing::debug!(
         "patch object ({id}@{}): {} operations",
