@@ -58,8 +58,6 @@ async fn handle_listener_event(
                     FirestoreDb::deserialize_doc_to::<Patch>(doc).expect("deserialized object");
                 tracing::debug!("sending patch {}", patch);
 
-                // only if object id is in subs
-                // if objs.lock().unwrap().contains(&patch.object_id) {
                 let msg = Message::Text(
                     serde_json::to_string(&patch)
                         .expect("encode message")
@@ -68,9 +66,7 @@ async fn handle_listener_event(
                 let ps = send_tx_patch.send(msg).await;
                 if let Err(err) = ps {
                     tracing::debug!("error: failed to sent patch with {err}");
-                    // TODO break
                 }
-                // }
             }
         }
         _ => {
@@ -91,27 +87,29 @@ pub(crate) async fn handle_socket(
 
     // TODO use unbounded channel?
     // channel for subscriptions
-    let (tx, mut rx) = mpsc::channel(100);
+    let (sub_tx, mut sub_rx) = mpsc::channel(100);
 
     // TODO use unbounded channel?
     // channel for messages to be sent back
-    let (send_tx, mut send_rx) = mpsc::channel(100);
+    let (ws_tx, mut ws_rx) = mpsc::channel(100);
+    // for firestore listener
+    let ws_tx_patch = ws_tx.clone();
+
+    let objs: Arc<Mutex<Vec<ObjectId>>> = Arc::new(Mutex::new(Vec::new()));
+    let objs_clone = Arc::clone(&objs);
 
     let mut listener = match patch_listener(state, parent_path).await {
         Some(listener) => listener,
         None => return,
     };
 
-    let objs: Arc<Mutex<Vec<ObjectId>>> = Arc::new(Mutex::new(Vec::new()));
-    let objs_clone = Arc::clone(&objs);
-    let send_tx_patch = send_tx.clone();
     let _patches = tokio::spawn(async move {
         let _ = listener
-            .start(move |event| handle_listener_event(event, send_tx_patch.clone()))
+            .start(move |event| handle_listener_event(event, ws_tx_patch.clone()))
             .await;
 
         loop {
-            if let Ok(obj_id) = rx.try_recv() {
+            if let Ok(obj_id) = sub_rx.try_recv() {
                 objs.lock().await.push(obj_id)
             };
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
@@ -124,7 +122,7 @@ pub(crate) async fn handle_socket(
     // ping the client every 10 seconds
     let _ping = tokio::spawn(async move {
         loop {
-            let sp = send_tx.send(Message::Ping(Bytes::from_static(&[1]))).await;
+            let sp = ws_tx.send(Message::Ping(Bytes::from_static(&[1]))).await;
             if let Err(err) = sp {
                 tracing::debug!("error: failed to send ping with {err}");
                 break;
@@ -135,22 +133,28 @@ pub(crate) async fn handle_socket(
 
     // keep on sending out what we get on the send channel
     let _ws_send = tokio::spawn(async move {
-        while let Ok(msg) = send_rx.try_recv() {
-            let patch = match msg.clone() {
-                Message::Text(t) => {
-                    let patch: Patch = serde_json::from_str(&t).expect("parsing patch");
-                    patch
-                }
-                _ => {
-                    tracing::debug!("error: received unexpected message from listener (not text)");
-                    break;
-                }
-            };
+        loop {
+            if let Ok(msg) = ws_rx.try_recv() {
+                // we expect text patches and pings on this channel
+                let msg = match msg.clone() {
+                    Message::Text(t) => {
+                        let patch: Patch = serde_json::from_str(&t).expect("parsing patch");
+                        if objs_clone.lock().await.contains(&patch.object_id) {
+                            msg
+                        } else {
+                            continue;
+                        }
+                    }
+                    Message::Ping(_) => msg,
+                    t => {
+                        tracing::debug!(
+                            "error: received unexpected message from on ws_send: {t:?}"
+                        );
+                        continue;
+                    }
+                };
 
-            // TODO we could check in the listener?
-            if objs_clone.lock().await.contains(&patch.object_id) {
-                let s = sender.send(msg).await;
-                if let Err(err) = s {
+                if let Err(err) = sender.send(msg).await {
                     tracing::debug!("error: failed send message over websocket with {err}");
                     // TODO signal abort
                     break;
@@ -174,7 +178,7 @@ pub(crate) async fn handle_socket(
                         if let [op, obj_id] = &json[..] {
                             if op == "+" {
                                 tracing::debug!("{who} subscribing to object id {obj_id}");
-                                let ps = tx.send(obj_id.clone() as String).await;
+                                let ps = sub_tx.send(obj_id.clone() as String).await;
                                 if let Err(err) = ps {
                                     tracing::debug!("failed to send subscribe: {}", err);
                                     break;
@@ -206,7 +210,7 @@ pub(crate) async fn handle_socket(
                         tracing::debug!(">>> {who} sent pong with {v:?}");
                     }
                     Message::Ping(v) => {
-                        tracing::debug!(">>> {who} sent pong with {v:?}");
+                        tracing::debug!(">>> {who} sent ping with {v:?}");
                     }
                 }
             }
