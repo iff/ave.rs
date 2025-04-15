@@ -86,17 +86,13 @@ pub(crate) async fn handle_socket(
     let (mut sender, mut receiver) = socket.split();
 
     // TODO use unbounded channel?
-    // channel for subscriptions
-    let (sub_tx, mut sub_rx) = mpsc::channel(100);
-
-    // TODO use unbounded channel?
     // channel for messages to be sent back
     let (ws_tx, mut ws_rx) = mpsc::channel(100);
     // for firestore listener
-    let ws_tx_patch = ws_tx.clone();
+    let ws_tx_listener = ws_tx.clone();
 
-    let objs: Arc<Mutex<Vec<ObjectId>>> = Arc::new(Mutex::new(Vec::new()));
-    let objs_clone = Arc::clone(&objs);
+    let subscriptions: Arc<Mutex<Vec<ObjectId>>> = Arc::new(Mutex::new(Vec::new()));
+    let subscriptions_clone = Arc::clone(&subscriptions);
 
     let mut listener = match patch_listener(state, parent_path).await {
         Some(listener) => listener,
@@ -105,17 +101,10 @@ pub(crate) async fn handle_socket(
 
     let _patches = tokio::spawn(async move {
         let _ = listener
-            .start(move |event| handle_listener_event(event, ws_tx_patch.clone()))
+            .start(move |event| handle_listener_event(event, ws_tx_listener.clone()))
             .await;
 
-        loop {
-            if let Ok(obj_id) = sub_rx.try_recv() {
-                objs.lock().await.push(obj_id)
-            };
-            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-        }
-
-        // clean shutdown?
+        // TODO clean shutdown?
         // let _ = listener.shutdown().await;
     });
 
@@ -132,14 +121,14 @@ pub(crate) async fn handle_socket(
     });
 
     // keep on sending out what we get on the send channel
+    // we expect and rely patches (Text) and Pings on this channel
     let _ws_send = tokio::spawn(async move {
         loop {
             if let Ok(msg) = ws_rx.try_recv() {
-                // we expect text patches and pings on this channel
                 let msg = match msg.clone() {
                     Message::Text(t) => {
                         let patch: Patch = serde_json::from_str(&t).expect("parsing patch");
-                        if objs_clone.lock().await.contains(&patch.object_id) {
+                        if subscriptions_clone.lock().await.contains(&patch.object_id) {
                             msg
                         } else {
                             continue;
@@ -164,7 +153,7 @@ pub(crate) async fn handle_socket(
     });
 
     // recieve object ids the client wants to subscibe
-    let _objects = tokio::spawn(async move {
+    let _subsciptions = tokio::spawn(async move {
         loop {
             // termination handling?
             while let Some(Ok(msg)) = receiver.next().await {
@@ -178,11 +167,7 @@ pub(crate) async fn handle_socket(
                         if let [op, obj_id] = &json[..] {
                             if op == "+" {
                                 tracing::debug!("{who} subscribing to object id {obj_id}");
-                                let ps = sub_tx.send(obj_id.clone() as String).await;
-                                if let Err(err) = ps {
-                                    tracing::debug!("failed to send subscribe: {}", err);
-                                    break;
-                                }
+                                subscriptions.lock().await.push(obj_id.to_string());
                             } else {
                                 tracing::debug!(">>> {who} send an unxepected op {op}");
                             }
