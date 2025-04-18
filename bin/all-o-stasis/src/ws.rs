@@ -99,20 +99,6 @@ pub(crate) async fn handle_socket(
         None => return,
     };
 
-    let _patches = tokio::spawn(async move {
-        let _ = listener
-            .start(move |event| handle_listener_event(event, ws_tx_listener.clone()))
-            .await;
-
-        // TODO we run out of work here?
-        loop {
-            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-        }
-
-        // TODO clean shutdown?
-        // let _ = listener.shutdown().await;
-    });
-
     // ping the client every 10 seconds
     let _ping = tokio::spawn(async move {
         loop {
@@ -128,6 +114,11 @@ pub(crate) async fn handle_socket(
     // keep on sending out what we get on the send channel
     // we expect and rely patches (Text) and Pings on this channel
     let _ws_send = tokio::spawn(async move {
+        // start firestore listener
+        let _ = listener
+            .start(move |event| handle_listener_event(event, ws_tx_listener.clone()))
+            .await;
+
         loop {
             if let Ok(msg) = ws_rx.try_recv() {
                 let msg = match msg.clone() {
@@ -155,6 +146,8 @@ pub(crate) async fn handle_socket(
                 }
             }
         }
+
+        let _ = listener.shutdown().await;
     });
 
     // recieve object ids the client wants to subscibe
