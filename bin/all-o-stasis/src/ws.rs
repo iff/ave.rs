@@ -104,6 +104,11 @@ pub(crate) async fn handle_socket(
             .start(move |event| handle_listener_event(event, ws_tx_listener.clone()))
             .await;
 
+        // TODO we run out of work here?
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        }
+
         // TODO clean shutdown?
         // let _ = listener.shutdown().await;
     });
