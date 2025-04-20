@@ -14,7 +14,7 @@ use axum_extra::headers::UserAgent;
 use axum_extra::TypedHeader;
 use chrono::{DateTime, Utc};
 use cookie::time::Duration;
-use firestore::{path_camel_case, FirestoreResult};
+use firestore::{path_camel_case, FirestoreQueryDirection, FirestoreResult};
 use futures::stream::BoxStream;
 use futures::TryStreamExt;
 use otp::types::ObjectType;
@@ -333,6 +333,10 @@ async fn active_boulders(
                 q.field(path_camel_case!(Boulder::is_draft)).eq(0),
             ])
         })
+        .order_by([(
+            path_camel_case!(Boulder::set_date),
+            FirestoreQueryDirection::Descending,
+        )])
         .obj()
         .stream_query_with_errors()
         .await?;
