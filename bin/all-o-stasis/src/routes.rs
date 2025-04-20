@@ -12,7 +12,7 @@ use axum_extra::extract::cookie::Cookie;
 use axum_extra::extract::CookieJar;
 use axum_extra::headers::UserAgent;
 use axum_extra::TypedHeader;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Datelike, Utc};
 use cookie::time::Duration;
 use firestore::{path_camel_case, FirestoreQueryDirection, FirestoreResult};
 use futures::stream::BoxStream;
@@ -23,6 +23,7 @@ use otp::ROOT_OBJ_ID;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use tower_http::cors::CorsLayer;
 
@@ -463,11 +464,37 @@ async fn admin_accounts(
 
 async fn stats(
     State(state): State<AppState>,
-    Path((gym, _id, _year, _month)): Path<(String, String, i32, i32)>,
-) -> Result<Json<Object>, AppError> {
-    // TODO
-    let _parent_path = state.db.parent_path("gyms", gym)?;
-    Err(AppError::NotImplemented())
+    Path((gym, id, year, month)): Path<(String, String, i32, i32)>,
+) -> Result<Json<HashMap<String, usize>>, AppError> {
+    let parent_path = state.db.parent_path("gyms", gym)?;
+    // fetch all boulders (this may be inefficient when we'll have many boulders)
+    let object_stream: BoxStream<FirestoreResult<Boulder>> = state
+        .db
+        .fluent()
+        .select()
+        .from(BOULDERS_VIEW_COLLECTION)
+        .parent(&parent_path)
+        // TODO I think we exclude drafts here
+        .filter(|q| q.for_all([q.field(path_camel_case!(Boulder::is_draft)).eq(0)]))
+        .obj()
+        .stream_query_with_errors()
+        .await?;
+
+    // grade -> count
+    let mut stats: HashMap<String, usize> = HashMap::new();
+    let as_vec: Vec<Boulder> = object_stream.try_collect().await?;
+    // TODO as_vec.into_iter().filter..
+    for b in as_vec {
+        let boulder_date = DateTime::from_timestamp(1431648000, 0).expect("invalid timestamp");
+
+        if b.in_setter(&id) && boulder_date.month() == (month as u32) && boulder_date.year() == year
+        {
+            let grade = stats.entry(b.grade).or_insert(0);
+            *grade += 1;
+        }
+    }
+
+    Ok(Json(stats))
 }
 
 async fn stats_boulders(
@@ -481,12 +508,8 @@ async fn stats_boulders(
         .select()
         .from(BOULDERS_VIEW_COLLECTION)
         .parent(&parent_path)
-        // TODO what about draft boulders?
-        // .filter(|q| {
-        //     q.for_all([
-        //         q.field(path_camel_case!(Boulder::is_draft)).eq(0),
-        //     ])
-        // })
+        // TODO I think we exclude drafts here
+        .filter(|q| q.for_all([q.field(path_camel_case!(Boulder::is_draft)).eq(0)]))
         .obj()
         .stream_query_with_errors()
         .await?;
