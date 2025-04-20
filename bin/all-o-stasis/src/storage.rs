@@ -24,7 +24,7 @@ pub(crate) async fn save_session(
     state: &AppState,
     gym: &String,
     session: &Session,
-    session_id: &String,
+    session_id: &str,
 ) -> Result<Option<Session>, AppError> {
     let parent_path = state.db.parent_path("gyms", gym)?;
     let p: Option<Session> = state
@@ -32,7 +32,7 @@ pub(crate) async fn save_session(
         .fluent()
         .update()
         .in_col(SESSIONS_COLLECTION)
-        .document_id(session_id.clone())
+        .document_id(session_id)
         .parent(&parent_path)
         .object(session)
         .execute()
