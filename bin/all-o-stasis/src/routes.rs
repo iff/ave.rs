@@ -548,7 +548,11 @@ async fn new_object(
 ) -> Result<Json<CreateObjectResponse>, AppError> {
     let session_id = jar.get("session");
     let created_by = author_from_session(&state, &gym, session_id).await?;
-    if created_by == ROOT_OBJ_ID.to_owned() {
+
+    // unauthorized users should be able to create accounts
+    // but this happens in the passport routes
+    // so we dont allow unauthorized here
+    if created_by == ROOT_OBJ_ID {
         return Err(AppError::NotAuthorized());
     }
 
@@ -648,7 +652,7 @@ async fn patch_object(
     }
 
     // users cant patch atm
-    // TODO should be able to bapch their account?
+    // TODO should be able to patch their account? (probably not implemented in the client?)
     let role = account_role(&state, &gym, &created_by).await?;
     if role == AccountRole::User {
         return Err(AppError::NotAuthorized());
