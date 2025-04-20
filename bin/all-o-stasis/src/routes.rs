@@ -473,10 +473,41 @@ async fn stats(
 async fn stats_boulders(
     State(state): State<AppState>,
     Path(gym): Path<String>,
-) -> Result<Json<Object>, AppError> {
-    // TODO
-    let _parent_path = state.db.parent_path("gyms", gym)?;
-    Err(AppError::NotImplemented())
+) -> Result<Json<Vec<BoulderStat>>, AppError> {
+    let parent_path = state.db.parent_path("gyms", gym)?;
+    let object_stream: BoxStream<FirestoreResult<Boulder>> = state
+        .db
+        .fluent()
+        .select()
+        .from(BOULDERS_VIEW_COLLECTION)
+        .parent(&parent_path)
+        // TODO what about draft boulders?
+        // .filter(|q| {
+        //     q.for_all([
+        //         q.field(path_camel_case!(Boulder::is_draft)).eq(0),
+        //     ])
+        // })
+        .obj()
+        .stream_query_with_errors()
+        .await?;
+
+    let as_vec: Vec<Boulder> = object_stream.try_collect().await?;
+    Ok(Json(
+        as_vec
+            .into_iter()
+            .map(|b| BoulderStat {
+                set_on: b.set_date as u32, // toUTCTime
+                removed_on: if b.removed == 0 {
+                    Some(b.removed as u32)
+                } else {
+                    None
+                },
+                setters: b.setter,
+                sector: b.sector,
+                grade: b.grade,
+            })
+            .collect(),
+    ))
 }
 
 fn api_routes() -> Router<AppState> {
