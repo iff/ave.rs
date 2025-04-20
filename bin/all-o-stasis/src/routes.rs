@@ -349,7 +349,7 @@ async fn active_boulders(
 async fn draft_boulders(
     State(state): State<AppState>,
     Path(gym): Path<String>,
-) -> Result<Json<ObjectId>, AppError> {
+) -> Result<Json<Vec<ObjectId>>, AppError> {
     let parent_path = state.db.parent_path("gyms", gym)?;
     let object_stream: BoxStream<FirestoreResult<Boulder>> = state
         .db
