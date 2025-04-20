@@ -485,12 +485,12 @@ async fn stats(
     let as_vec: Vec<Boulder> = object_stream.try_collect().await?;
     // TODO as_vec.into_iter().filter..
     for b in as_vec {
-        let boulder_date = DateTime::from_timestamp(1431648000, 0).expect("invalid timestamp");
-
-        if b.in_setter(&id) && boulder_date.month() == (month as u32) && boulder_date.year() == year
-        {
-            let grade = stats.entry(b.grade).or_insert(0);
-            *grade += 1;
+        let boulder_date = DateTime::from_timestamp(b.set_date as i64, 0);
+        if let Some(date) = boulder_date {
+            if b.in_setter(&id) && date.month() == (month as u32) && date.year() == year {
+                let grade = stats.entry(b.grade).or_insert(0);
+                *grade += 1;
+            }
         }
     }
 
