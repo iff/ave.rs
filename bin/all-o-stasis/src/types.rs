@@ -3,7 +3,9 @@ use std::fmt;
 use otp::types::ObjectId;
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Clone)]
+// TODO implement Arbitrary for types
+
+#[derive(Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub enum AccountRole {
     User,
@@ -50,5 +52,11 @@ impl fmt::Display for Boulder {
             "Boulder: {}",
             serde_json::to_string_pretty(self).unwrap()
         )
+    }
+}
+
+impl Boulder {
+    pub fn in_setter(&self, setter: &ObjectId) -> bool {
+        self.setter.contains(setter)
     }
 }

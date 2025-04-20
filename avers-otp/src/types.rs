@@ -57,6 +57,20 @@ impl fmt::Display for Operation {
     }
 }
 
+impl Operation {
+    pub fn path_contains(&self, p: Path) -> bool {
+        match self {
+            Operation::Set { path, value: _ } => path.contains(&p),
+            Operation::Splice {
+                path,
+                index: _,
+                remove: _,
+                insert: _,
+            } => path.contains(&p),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Object {
@@ -71,7 +85,7 @@ pub struct Object {
 }
 
 // here we fix types to those instead of doing a generic str to type "cast"
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub enum ObjectType {
     Account,

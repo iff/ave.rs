@@ -148,6 +148,75 @@ async fn author_from_session(
     }
 }
 
+async fn account_role(
+    state: &AppState,
+    gym: &String,
+    object_id: &ObjectId,
+) -> Result<AccountRole, AppError> {
+    let parent_path = state.db.parent_path("gyms", gym)?;
+    let account: Option<Account> = state
+        .db
+        .fluent()
+        .select()
+        .by_id_in(ACCOUNTS_VIEW_COLLECTION)
+        .parent(&parent_path)
+        .obj()
+        .one(object_id)
+        .await?;
+
+    if let Some(account) = account {
+        Ok(account.role)
+    } else {
+        Err(AppError::NotAuthorized())
+    }
+}
+
+async fn object_type(
+    state: &AppState,
+    gym: &String,
+    object_id: ObjectId,
+) -> Result<ObjectType, AppError> {
+    let parent_path = state.db.parent_path("gyms", gym)?;
+    let object: Option<Object> = state
+        .db
+        .fluent()
+        .select()
+        .by_id_in(OBJECTS_COLLECTION)
+        .parent(&parent_path)
+        .obj()
+        .one(&object_id)
+        .await?;
+
+    if let Some(object) = object {
+        Ok(object.object_type)
+    } else {
+        Err(AppError::NotAuthorized())
+    }
+}
+
+async fn lookup_boulder(
+    state: &AppState,
+    gym: &String,
+    object_id: &ObjectId,
+) -> Result<Boulder, AppError> {
+    let parent_path = state.db.parent_path("gyms", gym)?;
+    let boulder: Option<Boulder> = state
+        .db
+        .fluent()
+        .select()
+        .by_id_in(BOULDERS_VIEW_COLLECTION)
+        .parent(&parent_path)
+        .obj()
+        .one(&object_id)
+        .await?;
+
+    if let Some(boulder) = boulder {
+        Ok(boulder)
+    } else {
+        Err(AppError::NotAuthorized())
+    }
+}
+
 /* avers.js uses:
  *
  * POST      /objects
@@ -479,6 +548,15 @@ async fn new_object(
 ) -> Result<Json<CreateObjectResponse>, AppError> {
     let session_id = jar.get("session");
     let created_by = author_from_session(&state, &gym, session_id).await?;
+    if created_by == ROOT_OBJ_ID.to_owned() {
+        return Err(AppError::NotAuthorized());
+    }
+
+    // only admins and setters can add boulders
+    let role = account_role(&state, &gym, &created_by).await?;
+    if ObjectType::Boulder == payload.ot_type && AccountRole::User == role {
+        return Err(AppError::NotAuthorized());
+    }
 
     let ot_type = payload.ot_type;
     let content = payload.content;
@@ -527,8 +605,34 @@ async fn new_object(
 async fn lookup_object(
     State(state): State<AppState>,
     Path((gym, id)): Path<(String, String)>,
+    jar: CookieJar,
 ) -> Result<Json<LookupObjectResponse>, AppError> {
-    lookup_object_(&state, &gym, id).await
+    let response = lookup_object_(&state, &gym, id).await?;
+
+    // anyone can lookup boulders
+    if response.ot_type == ObjectType::Boulder {
+        return Ok(response);
+    }
+
+    let session_id = jar.get("session");
+    let created_by = author_from_session(&state, &gym, session_id).await?;
+
+    if created_by == ROOT_OBJ_ID {
+        return Err(AppError::NotAuthorized());
+    }
+
+    // otherwise just object the owner owns
+    if created_by == response.created_by {
+        return Ok(response);
+    }
+
+    let role = account_role(&state, &gym, &created_by).await?;
+    // or if the user is an admin
+    if role == AccountRole::Admin {
+        Ok(response)
+    } else {
+        Err(AppError::NotAuthorized())
+    }
 }
 
 async fn patch_object(
@@ -539,9 +643,56 @@ async fn patch_object(
 ) -> Result<Json<PatchObjectResponse>, AppError> {
     let session_id = jar.get("session");
     let created_by = author_from_session(&state, &gym, session_id).await?;
+    if created_by == ROOT_OBJ_ID {
+        return Err(AppError::NotAuthorized());
+    }
+
+    // users cant patch atm
+    // TODO should be able to bapch their account?
+    let role = account_role(&state, &gym, &created_by).await?;
+    if role == AccountRole::User {
+        return Err(AppError::NotAuthorized());
+    }
+
+    let ot_type = object_type(&state, &gym, id.clone()).await?;
+    match ot_type {
+        ObjectType::Account => {
+            if role == AccountRole::Setter {
+                // only admins can change the role of an Account
+                let patch_changes_role = payload
+                    .operations
+                    .clone()
+                    .into_iter()
+                    .find(|op| op.path_contains("role".to_string()));
+                if patch_changes_role.is_some() {
+                    return Err(AppError::NotAuthorized());
+                }
+
+                // otherwise we can change our own account?
+                if id.clone() != created_by.clone() {
+                    return Err(AppError::NotAuthorized());
+                }
+            }
+        }
+        ObjectType::Boulder => {
+            let boulder = lookup_boulder(&state, &gym, &id).await?;
+            if boulder.is_draft > 0 {
+                // drafts can be edited by any admin/setter
+            } else {
+                // admin and setter of boulder or created by
+                if role == AccountRole::Setter
+                    && (id.clone() != created_by && !boulder.in_setter(&created_by.clone()))
+                {
+                    return Err(AppError::NotAuthorized());
+                }
+            }
+        }
+        ObjectType::Passport => (),
+    }
 
     tracing::debug!(
-        "patch object ({id}@{}): {} operations",
+        "patch object ({}@{}): {} operations",
+        id.clone(),
         payload.revision_id,
         payload.operations.len()
     );
