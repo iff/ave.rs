@@ -464,8 +464,9 @@ async fn admin_accounts(
 
 async fn stats(
     State(state): State<AppState>,
-    Path((gym, id, year, month)): Path<(String, String, i32, i32)>,
+    Path((gym, id, year, month)): Path<(String, String, i32, u32)>,
 ) -> Result<Json<HashMap<String, usize>>, AppError> {
+    // TODO this endpoint is not really used anywhere?
     let parent_path = state.db.parent_path("gyms", gym)?;
     // fetch all boulders (this may be inefficient when we'll have many boulders)
     let object_stream: BoxStream<FirestoreResult<Boulder>> = state
@@ -485,13 +486,14 @@ async fn stats(
     let as_vec: Vec<Boulder> = object_stream.try_collect().await?;
     // TODO as_vec.into_iter().filter..
     for b in as_vec {
-        let boulder_date = DateTime::from_timestamp(b.set_date as i64, 0);
-        if let Some(date) = boulder_date {
-            if b.in_setter(&id) && date.month() == (month as u32) && date.year() == year {
-                let grade = stats.entry(b.grade).or_insert(0);
-                *grade += 1;
-            }
+        // TODO millis, macros, or nanos?
+        let boulder_date = DateTime::from_timestamp_nanos(b.set_date as i64);
+        // if let Some(date) = boulder_date {
+        if b.in_setter(&id) && boulder_date.month() == month && boulder_date.year() == year {
+            let grade = stats.entry(b.grade).or_insert(0);
+            *grade += 1;
         }
+        // }
     }
 
     Ok(Json(stats))
