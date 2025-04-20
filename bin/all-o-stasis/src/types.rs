@@ -30,9 +30,9 @@ pub struct Account {
 pub struct Boulder {
     #[serde(alias = "_firestore_id")]
     pub id: Option<String>,
-    setter: Vec<ObjectId>,
-    sector: String,
-    grade: String,
+    pub setter: Vec<ObjectId>,
+    pub sector: String,
+    pub grade: String,
     grade_nr: u32,
     pub set_date: usize,
     // #[serde(with = "firestore::serialize_as_null")]
