@@ -144,7 +144,7 @@ async fn author_from_session(
     if let Some(session) = session {
         Ok(session.obj_id)
     } else {
-        Ok(ROOT_OBJ_ID.to_string())
+        Err(AppError::NotAuthorized())
     }
 }
 
@@ -378,9 +378,10 @@ async fn own_boulders(
 ) -> Result<Json<Vec<ObjectId>>, AppError> {
     let session_id = jar.get("session");
     let own = author_from_session(&state, &gym, session_id).await?;
-    if own == ROOT_OBJ_ID {
-        return Ok(Json(Vec::new()));
-    }
+    // TODO not sure if it is okay to return NotAuthorized
+    // if own == ROOT_OBJ_ID {
+    //     return Ok(Json(Vec::new()));
+    // }
 
     let parent_path = state.db.parent_path("gyms", gym)?;
     let object_stream: BoxStream<FirestoreResult<Boulder>> = state
@@ -552,9 +553,9 @@ async fn new_object(
     // unauthorized users should be able to create accounts
     // but this happens in the passport routes
     // so we dont allow unauthorized here
-    if created_by == ROOT_OBJ_ID {
-        return Err(AppError::NotAuthorized());
-    }
+    // if created_by == ROOT_OBJ_ID {
+    //     return Err(AppError::NotAuthorized());
+    // }
 
     // only admins and setters can add objects (account setup in passport)
     let role = account_role(&state, &gym, &created_by).await?;
@@ -621,10 +622,6 @@ async fn lookup_object(
     let session_id = jar.get("session");
     let created_by = author_from_session(&state, &gym, session_id).await?;
 
-    if created_by == ROOT_OBJ_ID {
-        return Err(AppError::NotAuthorized());
-    }
-
     // otherwise just object the owner owns
     if created_by == response.created_by {
         return Ok(response);
@@ -647,9 +644,6 @@ async fn patch_object(
 ) -> Result<Json<PatchObjectResponse>, AppError> {
     let session_id = jar.get("session");
     let created_by = author_from_session(&state, &gym, session_id).await?;
-    if created_by == ROOT_OBJ_ID {
-        return Err(AppError::NotAuthorized());
-    }
 
     // users cant patch atm
     // TODO should be able to patch their account? (probably not implemented in the client?)
