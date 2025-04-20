@@ -556,9 +556,9 @@ async fn new_object(
         return Err(AppError::NotAuthorized());
     }
 
-    // only admins and setters can add boulders
+    // only admins and setters can add objects (account setup in passport)
     let role = account_role(&state, &gym, &created_by).await?;
-    if ObjectType::Boulder == payload.ot_type && AccountRole::User == role {
+    if AccountRole::User == role {
         return Err(AppError::NotAuthorized());
     }
 
@@ -684,10 +684,11 @@ async fn patch_object(
                 // drafts can be edited by any admin/setter
             } else {
                 // admin and setter of boulder or created by
-                if role == AccountRole::Setter
-                    && (id.clone() != created_by && !boulder.in_setter(&created_by.clone()))
-                {
-                    return Err(AppError::NotAuthorized());
+                if role == AccountRole::Setter {
+                    if !(id.clone() == created_by || boulder.in_setter(&created_by.clone())) {
+                        tracing::debug!("PATCH: setter cant patch this boulder");
+                        return Err(AppError::NotAuthorized());
+                    }
                 }
             }
         }
