@@ -18,7 +18,7 @@ use firestore::{path_camel_case, FirestoreQueryDirection, FirestoreResult};
 use futures::stream::BoxStream;
 use futures::TryStreamExt;
 use otp::types::ObjectType;
-use otp::types::{Object, ObjectId, Operation, Patch, RevId, ROOT_PATH, ZERO_REV_ID};
+use otp::types::{Object, ObjectId, Operation, Patch, RevId};
 use otp::ROOT_OBJ_ID;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -31,7 +31,7 @@ use axum::extract::connect_info::ConnectInfo;
 
 use crate::passport::{passport_routes, Session};
 use crate::storage::{
-    apply_object_updates, create_object, lookup_latest_snapshot, lookup_object_, store_patch,
+    apply_object_updates, create_object, lookup_latest_snapshot, lookup_object_,
     ACCOUNTS_VIEW_COLLECTION, BOULDERS_VIEW_COLLECTION, OBJECTS_COLLECTION, PATCHES_COLLECTION,
     SESSIONS_COLLECTION,
 };
