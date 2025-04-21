@@ -31,7 +31,7 @@ use axum::extract::connect_info::ConnectInfo;
 
 use crate::passport::{passport_routes, Session};
 use crate::storage::{
-    apply_object_updates, lookup_latest_snapshot, lookup_object_, store_patch,
+    apply_object_updates, create_object, lookup_latest_snapshot, lookup_object_, store_patch,
     ACCOUNTS_VIEW_COLLECTION, BOULDERS_VIEW_COLLECTION, OBJECTS_COLLECTION, PATCHES_COLLECTION,
     SESSIONS_COLLECTION,
 };
@@ -511,6 +511,7 @@ async fn stats_boulders(
         .from(BOULDERS_VIEW_COLLECTION)
         .parent(&parent_path)
         // TODO I think we exclude drafts here
+        // in the old app we had a separate view for draft boulders?
         .filter(|q| q.for_all([q.field(path_camel_case!(Boulder::is_draft)).eq(0)]))
         .obj()
         .stream_query_with_errors()
@@ -625,40 +626,8 @@ async fn new_object(
 
     let ot_type = payload.ot_type;
     let content = payload.content;
-    let obj = Object::new(ot_type.clone(), created_by.clone());
-
-    let parent_path = state.db.parent_path("gyms", gym.clone())?;
-    let obj: Option<Object> = state
-        .db
-        .fluent()
-        .insert()
-        .into(OBJECTS_COLLECTION)
-        .generate_document_id()
-        .parent(&parent_path)
-        .object(&obj)
-        .execute()
-        .await?;
-
-    let obj = obj.ok_or_else(AppError::Query)?;
-    let op = Operation::Set {
-        path: ROOT_PATH.to_string(),
-        value: Some(content.clone()),
-    };
-    let patch = Patch {
-        object_id: obj.id(),
-        revision_id: ZERO_REV_ID,
-        author_id: created_by,
-        created_at: None,
-        operation: op,
-    };
-    let patch = store_patch(&state, &gym, &patch).await?;
-    let _ = patch.ok_or_else(AppError::Query)?;
-
-    // TODO needs to also view update..
-    //   why dont we here?
-    // update_boulder_view(state, gym, content);
-    //
-    // TODO why not create a snapshot?
+    // changing this to also add the object to the view
+    let obj = create_object(&state, &gym, created_by, ot_type.clone(), content.clone()).await?;
 
     Ok(Json(CreateObjectResponse {
         id: obj.id(),
