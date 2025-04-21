@@ -355,7 +355,11 @@ async fn await_passport_confirmation(
         .select()
         .from(SESSIONS_COLLECTION)
         .parent(&parent_path)
-        .filter(|q| q.for_all([q.field(path_camel_case!(Session::obj_id)).eq(account_id.clone())]))
+        .filter(|q| {
+            q.for_all([q
+                .field(path_camel_case!(Session::obj_id))
+                .eq(account_id.clone())])
+        })
         .limit(1)
         .obj()
         .stream_query_with_errors()
