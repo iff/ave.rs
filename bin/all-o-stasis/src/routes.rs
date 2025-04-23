@@ -447,7 +447,7 @@ async fn admin_accounts(
         .filter(|q| {
             q.for_all([q
                 .field(path_camel_case!(Account::role))
-                .eq(AccountRole::Admin)])
+                .neq(AccountRole::User)])
         })
         .obj()
         .stream_query_with_errors()
