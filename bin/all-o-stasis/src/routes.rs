@@ -1,5 +1,5 @@
 use axum::response::{IntoResponse, Json};
-use axum::routing::any;
+use axum::routing::{any, delete};
 use axum::{
     extract::ws::WebSocketUpgrade,
     extract::{Path, State},
@@ -548,6 +548,8 @@ fn api_routes() -> Router<AppState> {
     // type Cacheable a = Headers '[Header "Cache-Control" Text, Header "ETag" Text] a
 
     Router::new()
+        // signout
+        .route("/{gym}/session", delete(delete_session))
         // lookup session
         .route("/{gym}/session", get(lookup_session))
         //
@@ -563,6 +565,37 @@ fn api_routes() -> Router<AppState> {
         .route("/{gym}/objects/{id}/changes", get(object_changes))
         // feed (raw websocket) -- to subscribe to object updates (patches)
         .route("/{gym}/feed", any(feed))
+}
+
+async fn delete_session(
+    State(state): State<AppState>,
+    Path(gym): Path<String>,
+    jar: CookieJar,
+) -> Result<impl IntoResponse, AppError> {
+    let parent_path = state.db.parent_path("gyms", gym)?;
+    let session_id = jar
+        .get("session")
+        .ok_or(AppError::NoSession())?
+        .value()
+        .to_owned();
+
+    state
+        .db
+        .fluent()
+        .delete()
+        .from(SESSIONS_COLLECTION)
+        .parent(&parent_path)
+        .document_id(&session_id)
+        .execute()
+        .await?;
+
+    let cookie = Cookie::build(("session", session_id.clone()))
+        .path("/")
+        .max_age(Duration::seconds(0))
+        .secure(true) // TODO not sure about this
+        .http_only(true);
+
+    Ok(jar.add(cookie))
 }
 
 async fn lookup_session(
@@ -602,6 +635,7 @@ async fn lookup_session(
         }),
     ))
 }
+
 async fn new_object(
     State(state): State<AppState>,
     Path(gym): Path<String>,
