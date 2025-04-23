@@ -17,9 +17,11 @@ use crate::AppState;
 async fn patch_listener(
     state: AppState,
     parent_path: ParentPathBuilder,
+    who: SocketAddr,
 ) -> Option<FirestoreListener<FirestoreDb, FirestoreMemListenStateStorage>> {
     // TODO is this setup from scratch for each client? so the ID we use here has to be unique?
-    const LISTENER_ID: FirestoreListenerTarget = FirestoreListenerTarget::new(42_u32);
+    // TODO is this enough?
+    let listener_id: FirestoreListenerTarget = FirestoreListenerTarget::new(who.port() as u32);
 
     // now start streaming patches using firestore listeners: https://github.com/abdolence/firestore-rs/blob/master/examples/listen-changes.rs
     // do we have enough mem?
@@ -39,7 +41,7 @@ async fn patch_listener(
         .from(PATCHES_COLLECTION)
         .parent(parent_path)
         .listen()
-        .add_target(LISTENER_ID, &mut listener);
+        .add_target(listener_id, &mut listener);
 
     Some(listener)
 }
@@ -94,13 +96,13 @@ pub(crate) async fn handle_socket(
     let subscriptions: Arc<Mutex<Vec<ObjectId>>> = Arc::new(Mutex::new(Vec::new()));
     let subscriptions_clone = Arc::clone(&subscriptions);
 
-    let mut listener = match patch_listener(state, parent_path).await {
+    let mut listener = match patch_listener(state, parent_path, who).await {
         Some(listener) => listener,
         None => return,
     };
 
     // ping the client every 10 seconds
-    let _ping = tokio::spawn(async move {
+    let ping = tokio::spawn(async move {
         loop {
             let sp = ws_tx.send(Message::Ping(Bytes::from_static(&[1]))).await;
             if let Err(err) = sp {
@@ -113,7 +115,7 @@ pub(crate) async fn handle_socket(
 
     // keep on sending out what we get on the send channel
     // we expect and rely patches (Text) and Pings on this channel
-    let _ws_send = tokio::spawn(async move {
+    let ws_send = tokio::spawn(async move {
         // start firestore listener
         let _ = listener
             .start(move |event| handle_listener_event(event, ws_tx_listener.clone()))
@@ -125,6 +127,7 @@ pub(crate) async fn handle_socket(
                     Message::Text(t) => {
                         let patch: Patch = serde_json::from_str(&t).expect("parsing patch");
                         if subscriptions_clone.lock().await.contains(&patch.object_id) {
+                            tracing::debug!("sending patch to {who}");
                             msg
                         } else {
                             continue;
@@ -200,13 +203,9 @@ pub(crate) async fn handle_socket(
         }
     });
 
-    // tokio::select! {
-    //     rv_a = (&mut ping) => {
-    //         match rv_a {
-    //             Ok(a) => println!("{a} messages sent to {who}"),
-    //             Err(a) => println!("Error sending messages {a:?}")
-    //         }
-    //         return;
-    //     }
-    // }
+    // only _subscriptions can actually break?
+    ping.abort();
+    ws_send.abort();
+
+    // else use tokio::select!
 }
