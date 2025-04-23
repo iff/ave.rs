@@ -296,11 +296,11 @@ async fn confirm_passport(
             .max_age(Duration::weeks(52))
             .secure(true) // TODO not sure about this
             .http_only(true);
-        let _ = jar.add(cookie);
 
         // FIXME we need the app url
-        Ok(Redirect::permanent(
-            "https://all-o-stasis-oxy.vercel.app/email-confirmed",
+        Ok((
+            jar.add(cookie),
+            Redirect::permanent("https://all-o-stasis-oxy.vercel.app/email-confirmed"),
         ))
     }
 }
