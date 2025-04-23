@@ -78,7 +78,7 @@ pub struct Object {
     id: Option<ObjectId>, // not nice that this has to be empty for id generation to work
     #[serde(alias = "_firestore_created")]
     pub created_at: Option<DateTime<Utc>>, // Option<FirestoreTimestamp>,
-    pub object_type: ObjectType,
+    pub object_type: ObjectType, // TODO we should pass those as a template?
     pub created_by: ObjectId,
     // delete the object which has a very different meaning from deleting a boulder
     pub deleted: Option<bool>,
