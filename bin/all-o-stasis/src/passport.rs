@@ -8,7 +8,7 @@ use axum::{
 };
 use axum_extra::extract::CookieJar;
 use chrono::{DateTime, Utc};
-use cookie::{time::Duration, Cookie};
+use cookie::{time::Duration, Cookie, SameSite};
 use firestore::{path_camel_case, FirestoreResult};
 use futures::{stream::BoxStream, TryStreamExt};
 use otp::{
@@ -295,6 +295,7 @@ async fn confirm_passport(
             .path("/")
             .max_age(Duration::weeks(52))
             .secure(true) // TODO not sure about this
+            .same_site(SameSite::None)
             .http_only(true);
 
         // FIXME we need the app url
@@ -377,6 +378,7 @@ async fn await_passport_confirmation(
         .path("/")
         .max_age(Duration::weeks(52))
         .secure(true) // TODO not sure about this
+        .same_site(SameSite::None)
         .http_only(true);
     Ok(jar.add(cookie))
 }
