@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     storage::{
         apply_object_updates, create_object, lookup_latest_snapshot, save_session,
-        ACCOUNTS_VIEW_COLLECTION,
+        ACCOUNTS_VIEW_COLLECTION, SESSIONS_COLLECTION,
     },
     types::{Account, AccountRole},
     word_list::make_security_code,
@@ -248,6 +248,7 @@ async fn confirm_passport(
     State(state): State<AppState>,
     Path(gym): Path<String>,
     Query(pport): Query<ConfirmPassport>,
+    jar: CookieJar,
 ) -> Result<impl IntoResponse, AppError> {
     let snapshot = lookup_latest_snapshot(&state, &gym, &pport.passport_id.clone()).await?;
     let passport: Passport = serde_json::from_value(snapshot.content).or(Err(
@@ -257,11 +258,26 @@ async fn confirm_passport(
     if pport.confirmation_token != passport.confirmation_token {
         Err(AppError::NotAuthorized())
     } else {
+        // create a new session for the account in the Passport object
+        let session = save_session(
+            &state,
+            &gym,
+            &Session {
+                id: None,
+                obj_id: passport.account_id,
+                created_at: None,
+                last_accessed_at: chrono::offset::Utc::now(),
+            },
+            &new_id(80),
+        )
+        .await?
+        .ok_or_else(AppError::Query)?; // FIXME error
+
         // mark as valid
         let op = Operation::Set {
             path: "validity".to_string(),
             value: Some(
-                serde_json::to_value(&PassportValidity::Valid).expect("serialising PVExpired"),
+                serde_json::to_value(&PassportValidity::Valid).expect("serialising PVValid"),
             ),
         };
         let _ = apply_object_updates(
@@ -275,9 +291,16 @@ async fn confirm_passport(
         )
         .await?;
 
+        let cookie = Cookie::build(("session", session.id.expect("session has id")))
+            .path("/")
+            .max_age(Duration::weeks(52))
+            .secure(true) // TODO not sure about this
+            .http_only(true);
+
         // FIXME we need the app url
-        Ok(Redirect::permanent(
-            "https://all-o-stasis-oxy.vercel.app/email-confirmed",
+        Ok((
+            jar.add(cookie),
+            Redirect::permanent("https://all-o-stasis-oxy.vercel.app/email-confirmed"),
         ))
     }
 }
@@ -299,6 +322,7 @@ async fn await_passport_confirmation(
                 break (passport.account_id, snapshot.revision_id);
             }
             PassportValidity::Unconfirmed => {
+                // TODO should we stop trying after some time?
                 tokio::time::sleep(std::time::Duration::from_millis(500)).await;
             }
             PassportValidity::Expired => {
@@ -324,23 +348,32 @@ async fn await_passport_confirmation(
     )
     .await?;
 
-    // create a new session for the account in the Passport object
-    let session = save_session(
-        &state,
-        &gym,
-        &Session {
-            id: None,
-            obj_id: account_id,
-            created_at: None,
-            last_accessed_at: chrono::offset::Utc::now(),
-        },
-        &new_id(80),
-    )
-    .await?
-    .ok_or_else(AppError::Query)?; // FIXME error
+    // find session created in confirmation
+    let parent_path = state.db.parent_path("gyms", gym)?;
+    let sessions_stream: BoxStream<FirestoreResult<Session>> = state
+        .db
+        .fluent()
+        .select()
+        .from(SESSIONS_COLLECTION)
+        .parent(&parent_path)
+        .filter(|q| {
+            q.for_all([q
+                .field(path_camel_case!(Session::obj_id))
+                .eq(account_id.clone())])
+        })
+        .limit(1)
+        .obj()
+        .stream_query_with_errors()
+        .await?;
+
+    let sessions: Vec<Session> = sessions_stream.try_collect().await?;
+    let session_id = match sessions.first() {
+        Some(session) => Ok(session.clone().id.expect("session has id")),
+        None => Err(AppError::NotAuthorized()),
+    }?;
 
     // respond with the session cookie and status=200
-    let cookie = Cookie::build(("session", session.id.expect("session has id")))
+    let cookie = Cookie::build(("session", session_id))
         .path("/")
         .max_age(Duration::weeks(52))
         .secure(true) // TODO not sure about this

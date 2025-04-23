@@ -39,8 +39,8 @@ pub(crate) async fn save_session(
         .await?;
 
     match p.clone() {
-        Some(p) => tracing::debug!("storing: {p}"),
-        None => tracing::debug!("failed to store: {session}"),
+        Some(p) => tracing::debug!("storing session: {p}"),
+        None => tracing::debug!("failed to store session: {session}"),
     }
 
     Ok(p)
@@ -541,7 +541,7 @@ async fn save_operation(
         .await?
         .ok_or_else(AppError::Query)?;
 
-    // TODO moved to here
+    // FIXME moved to here but we should probably only do that for the final snapshot?
     update_view(state, gym, &new_snapshot.object_id, &new_snapshot.content).await?;
 
     let patch = Patch {
