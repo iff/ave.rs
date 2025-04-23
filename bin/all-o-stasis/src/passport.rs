@@ -15,6 +15,7 @@ use otp::{
     types::{ObjectId, ObjectType},
     Operation, ROOT_OBJ_ID,
 };
+use rand::Rng;
 use sendgrid::v3::*;
 use serde::{Deserialize, Serialize};
 
@@ -103,7 +104,17 @@ pub(crate) fn passport_routes() -> Router<AppState> {
 }
 
 fn new_id(len: usize) -> String {
-    todo!()
+    const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ\
+                             abcdefghijklmnopqrstuvwxyz\
+                             0123456789";
+    let mut rng = rand::rng();
+
+    (0..len)
+        .map(|_| {
+            let idx = rng.random_range(0..CHARSET.len());
+            CHARSET[idx] as char
+        })
+        .collect()
 }
 
 async fn send_email(
