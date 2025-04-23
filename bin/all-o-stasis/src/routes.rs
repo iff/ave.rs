@@ -691,8 +691,8 @@ async fn lookup_object(
     }
 
     let role = account_role(&state, &gym, &created_by).await?;
-    // or if the user is an admin
-    if role == AccountRole::Admin {
+    // or if the user is an admin/setter
+    if role == AccountRole::Admin || role == AccountRole::Setter {
         Ok(response)
     } else {
         Err(AppError::NotAuthorized())
