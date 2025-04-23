@@ -783,7 +783,8 @@ async fn feed(
     // finalize the upgrade process by returning upgrade callback.
     // TODO expect
     let parent_path = state.db.parent_path("gyms", gym).expect("need a gym");
-    ws.on_upgrade(move |socket| handle_socket(socket, addr, state, parent_path))
+    AppError::NotImplemented()
+    // ws.on_upgrade(move |socket| handle_socket(socket, addr, state, parent_path))
 }
 
 // XXX maybe don't needed
