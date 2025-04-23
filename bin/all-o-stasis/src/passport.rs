@@ -322,6 +322,7 @@ async fn await_passport_confirmation(
                 break (passport.account_id, snapshot.revision_id);
             }
             PassportValidity::Unconfirmed => {
+                // TODO should we stop trying after some time?
                 tokio::time::sleep(std::time::Duration::from_millis(500)).await;
             }
             PassportValidity::Expired => {
