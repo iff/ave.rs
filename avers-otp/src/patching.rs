@@ -372,7 +372,9 @@ pub fn rebase(content: Value, op: Operation, patches: Vec<Patch>) -> Option<Oper
 mod tests {
     use super::*;
     use crate::types::{Operation, ROOT_PATH};
+    use arbitrary::Arbitrary;
     use quickcheck_macros::quickcheck;
+    use serde::{Deserialize, Serialize};
     use serde_json::json;
 
     // macro_rules! test_battery {
@@ -405,20 +407,27 @@ mod tests {
     //     let res = apply(val.clone(), op);
     //     assert_eq!(res.ok(), Some(val));
     // }
+    #[derive(Serialize, Deserialize, Debug, Arbitrary)]
+    pub struct Test {
+        pub name: String,
+        pub num: usize,
+        pub maybe: bool,
+    }
 
     // TODO take a boulder or account object
     // or not.. dont want to bind that here
     // arbitrary for some sort of value that we want to test?
     // or operation
-    // #[quickcheck]
-    // fn operation_on_empty(value: serde_json::Value) -> bool {
-    //     let op = Operation::Set {
-    //         path: ROOT_PATH.into(),
-    //         value: Some(value.clone()),
-    //     };
-    //
-    //     Some(value) == apply(json!({}), op).ok()
-    // }
+    #[quickcheck]
+    fn operation_on_empty(input: Test) -> bool {
+        let value = serde_json::to_value(&input).expect("serialise value");
+        let op = Operation::Set {
+            path: ROOT_PATH.into(),
+            value: Some(value.clone()),
+        };
+
+        Some(value) == apply(json!({}), op).ok()
+    }
 
     #[test]
     fn apply_set_op_on_empty() {
