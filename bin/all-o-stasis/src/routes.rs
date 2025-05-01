@@ -42,8 +42,8 @@ use crate::{AppError, AppState};
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 struct BoulderStat {
-    set_on: u32,
-    removed_on: Option<u32>,
+    set_on: String,
+    removed_on: Option<String>,
     setters: Vec<String>,
     sector: String,
     grade: String,
@@ -499,6 +499,11 @@ async fn stats(
     Ok(Json(stats))
 }
 
+fn stat_date(epoch_millis: usize) -> String {
+    let date = DateTime::from_timestamp_millis(epoch_millis as i64).expect("invalid timestamp");
+    date.format("%Y-%m-%d").to_string()
+}
+
 async fn stats_boulders(
     State(state): State<AppState>,
     Path(gym): Path<String>,
@@ -518,22 +523,22 @@ async fn stats_boulders(
         .await?;
 
     let as_vec: Vec<Boulder> = object_stream.try_collect().await?;
-    Ok(Json(
-        as_vec
-            .into_iter()
-            .map(|b| BoulderStat {
-                set_on: b.set_date as u32, // toUTCTime
-                removed_on: if b.removed == 0 {
-                    Some(b.removed as u32)
-                } else {
-                    None
-                },
-                setters: b.setter,
-                sector: b.sector,
-                grade: b.grade,
-            })
-            .collect(),
-    ))
+    let stats: Vec<BoulderStat> = as_vec
+        .into_iter()
+        .map(|b| BoulderStat {
+            set_on: stat_date(b.set_date),
+            removed_on: if b.removed == 0 {
+                None
+            } else {
+                Some(stat_date(b.removed))
+            },
+            setters: b.setter,
+            sector: b.sector,
+            grade: b.grade,
+        })
+        .collect();
+
+    Ok(Json(stats))
 }
 
 fn api_routes() -> Router<AppState> {

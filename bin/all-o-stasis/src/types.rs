@@ -34,10 +34,11 @@ pub struct Boulder {
     pub sector: String,
     pub grade: String,
     grade_nr: u32,
-    // TODO should be i64?
+    /// set date as epoch timestamp in millis
     pub set_date: usize,
     // #[serde(with = "firestore::serialize_as_null")]
     // pub removed: Option<usize>,
+    /// removed date as epoch timestamp in millis, 0 means not removed yet
     pub removed: usize,
     // #[serde(with = "firestore::serialize_as_null")]
     // pub is_draft: Option<usize>,
