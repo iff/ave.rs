@@ -400,29 +400,27 @@ pub fn rebase(content: Value, op: Operation, patches: Vec<Patch>) -> Option<Oper
 mod tests {
     use super::*;
     use crate::types::{Operation, ROOT_PATH};
-    use arbitrary::Arbitrary;
+    use quickcheck::{Arbitrary, Gen};
     use quickcheck_macros::quickcheck;
     use serde::{Deserialize, Serialize};
     use serde_json::json;
 
-    // macro_rules! test_battery {
-    //   ($($t:ty as $name:ident),*) => {
-    //     $(
-    //       mod $name {
-    //         #[test]
-    //         fn frobnified() { test_inner::<$t>(1, true) }
-    //         #[test]
-    //         fn unfrobnified() { test_inner::<$t>(1, false) }
-    //       }
-    //     )*
-    //   }
-    // }
-    //
-    // test_battery! {
-    //   u8 as u8_tests,
-    //   // ...
-    //   i128 as i128_tests
-    // }
+    #[derive(Serialize, Deserialize, Debug, Clone)]
+    pub struct TestObject {
+        pub name: String,
+        pub num: u32,
+        pub maybe: bool,
+    }
+
+    impl Arbitrary for TestObject {
+        fn arbitrary(g: &mut Gen) -> TestObject {
+            TestObject {
+                name: String::arbitrary(g),
+                num: u32::arbitrary(g),
+                maybe: bool::arbitrary(g),
+            }
+        }
+    }
 
     // #[test]
     // fn apply_set_op_root_path() {
@@ -435,27 +433,17 @@ mod tests {
     //     let res = apply(val.clone(), op);
     //     assert_eq!(res.ok(), Some(val));
     // }
-    #[derive(Serialize, Deserialize, Debug, Arbitrary)]
-    pub struct Test {
-        pub name: String,
-        pub num: usize,
-        pub maybe: bool,
-    }
 
-    // TODO take a boulder or account object
-    // or not.. dont want to bind that here
-    // arbitrary for some sort of value that we want to test?
-    // or operation
-    // #[quickcheck]
-    // fn operation_on_empty(input: Test) -> bool {
-    //     let value = serde_json::to_value(&input).expect("serialise value");
-    //     let op = Operation::Set {
-    //         path: ROOT_PATH.into(),
-    //         value: Some(value.clone()),
-    //     };
-    //
-    //     Some(value) == apply(json!({}), op).ok()
-    // }
+    #[quickcheck]
+    fn operation_on_empty(input: TestObject) -> bool {
+        let value = serde_json::to_value(&input).expect("serialise value");
+        let op = Operation::Set {
+            path: ROOT_PATH.into(),
+            value: Some(value.clone()),
+        };
+
+        Some(value) == apply(json!({}), op).ok()
+    }
 
     #[test]
     fn apply_set_op_on_empty() {
