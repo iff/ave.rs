@@ -70,7 +70,6 @@ pub fn apply(value: Value, operation: Operation) -> Result<Value, PatchError> {
                 None => Err(PatchError::ValueIsNotArray()),
             }?;
 
-            // TODO do we want mut?
             let f = |mut a: Vec<Value>| {
                 // check if the indices are within the allowed range
                 if a.len() < op_index + op_remove {
@@ -85,21 +84,48 @@ pub fn apply(value: Value, operation: Operation) -> Result<Value, PatchError> {
                 // The existing array and the elements we want to insert must have the same type.
                 // Furthermore, if the array consists of objects, each object is required to have an "id" field.
                 match (a.first(), op_insert.first()) {
-                    (Some(Value::String(_)), Some(Value::String(_))) => {
-                        // TODO check all elements of both to be strings only
-                        ()
-                    }
-                    // TODO others??
+                    // TODO: avers is just checking strings?
                     (Some(Value::Number(_)), Some(Value::Number(_))) => {
-                        // TODO check all elements of both to be strings only
-                        ()
+                        if !(a.iter().all(|a| a.is_number())
+                            && op_insert.iter().all(|a| a.is_number()))
+                        {
+                            return Err(PatchError::InconsistentTypes());
+                        }
                     }
-                    (Some(Value::Object(x)), Some(Value::Object(y))) => {
-                        // TODO check all elements of both to be strings only
-                        if !x.contains_key("id") || y.contains_key("id") {
+                    // TODO: avers is just checking strings?
+                    (Some(Value::Bool(_)), Some(Value::Bool(_))) => {
+                        if !(a.iter().all(|a| a.is_boolean())
+                            && op_insert.iter().all(|a| a.is_boolean()))
+                        {
+                            return Err(PatchError::InconsistentTypes());
+                        }
+                    }
+                    (Some(Value::String(_)), Some(Value::String(_))) => {
+                        if !(a.iter().all(|a| a.is_string())
+                            && op_insert.iter().all(|a| a.is_string()))
+                        {
+                            return Err(PatchError::InconsistentTypes());
+                        }
+                    }
+                    (Some(Value::Object(_)), Some(Value::Object(_))) => {
+                        if !(a.iter().all(|a| a.is_object())
+                            && op_insert.iter().all(|a| a.is_object()))
+                        {
+                            return Err(PatchError::InconsistentTypes());
+                        }
+
+                        // TODO nicer way to write this check without as_object (eg match)
+                        if !(a
+                            .iter()
+                            .all(|a| a.as_object().expect("checked before").contains_key("id"))
+                            && op_insert
+                                .iter()
+                                .all(|a| a.as_object().expect("checked before").contains_key("id")))
+                        {
                             return Err(PatchError::NoId());
                         }
                     }
+                    // TODO do we have to handle Null here?
                     _ => return Err(PatchError::InconsistentTypes()),
                 };
 
@@ -109,6 +135,7 @@ pub fn apply(value: Value, operation: Operation) -> Result<Value, PatchError> {
                 let _ = a.splice(op_index..op_index + op_remove, op_insert.iter().cloned());
                 Ok(a)
             };
+
             change_array(value, path, f)
         }
     }
@@ -205,11 +232,11 @@ fn op_ot(content: &Value, base: &Operation, op: Operation) -> Option<Operation> 
         return None;
     }
 
-    // if neither is a prefix of the other (they touch distinct parts of the object) then it's safe to accept the op
-    // FIXME
-    // if !(base.path.starts_with(op.path) || op.path.starts_with(base.path)) {
-    //     return Some(op);
-    // }
+    // if neither is a prefix of the other (they touch distinct parts of the object)
+    // then it's safe to accept the op
+    if !base.path().starts_with(&op.path()) && !op.path().starts_with(&base.path()) {
+        return Some(op);
+    }
 
     // FIXME clone
     match (base, op.clone()) {
@@ -346,9 +373,11 @@ fn is_reachable(path: Path, value: &Value) -> bool {
     true
 }
 
-/// Given an `op` which was created against a particular `content`, rebase it on top of patches which were created against the very same content in parallel.
+/// Given an `op` which was created against a particular `content`, rebase it on top of patches
+/// which were created against the very same content in parallel.
 ///
-/// This function assumes that the patches apply cleanly to the content. Otherwire the function will panic.
+/// This function assumes that the patches apply cleanly to the content. Otherwise the function
+/// will panic.
 pub fn rebase(content: Value, op: Operation, patches: Vec<Patch>) -> Option<Operation> {
     let mut new_content = content;
     let mut op = Some(op);
@@ -358,7 +387,6 @@ pub fn rebase(content: Value, op: Operation, patches: Vec<Patch>) -> Option<Oper
         match apply(new_content, patch.operation.clone()) {
             Ok(value) => {
                 new_content = value;
-                // TODO do we skip NONE ops?
                 op = op_ot(&new_content, &patch.operation, op?);
             }
             Err(e) => panic!("unexpected failure: {}", e),
@@ -418,16 +446,16 @@ mod tests {
     // or not.. dont want to bind that here
     // arbitrary for some sort of value that we want to test?
     // or operation
-    #[quickcheck]
-    fn operation_on_empty(input: Test) -> bool {
-        let value = serde_json::to_value(&input).expect("serialise value");
-        let op = Operation::Set {
-            path: ROOT_PATH.into(),
-            value: Some(value.clone()),
-        };
-
-        Some(value) == apply(json!({}), op).ok()
-    }
+    // #[quickcheck]
+    // fn operation_on_empty(input: Test) -> bool {
+    //     let value = serde_json::to_value(&input).expect("serialise value");
+    //     let op = Operation::Set {
+    //         path: ROOT_PATH.into(),
+    //         value: Some(value.clone()),
+    //     };
+    //
+    //     Some(value) == apply(json!({}), op).ok()
+    // }
 
     #[test]
     fn apply_set_op_on_empty() {

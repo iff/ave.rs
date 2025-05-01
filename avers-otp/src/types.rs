@@ -58,6 +58,18 @@ impl fmt::Display for Operation {
 }
 
 impl Operation {
+    pub fn path(&self) -> Path {
+        match self {
+            Operation::Set { path, value: _ } => path.to_owned(),
+            Operation::Splice {
+                path,
+                index: _,
+                remove: _,
+                insert: _,
+            } => path.to_owned(),
+        }
+    }
+
     pub fn path_contains(&self, p: Path) -> bool {
         match self {
             Operation::Set { path, value: _ } => path.contains(&p),
