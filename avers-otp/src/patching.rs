@@ -422,17 +422,16 @@ mod tests {
         }
     }
 
-    // #[test]
-    // fn apply_set_op_root_path() {
-    //     let op = Operation::Set {
-    //         path: ROOT_PATH.to_string(),
-    //         value: None,
-    //     };
-    //
-    //     let val = json!({ "meaning of life": 42});
-    //     let res = apply(val.clone(), op);
-    //     assert_eq!(res.ok(), Some(val));
-    // }
+    #[quickcheck]
+    fn apply_none(input: TestObject) -> bool {
+        let value = serde_json::to_value(&input).expect("serialise value");
+        let op = Operation::Set {
+            path: ROOT_PATH.to_string(),
+            value: None,
+        };
+
+        apply(value, op).ok().is_none()
+    }
 
     #[quickcheck]
     fn operation_on_empty(input: TestObject) -> bool {
@@ -445,40 +444,33 @@ mod tests {
         Some(value) == apply(json!({}), op).ok()
     }
 
-    #[test]
-    fn apply_set_op_on_empty() {
-        let op = Operation::Set {
-            path: "grade".into(),
-            value: Some("yellow".into()),
-        };
-
-        let res = apply(json!({}), op);
-        assert_eq!(res.ok(), Some(json!({"grade": "yellow"})));
-    }
-
-    #[test]
-    fn apply_set_op_on_empty_root_path() {
-        let val = json!({"grade": 52, "sector": "name"});
+    #[quickcheck]
+    fn full_overwrite(base: TestObject, overwrite: TestObject) -> bool {
+        let base = serde_json::to_value(&base).expect("serialise value");
+        let overwrite = serde_json::to_value(&overwrite).expect("serialise value");
         let op = Operation::Set {
             path: ROOT_PATH.into(),
-            value: Some(val.clone()),
+            value: Some(overwrite.clone()),
         };
 
-        let res = apply(json!({}), op);
-        assert_eq!(res.ok(), Some(val));
+        Some(overwrite) == apply(base, op).ok()
     }
 
-    #[test]
-    fn apply_set_op_path_overwrite() {
+    #[quickcheck]
+    fn partial_overwrite(base: TestObject, overwrite: TestObject) -> bool {
+        let expected = TestObject {
+            name: base.name.clone(),
+            num: overwrite.num,
+            maybe: base.maybe,
+        };
+        let base = serde_json::to_value(&base).expect("serialise value");
         let op = Operation::Set {
-            path: "x".to_string(),
-            value: Some(json!({"y": 7})),
+            path: "num".into(),
+            value: Some(json!(overwrite.num)),
         };
 
-        let val = json!({ "x": {"a": 42}, "z": "z"});
-        let res = apply(val, op);
-        let exp = json!({ "x": {"y": 7}, "z": "z"});
-        assert_eq!(res.ok(), Some(exp));
+        let expected = serde_json::to_value(&expected).expect("serialise value");
+        Some(expected) == apply(base, op).ok()
     }
 
     #[test]
