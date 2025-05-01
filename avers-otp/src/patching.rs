@@ -423,7 +423,7 @@ mod tests {
     }
 
     #[quickcheck]
-    fn apply_none(input: TestObject) -> bool {
+    fn apply_set_none(input: TestObject) -> bool {
         let value = serde_json::to_value(&input).expect("serialise value");
         let op = Operation::Set {
             path: ROOT_PATH.to_string(),
@@ -434,7 +434,7 @@ mod tests {
     }
 
     #[quickcheck]
-    fn operation_on_empty(input: TestObject) -> bool {
+    fn apply_set_on_empty(input: TestObject) -> bool {
         let value = serde_json::to_value(&input).expect("serialise value");
         let op = Operation::Set {
             path: ROOT_PATH.into(),
@@ -445,7 +445,7 @@ mod tests {
     }
 
     #[quickcheck]
-    fn full_overwrite(base: TestObject, overwrite: TestObject) -> bool {
+    fn apply_set_full_overwrite(base: TestObject, overwrite: TestObject) -> bool {
         let base = serde_json::to_value(&base).expect("serialise value");
         let overwrite = serde_json::to_value(&overwrite).expect("serialise value");
         let op = Operation::Set {
@@ -457,7 +457,7 @@ mod tests {
     }
 
     #[quickcheck]
-    fn partial_overwrite(base: TestObject, overwrite: TestObject) -> bool {
+    fn apply_set_partial_overwrite(base: TestObject, overwrite: TestObject) -> bool {
         let expected = TestObject {
             name: base.name.clone(),
             num: overwrite.num,
@@ -473,30 +473,28 @@ mod tests {
         Some(expected) == apply(base, op).ok()
     }
 
-    #[test]
-    fn apply_set_op_path_insert() {
+    #[quickcheck]
+    fn apply_set_path_delete(base: TestObject) -> bool {
+        let expected = json!({ "name": base.name.clone(), "maybe": base.maybe});
+        let base = serde_json::to_value(&base).expect("serialise value");
         let op = Operation::Set {
-            path: "x.y".to_string(),
-            value: Some(json!({"z": 7})),
-        };
-
-        let val = json!({ "x": {"a": 42, "y": {}}, "z": "z"});
-        let res = apply(val, op);
-        let exp = json!({ "x": {"a": 42, "y": {"z": 7}}, "z": "z"});
-        assert_eq!(res.ok(), Some(exp));
-    }
-
-    #[test]
-    fn apply_set_op_path_delete() {
-        let op = Operation::Set {
-            path: "x.a".to_string(),
+            path: "num".to_string(),
             value: None,
         };
 
-        let val = json!({ "x": {"a": 42}, "z": "z"});
-        let res = apply(val, op);
-        let exp = json!({ "x": {}, "z": "z"});
-        assert_eq!(res.ok(), Some(exp));
+        Some(expected) == apply(base, op).ok()
+    }
+
+    #[quickcheck]
+    fn apply_set_path_insert_object(object: TestObject) -> bool {
+        let expected = json!({ "new": object.clone()});
+        let object = serde_json::to_value(&object).expect("serialise value");
+        let op = Operation::Set {
+            path: "new".to_string(),
+            value: Some(object),
+        };
+
+        Some(expected) == apply(json!({}), op).ok()
     }
 
     #[test]
@@ -573,6 +571,8 @@ mod tests {
             Err(e) => panic!("{}", e),
         }
     }
+
+    // TODO test rebase
 
     // TODO what is the expected behavior here?
     // #[test]
