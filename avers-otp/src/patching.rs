@@ -497,6 +497,8 @@ mod tests {
         Some(expected) == apply(json!({}), op).ok()
     }
 
+    // splice
+
     #[test]
     fn apply_splice_op_number() {
         let op = Operation::Splice {
