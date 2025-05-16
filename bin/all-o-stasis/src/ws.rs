@@ -89,7 +89,7 @@ pub(crate) async fn handle_socket(
 
     // TODO use unbounded channel?
     // channel for messages to be sent back
-    let (ws_tx, mut ws_rx) = mpsc::channel(100);
+    let (ws_tx, mut ws_rx) = mpsc::channel(1000);
     // for firestore listener
     let ws_tx_listener = ws_tx.clone();
 
@@ -121,32 +121,43 @@ pub(crate) async fn handle_socket(
             .start(move |event| handle_listener_event(event, ws_tx_listener.clone()))
             .await;
 
-        loop {
-            if let Ok(msg) = ws_rx.try_recv() {
-                let msg = match msg.clone() {
-                    Message::Text(t) => {
-                        let patch: Patch = serde_json::from_str(&t).expect("parsing patch");
-                        if subscriptions_clone.lock().await.contains(&patch.object_id) {
-                            tracing::debug!("sending patch to {who}");
-                            msg
-                        } else {
+        while let Some(msg) = ws_rx.recv().await {
+            let processed_msg = match msg {
+                Message::Text(t) => {
+                    let patch: Patch = serde_json::from_str(&t).expect("parsing patch");
+                    
+                    // Try to get lock and check subscription
+                    let should_send = match subscriptions_clone.try_lock() {
+                        Ok(subscriptions) => {
+                            subscriptions.contains(&patch.object_id)
+                        }
+                        Err(_) => {
+                            tracing::debug!("error: failed to lock subscriptions");
+                            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
                             continue;
                         }
-                    }
-                    Message::Ping(_) => msg,
-                    t => {
-                        tracing::debug!(
-                            "error: received unexpected message from on ws_send: {t:?}"
-                        );
+                    };
+                    
+                    if should_send {
+                        tracing::debug!("sending patch to {who}");
+                        Message::Text(t)
+                    } else {
                         continue;
                     }
-                };
-
-                if let Err(err) = sender.send(msg).await {
-                    tracing::debug!("error: failed send message over websocket with {err}");
-                    // TODO signal abort
-                    break;
                 }
+                Message::Ping(bytes) => Message::Ping(bytes),
+                t => {
+                    tracing::debug!(
+                        "error: received unexpected message from on ws_send: {t:?}"
+                    );
+                    continue;
+                }
+            };
+
+            if let Err(err) = sender.send(processed_msg).await {
+                tracing::debug!("error: failed send message over websocket with {err}");
+                // TODO signal abort
+                break;
             }
         }
 
