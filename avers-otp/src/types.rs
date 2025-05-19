@@ -21,7 +21,7 @@ pub const ZERO_REV_ID: RevId = 0;
 
 pub type ObjectId = String;
 
-#[derive(Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 #[serde(tag = "type")]
 #[serde(rename_all = "camelCase")]
 pub enum Operation {

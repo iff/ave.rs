@@ -366,7 +366,7 @@ fn is_reachable(path: Path, value: &Value) -> bool {
                 // only can reach objects in list and objects need matching "id"s
                 Value::Object(o) => Some(&Value::String(p.to_string())) == o.get("id"),
                 // other types in lists are not reachable (primitive types)
-                _ => return false,
+                _ => false,
             }) {
                 Some(v) => v,
                 None => return false,
