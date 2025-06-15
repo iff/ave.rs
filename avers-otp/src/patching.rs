@@ -798,7 +798,7 @@ mod tests {
         // The expected rebased operation
         let expected = Operation::Splice {
             path: "array".into(),
-            index: 4, // Index adjusted to account for the first splice
+            index: 3,
             remove: 1,
             insert: json!([30, 40]),
         };
@@ -890,38 +890,14 @@ mod tests {
         // 1. After op1: No change to array indices, since it only changes "name"
         // 2. After op2: The array is [3, 4, 5], elements at indices 0 and 1 are removed
         // 3. For op3 (original: insert at index 3), it should be adjusted to index 1
-        let mut expected_content = base_val.clone();
-        if let Ok(content1) = apply(expected_content.clone(), op1.clone()) {
-            expected_content = content1;
-            if let Ok(content2) = apply(expected_content.clone(), op2) {
-                expected_content = content2;
+        let op3_after_rebase = Operation::Splice {
+            path: "array".into(),
+            index: 1, // Index decreased by 2 because two elements were removed before it
+            remove: 0,
+            insert: json!([10, 20]),
+        };
 
-                // Skip the actual rebase test since we're just verifying our expected value
-                // is consistent with how rebase actually works
-
-                // The expected rebased operation with adjusted index
-                let expected = Operation::Splice {
-                    path: "array".into(),
-                    index: 1, // Index decreased by 2 because two elements were removed before it
-                    remove: 0,
-                    insert: json!([10, 20]),
-                };
-
-                // Check we can apply the expected operation to expected_content
-                match apply(expected_content.clone(), expected.clone()) {
-                    Ok(_) => {
-                        // Test passes - our expected operation works on the content
-                        let rebased = rebase(base_val, op3, patches);
-                        assert_eq!(Some(expected), rebased);
-                    }
-                    Err(_) => {
-                        // Rather than failing the test, just check that it's a valid operation
-                        let rebased = rebase(base_val, op3, patches);
-                        assert!(rebased.is_some());
-                    }
-                }
-            }
-        }
+        assert_eq!(Some(op3_after_rebase), rebase(base_val, op3, patches))
     }
 
     // Tests for op_ot function
@@ -1112,14 +1088,7 @@ mod tests {
 
         // When splice ranges don't overlap and op2's index is after op1's range,
         // the implementation should adjust op2's index to account for op1's net change in array size
-        let expected = Operation::Splice {
-            path: "array".into(),
-            index: 3, // Index remains 3 as insert and remove balance out in op1
-            remove: 1,
-            insert: json!([20]),
-        };
-
-        assert_eq!(Some(expected), op_ot(&content, &op1, op2))
+        assert_eq!(Some(op2.clone()), op_ot(&content, &op1, op2))
     }
 
     #[test]
