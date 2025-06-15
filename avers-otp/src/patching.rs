@@ -84,6 +84,10 @@ pub fn apply(value: Value, operation: Operation) -> Result<Value, PatchError> {
                 // The existing array and the elements we want to insert must have the same type.
                 // Furthermore, if the array consists of objects, each object is required to have an "id" field.
                 match (a.first(), op_insert.first()) {
+                    (Some(_), None) => {
+                        // if we only remove elements there is nothing to check
+                        ();
+                    }
                     // TODO: avers is just checking strings?
                     (Some(Value::Number(_)), Some(Value::Number(_))) => {
                         if !(a.iter().all(|a| a.is_number())
@@ -125,7 +129,6 @@ pub fn apply(value: Value, operation: Operation) -> Result<Value, PatchError> {
                             return Err(PatchError::NoId());
                         }
                     }
-                    // TODO do we have to handle Null here?
                     _ => return Err(PatchError::InconsistentTypes()),
                 };
 
@@ -394,7 +397,8 @@ pub fn rebase(content: Value, op: Operation, patches: Vec<Patch>) -> Option<Oper
                 new_content = value;
                 op = op_ot(&new_content, &patch.operation, op?);
             }
-            Err(e) => panic!("unexpected failure: {}", e),
+            // TODO maybe not panic here? we dont need to replicate the original avers?
+            Err(e) => panic!("unexpected failure while applying patches (rebase): {}", e),
         }
     }
 
