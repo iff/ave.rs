@@ -86,7 +86,6 @@ pub fn apply(value: Value, operation: Operation) -> Result<Value, PatchError> {
                 match (a.first(), op_insert.first()) {
                     (Some(_), None) => {
                         // if we only remove elements there is nothing to check
-                        ();
                     }
                     // TODO: avers is just checking strings?
                     (Some(Value::Number(_)), Some(Value::Number(_))) => {
