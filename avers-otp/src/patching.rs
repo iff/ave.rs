@@ -327,7 +327,7 @@ fn op_ot(content: &Value, base: &Operation, op: Operation) -> Option<Operation> 
                     //  FIXME copy/clone?
                     return Some(Operation::Splice {
                         path: op_path,
-                        index: op_index + base_insert_len - op_remove,
+                        index: op_index + base_insert_len - base_remove,
                         remove: op_remove,
                         insert: op_insert,
                     });
