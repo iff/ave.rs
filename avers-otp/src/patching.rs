@@ -608,7 +608,7 @@ mod tests {
 
         let val = json!({ "x": ["a", "b", "c", "d"], "z": "z"});
         let exp = json!({ "x": ["a", "42", "43", "b", "c", "d"], "z": "z"});
-        Some(exp) == apply(val, op).ok()
+        assert_eq!(Some(exp), apply(val, op).ok())
     }
 
     #[test]
@@ -622,7 +622,7 @@ mod tests {
 
         let val = json!({ "x": [1,2,3,4], "z": "z"});
         let exp = json!({ "x": [1, 42, 43, 4], "z": "z"});
-        Some(exp) == apply(val, op).ok()
+        assert_eq!(Some(exp), apply(val, op).ok())
     }
 
     // rebase
@@ -667,7 +667,7 @@ mod tests {
         }];
 
         // The rebased operation should be unchanged since they affect different properties
-        Some(op2) == rebase(base_val, op2.clone(), patches)
+        Some(op2.clone()) == rebase(base_val, op2, patches)
     }
 
     #[quickcheck]
@@ -694,7 +694,7 @@ mod tests {
             operation: op1,
         }];
 
-        Some(op2) == rebase(base_val, op2.clone(), patches)
+        Some(op2.clone()) == rebase(base_val, op2, patches)
     }
 
     #[quickcheck]
@@ -722,7 +722,7 @@ mod tests {
             operation: op1,
         }];
 
-        Some(op2) == rebase(base_val, op2.clone(), patches)
+        Some(op2.clone()) == rebase(base_val, op2, patches)
     }
 
     #[quickcheck]
@@ -752,7 +752,7 @@ mod tests {
             operation: op1,
         }];
 
-        Some(op2) == rebase(base_val, op2.clone(), patches)
+        Some(op2.clone()) == rebase(base_val, op2, patches)
     }
 
     #[test]
@@ -799,7 +799,7 @@ mod tests {
             insert: json!([30, 40]),
         };
 
-        Some(expected) == rebased
+        assert_eq!(Some(expected), rebased)
     }
 
     #[test]
@@ -833,7 +833,7 @@ mod tests {
             operation: op1,
         }];
 
-        Some(op2) == rebase(base_val, op2.clone(), patches)
+        assert_eq!(Some(op2.clone()), rebase(base_val, op2, patches))
     }
 
     #[test]
@@ -950,7 +950,7 @@ mod tests {
         };
 
         // Operations affect different paths, so op2 should be returned unchanged
-        Some(op2) == op_ot(&content, &op1, op2.clone())
+        Some(op2.clone()) == op_ot(&content, &op1, op2)
     }
 
     #[quickcheck]
@@ -969,7 +969,7 @@ mod tests {
         };
 
         // When both Set operations target the same path, op2 should be returned
-        Some(op2) == op_ot(&content, &op1, op2.clone())
+        Some(op2.clone()) == op_ot(&content, &op1, op2)
     }
 
     #[test]
@@ -1001,7 +1001,7 @@ mod tests {
 
         // When the op2 path is more specific than the base op path,
         // the implementation returns the op2 operation
-        Some(op2) == op_ot(&nested_content, &op1, op2.clone())
+        assert_eq!(Some(op2.clone()), op_ot(&nested_content, &op1, op2))
     }
 
     #[test]
@@ -1033,7 +1033,7 @@ mod tests {
 
         // When the base path is a prefix of the op path, the implementation
         // returns None as the operations conflict (base op makes op2 redundant)
-        op_ot(&nested_content, &op1, op2.clone()).is_none()
+        assert_eq!(op_ot(&nested_content, &op1, op2.clone()), None)
     }
 
     #[quickcheck]
@@ -1081,7 +1081,7 @@ mod tests {
         };
 
         // When Splice and Set target the same path, return op2
-        Some(op2) == op_ot(&content, &op1, op2.clone())
+        Some(op2.clone()) == op_ot(&content, &op1, op2)
     }
 
     #[test]
@@ -1115,7 +1115,7 @@ mod tests {
             insert: json!([20]),
         };
 
-        Some(expected) == op_ot(&content, &op1, op2)
+        assert_eq!(Some(expected), op_ot(&content, &op1, op2))
     }
 
     #[test]
@@ -1141,7 +1141,7 @@ mod tests {
         };
 
         // When op2's range is entirely before op1's range, op2 is returned unchanged
-        Some(op2) == op_ot(&content, &op1, op2.clone())
+        assert_eq!(Some(op2.clone()), op_ot(&content, &op1, op2))
     }
 
     #[test]
@@ -1167,7 +1167,7 @@ mod tests {
         };
 
         // When ranges overlap, return None (conflict)
-        op_ot(&content, &op1, op2).is_none()
+        assert_eq!(op_ot(&content, &op1, op2), None)
     }
 
     #[test]
@@ -1201,7 +1201,7 @@ mod tests {
             insert: json!([30]),
         };
 
-        Some(expected) == op_ot(&content, &op1, op2)
+        assert_eq!(Some(expected), op_ot(&content, &op1, op2))
     }
 
     #[quickcheck]
@@ -1224,6 +1224,6 @@ mod tests {
         };
 
         // The path "item1.value" should be reachable
-        Some(op2) == op_ot(&content, &op1, op2.clone())
+        Some(op2.clone()) == op_ot(&content, &op1, op2)
     }
 }
