@@ -9,7 +9,7 @@ on:
 jobs:
   backup:
     runs-on: ubuntu-latest
-    name: backup
+    name: deploy
     permissions:
       contents: "read"
       id-token: "write"
