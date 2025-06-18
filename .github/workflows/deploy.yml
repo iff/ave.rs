@@ -1,0 +1,54 @@
+name: deploy
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches:
+      - main
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    name: backup
+    permissions:
+      contents: "read"
+      id-token: "write"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          service_account: "github-ci@all-o-stasis.iam.gserviceaccount.com"
+          workload_identity_provider: "projects/146982620019/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+
+      - name: Cloud SDK
+        uses: "google-github-actions/setup-gcloud@v2"
+
+      - name: install nix
+        uses: cachix/install-nix-action@v31
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+
+      - name: build/push docker
+        run: |
+          BRANCH=${GITHUB_REF##*/}
+          IMAGE=europe-west1-docker.pkg.dev/all-o-stasis/all-o-stasis/api:${BRANCH}
+          nix build
+          TAG=$(docker load < result | awk '{print $3}')
+          gcloud auth configure-docker europe-west1-docker.pkg.dev
+          docker tag $TAG $IMAGE
+          docker push $IMAGE
+
+      - name: deploy
+        env:
+          SG_API_KEY: ${{ secrets.SG_API_KEY }}
+        run: |
+          BRANCH=${GITHUB_REF##*/}
+          IMAGE=europe-west1-docker.pkg.dev/all-o-stasis/all-o-stasis/api:${BRANCH}
+          # TODO adapt to branch and add dev/staging?
+          CLOUD_RUN_SERVICE_NAME="api"
+
+          gcloud --project all-o-stasis run deploy $CLOUD_RUN_SERVICE_NAME --image=$IMAGE --region=europe-west1 --set-env-vars SG_API_KEY=$SG_API_KEY
