@@ -356,6 +356,9 @@ async fn draft_boulders(
     Path(gym): Path<String>,
 ) -> Result<Json<Vec<ObjectId>>, AppError> {
     let parent_path = state.db.parent_path("gyms", gym)?;
+    // XXX we used to have a separate collection for draft boulders but never used it in the (old)
+    // code. Here we choose to follow the old implementation and do not add a collection for draft
+    // boulders.
     let object_stream: BoxStream<FirestoreResult<Boulder>> = state
         .db
         .fluent()
