@@ -1,0 +1,28 @@
+name: backup db
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "0 5 * * *"
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    name: backup
+    permissions:
+      contents: "read"
+      id-token: "write"
+
+    steps:
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          service_account: "github-ci@all-o-stasis.iam.gserviceaccount.com"
+          workload_identity_provider: "projects/146982620019/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+
+      - name: Cloud SDK
+        uses: "google-github-actions/setup-gcloud@v2"
+
+      - name: firestore export
+        run: |
+          gcloud --project all-o-stasis firestore export gs://aos-firestore-db/firestore-export-$(date +%Y%m%d-%H%M%S)

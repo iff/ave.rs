@@ -1,0 +1,64 @@
+### #patches
+GET https://apiv2.boulderhalle.app/test/objects/ckrMCmhHYpXY4JfqPLrQ/patches/0
+
+### #post object
+POST https://apiv2.boulderhalle.app/test/objects
+accept: application/json  
+Content-type: application/json; charset=UTF-8
+
+{
+  "type": "Boulder",
+  "content": {
+    "grade": "blue",
+    "gradeNr": 42,
+    "sector": "kurswand",
+    "setDate": 134778234,
+    "setter": [
+      "5xKABKbRG5fRyjwbidYF"
+    ],
+    "removed": 0,
+    "isDraft": 0,
+    "name": "",
+    "id": null
+  }
+}
+
+### #post object
+POST https://apiv2.boulderhalle.app/test/objects
+accept: application/json  
+Content-type: application/json; charset=UTF-8
+
+{
+  "type": "Account",
+  "content": {
+    "login": "iff",
+    "role": "admin",
+    "email": "yves.ineichen@gmail.com",
+    "name": ""
+  }
+}
+
+### #get object
+GET https://apiv2.boulderhalle.app/test/objects/of5APRPra9mPB4Ig8zfz
+
+### #patch object
+PATCH https://apiv2.boulderhalle.app/test/objects/of5APRPra9mPB4Ig8zfz
+accept: application/json  
+Content-type: application/json; charset=UTF-8
+
+{
+  "revisionId": 1,
+  "operations": [
+    {
+      "type": "set",
+      "path": "gradeNr",
+      "value": 11
+    }
+  ]
+}
+
+### #get activeBoulders collection
+GET https://apiv2.boulderhalle.app/test/collection/activeBoulders
+
+### #get accounts collection
+GET https://apiv2.boulderhalle.app/test/collection/accounts
