@@ -179,7 +179,7 @@ pub(crate) async fn handle_socket(
                             tracing::debug!("{who} subscribing to object id {obj_id}");
                             subscriptions.lock().await.push(obj_id.to_string());
                         } else {
-                            tracing::debug!(">>> {who} send an unxepected op {op}");
+                            tracing::debug!(">>> {who} send an unexpected op {op}");
                         }
                     } else {
                         tracing::debug!(">>> {who} sent unexpected subscribe message {json:?}");
@@ -220,5 +220,6 @@ pub(crate) async fn handle_socket(
     ping.abort();
     ws_send.abort();
     handle_subscriptions.abort();
+    // TODO cleaner shutdown possible?
     listener_task.abort();
 }
