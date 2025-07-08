@@ -6,7 +6,9 @@ use firestore::{
 };
 use futures::{SinkExt, StreamExt};
 use otp::types::{ObjectId, Patch};
+use std::collections::hash_map::DefaultHasher;
 use std::error::Error;
+use std::hash::{Hash, Hasher};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::{mpsc, mpsc::Sender, Mutex};
@@ -14,14 +16,29 @@ use tokio::sync::{mpsc, mpsc::Sender, Mutex};
 use crate::storage::PATCHES_COLLECTION;
 use crate::AppState;
 
+fn hash_addr(addr: &SocketAddr) -> u64 {
+    let mut hasher = DefaultHasher::new();
+
+    match addr {
+        SocketAddr::V4(v4) => {
+            v4.ip().octets().hash(&mut hasher);
+            v4.port().hash(&mut hasher);
+        }
+        SocketAddr::V6(v6) => {
+            v6.ip().octets().hash(&mut hasher);
+            v6.port().hash(&mut hasher);
+        }
+    }
+
+    hasher.finish()
+}
+
 async fn patch_listener(
     state: AppState,
     parent_path: ParentPathBuilder,
     who: SocketAddr,
 ) -> Option<FirestoreListener<FirestoreDb, FirestoreMemListenStateStorage>> {
-    // TODO is this setup from scratch for each client? so the ID we use here has to be unique?
-    // TODO is this enough? also use ip address?
-    let listener_id: FirestoreListenerTarget = FirestoreListenerTarget::new(who.port() as u32);
+    let listener_id: FirestoreListenerTarget = FirestoreListenerTarget::new(hash_addr(&who) as u32);
 
     // now start streaming patches using firestore listeners: https://github.com/abdolence/firestore-rs/blob/master/examples/listen-changes.rs
     // do we have enough mem?
