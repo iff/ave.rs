@@ -1,3 +1,4 @@
+use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json};
 use axum::routing::any;
 use axum::{
@@ -781,9 +782,17 @@ async fn feed(
     };
     tracing::debug!("`{user_agent}` at {addr} connected.");
     // finalize the upgrade process by returning upgrade callback.
-    // TODO expect
-    let parent_path = state.db.parent_path("gyms", gym).expect("need a gym");
-    ws.on_upgrade(move |socket| handle_socket(socket, addr, state, parent_path))
+    match state.db.parent_path("gyms", gym.clone()) {
+        Ok(path) => ws.on_upgrade(move |socket| handle_socket(socket, addr, state, path)),
+        Err(e) => {
+            tracing::error!("{gym}: error {e:?} does not exist");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("{gym}: error {e:?}"),
+            )
+                .into_response()
+        }
+    };
 }
 
 // XXX maybe don't needed
