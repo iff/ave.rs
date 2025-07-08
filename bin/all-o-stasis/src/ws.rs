@@ -101,9 +101,17 @@ pub(crate) async fn handle_socket(
         None => return,
     };
 
+    // start firestore listener
+    let mut listener_task = tokio::spawn(async move {
+        let _ = listener
+            .start(move |event| handle_listener_event(event, ws_tx_listener.clone()))
+            .await;
+    });
+
     // ping the client every 10 seconds
-    let ping = tokio::spawn(async move {
+    let mut ping = tokio::spawn(async move {
         loop {
+            // TODO this eventually fills the channel?
             let sp = ws_tx.send(Message::Ping(Bytes::from_static(&[1]))).await;
             if let Err(err) = sp {
                 tracing::debug!("error: failed to send ping with {err}");
@@ -115,29 +123,23 @@ pub(crate) async fn handle_socket(
 
     // keep on sending out what we get on the send channel
     // we expect and rely patches (Text) and Pings on this channel
-    let ws_send = tokio::spawn(async move {
-        // start firestore listener
-        let _ = listener
-            .start(move |event| handle_listener_event(event, ws_tx_listener.clone()))
-            .await;
-
+    let mut ws_send = tokio::spawn(async move {
+        // this only stops once we close the channel?
         while let Some(msg) = ws_rx.recv().await {
             let processed_msg = match msg {
                 Message::Text(t) => {
                     let patch: Patch = serde_json::from_str(&t).expect("parsing patch");
-                    
+
                     // Try to get lock and check subscription
                     let should_send = match subscriptions_clone.try_lock() {
-                        Ok(subscriptions) => {
-                            subscriptions.contains(&patch.object_id)
-                        }
+                        Ok(subscriptions) => subscriptions.contains(&patch.object_id),
                         Err(_) => {
                             tracing::debug!("error: failed to lock subscriptions");
                             tokio::time::sleep(std::time::Duration::from_millis(10)).await;
                             continue;
                         }
                     };
-                    
+
                     if should_send {
                         tracing::debug!("sending patch to {who}");
                         Message::Text(t)
@@ -147,9 +149,7 @@ pub(crate) async fn handle_socket(
                 }
                 Message::Ping(bytes) => Message::Ping(bytes),
                 t => {
-                    tracing::debug!(
-                        "error: received unexpected message from on ws_send: {t:?}"
-                    );
+                    tracing::debug!("error: received unexpected message from on ws_send: {t:?}");
                     continue;
                 }
             };
@@ -160,63 +160,65 @@ pub(crate) async fn handle_socket(
                 break;
             }
         }
-
-        let _ = listener.shutdown().await;
     });
 
     // recieve object ids the client wants to subscibe
-    let _subsciptions = tokio::spawn(async move {
-        loop {
-            // termination handling?
-            while let Some(Ok(msg)) = receiver.next().await {
-                match msg {
-                    Message::Text(t) => {
-                        // message looks like: 169.254.169.126:40748 subscribing to object id ["+","FaI1zp28CfCswCX4I991"]
-                        // changeFeedSubscription(h, ["+", id]);
-                        let json: Vec<String> =
-                            serde_json::from_str(&t).expect("json subscribe message");
+    let mut handle_subscriptions = tokio::spawn(async move {
+        // termination handling?
+        // this only stops once we close the channel?
+        while let Some(Ok(msg)) = receiver.next().await {
+            match msg {
+                Message::Text(t) => {
+                    // message looks like: 169.254.169.126:40748 subscribing to object id ["+","FaI1zp28CfCswCX4I991"]
+                    // changeFeedSubscription(h, ["+", id]);
+                    let json: Vec<String> =
+                        serde_json::from_str(&t).expect("json subscribe message");
 
-                        if let [op, obj_id] = &json[..] {
-                            if op == "+" {
-                                tracing::debug!("{who} subscribing to object id {obj_id}");
-                                subscriptions.lock().await.push(obj_id.to_string());
-                            } else {
-                                tracing::debug!(">>> {who} send an unxepected op {op}");
-                            }
+                    if let [op, obj_id] = &json[..] {
+                        if op == "+" {
+                            tracing::debug!("{who} subscribing to object id {obj_id}");
+                            subscriptions.lock().await.push(obj_id.to_string());
                         } else {
-                            tracing::debug!(">>> {who} sent unexpected subscribe message {json:?}");
+                            tracing::debug!(">>> {who} send an unxepected op {op}");
                         }
+                    } else {
+                        tracing::debug!(">>> {who} sent unexpected subscribe message {json:?}");
                     }
-                    Message::Binary(_) => tracing::debug!(">>> {who} send binary data!"),
-                    Message::Close(c) => {
-                        if let Some(cf) = c {
-                            tracing::debug!(
-                                ">>> {} sent close with code {} and reason `{}`",
-                                who,
-                                cf.code,
-                                cf.reason
-                            );
-                        } else {
-                            tracing::debug!(
-                                ">>> {who} somehow sent close message without CloseFrame"
-                            );
-                        }
-                        break;
+                }
+                Message::Binary(_) => tracing::debug!(">>> {who} send binary data!"),
+                Message::Close(c) => {
+                    if let Some(cf) = c {
+                        tracing::debug!(
+                            ">>> {} sent close with code {} and reason `{}`",
+                            who,
+                            cf.code,
+                            cf.reason
+                        );
+                    } else {
+                        tracing::debug!(">>> {who} somehow sent close message without CloseFrame");
                     }
-                    Message::Pong(v) => {
-                        tracing::debug!(">>> {who} sent pong with {v:?}");
-                    }
-                    Message::Ping(v) => {
-                        tracing::debug!(">>> {who} sent ping with {v:?}");
-                    }
+                    break;
+                }
+                Message::Pong(v) => {
+                    tracing::debug!(">>> {who} sent pong with {v:?}");
+                }
+                Message::Ping(v) => {
+                    tracing::debug!(">>> {who} sent ping with {v:?}");
                 }
             }
         }
     });
 
+    tokio::select! {
+        _ = &mut ping => {},
+        _ = &mut ws_send => {},
+        _ = &mut handle_subscriptions => {},
+        _ = &mut listener_task => {},
+    }
+
     // only _subscriptions can actually break?
     ping.abort();
     ws_send.abort();
-
-    // else use tokio::select!
+    handle_subscriptions.abort();
+    listener_task.abort();
 }
