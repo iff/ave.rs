@@ -20,7 +20,7 @@ async fn patch_listener(
     who: SocketAddr,
 ) -> Option<FirestoreListener<FirestoreDb, FirestoreMemListenStateStorage>> {
     // TODO is this setup from scratch for each client? so the ID we use here has to be unique?
-    // TODO is this enough?
+    // TODO is this enough? also use ip address?
     let listener_id: FirestoreListenerTarget = FirestoreListenerTarget::new(who.port() as u32);
 
     // now start streaming patches using firestore listeners: https://github.com/abdolence/firestore-rs/blob/master/examples/listen-changes.rs
@@ -156,7 +156,6 @@ pub(crate) async fn handle_socket(
 
             if let Err(err) = sender.send(processed_msg).await {
                 tracing::debug!("error: failed send message over websocket with {err}");
-                // TODO signal abort
                 break;
             }
         }
@@ -164,7 +163,6 @@ pub(crate) async fn handle_socket(
 
     // recieve object ids the client wants to subscibe
     let mut handle_subscriptions = tokio::spawn(async move {
-        // termination handling?
         // this only stops once we close the channel?
         while let Some(Ok(msg)) = receiver.next().await {
             match msg {
@@ -216,7 +214,6 @@ pub(crate) async fn handle_socket(
         _ = &mut listener_task => {},
     }
 
-    // only _subscriptions can actually break?
     ping.abort();
     ws_send.abort();
     handle_subscriptions.abort();
