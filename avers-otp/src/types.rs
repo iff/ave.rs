@@ -21,7 +21,7 @@ pub const ZERO_REV_ID: RevId = 0;
 
 pub type ObjectId = String;
 
-#[derive(Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 #[serde(tag = "type")]
 #[serde(rename_all = "camelCase")]
 pub enum Operation {
@@ -58,6 +58,18 @@ impl fmt::Display for Operation {
 }
 
 impl Operation {
+    pub fn path(&self) -> Path {
+        match self {
+            Operation::Set { path, value: _ } => path.to_owned(),
+            Operation::Splice {
+                path,
+                index: _,
+                remove: _,
+                insert: _,
+            } => path.to_owned(),
+        }
+    }
+
     pub fn path_contains(&self, p: Path) -> bool {
         match self {
             Operation::Set { path, value: _ } => path.contains(&p),
@@ -78,7 +90,7 @@ pub struct Object {
     id: Option<ObjectId>, // not nice that this has to be empty for id generation to work
     #[serde(alias = "_firestore_created")]
     pub created_at: Option<DateTime<Utc>>, // Option<FirestoreTimestamp>,
-    pub object_type: ObjectType,
+    pub object_type: ObjectType, // TODO we should pass those as a template?
     pub created_by: ObjectId,
     // delete the object which has a very different meaning from deleting a boulder
     pub deleted: Option<bool>,
@@ -169,8 +181,8 @@ impl fmt::Display for Snapshot {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use serde_json::{from_str, to_string, Value};
+    // use super::*;
+    // use serde_json::{from_str, to_string, Value};
 
     // #[test]
     // fn object_additional_fields_as_value() {

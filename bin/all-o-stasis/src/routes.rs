@@ -1,6 +1,6 @@
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json};
-use axum::routing::any;
+use axum::routing::{any, delete};
 use axum::{
     extract::ws::WebSocketUpgrade,
     extract::{Path, State},
@@ -43,8 +43,8 @@ use crate::{AppError, AppState};
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 struct BoulderStat {
-    set_on: u32,
-    removed_on: Option<u32>,
+    set_on: String,
+    removed_on: Option<String>,
     setters: Vec<String>,
     sector: String,
     grade: String,
@@ -357,6 +357,9 @@ async fn draft_boulders(
     Path(gym): Path<String>,
 ) -> Result<Json<Vec<ObjectId>>, AppError> {
     let parent_path = state.db.parent_path("gyms", gym)?;
+    // XXX we used to have a separate collection for draft boulders but never used it in the (old)
+    // code. Here we choose to follow the old implementation and do not add a collection for draft
+    // boulders.
     let object_stream: BoxStream<FirestoreResult<Boulder>> = state
         .db
         .fluent()
@@ -448,7 +451,7 @@ async fn admin_accounts(
         .filter(|q| {
             q.for_all([q
                 .field(path_camel_case!(Account::role))
-                .eq(AccountRole::Admin)])
+                .neq(AccountRole::User)])
         })
         .obj()
         .stream_query_with_errors()
@@ -500,6 +503,11 @@ async fn stats(
     Ok(Json(stats))
 }
 
+fn stat_date(epoch_millis: usize) -> String {
+    let date = DateTime::from_timestamp_millis(epoch_millis as i64).expect("invalid timestamp");
+    date.format("%Y-%m-%d").to_string()
+}
+
 async fn stats_boulders(
     State(state): State<AppState>,
     Path(gym): Path<String>,
@@ -519,22 +527,22 @@ async fn stats_boulders(
         .await?;
 
     let as_vec: Vec<Boulder> = object_stream.try_collect().await?;
-    Ok(Json(
-        as_vec
-            .into_iter()
-            .map(|b| BoulderStat {
-                set_on: b.set_date as u32, // toUTCTime
-                removed_on: if b.removed == 0 {
-                    Some(b.removed as u32)
-                } else {
-                    None
-                },
-                setters: b.setter,
-                sector: b.sector,
-                grade: b.grade,
-            })
-            .collect(),
-    ))
+    let stats: Vec<BoulderStat> = as_vec
+        .into_iter()
+        .map(|b| BoulderStat {
+            set_on: stat_date(b.set_date),
+            removed_on: if b.removed == 0 {
+                None
+            } else {
+                Some(stat_date(b.removed))
+            },
+            setters: b.setter,
+            sector: b.sector,
+            grade: b.grade,
+        })
+        .collect();
+
+    Ok(Json(stats))
 }
 
 fn api_routes() -> Router<AppState> {
@@ -549,6 +557,8 @@ fn api_routes() -> Router<AppState> {
     // type Cacheable a = Headers '[Header "Cache-Control" Text, Header "ETag" Text] a
 
     Router::new()
+        // signout
+        .route("/{gym}/session", delete(delete_session))
         // lookup session
         .route("/{gym}/session", get(lookup_session))
         //
@@ -564,6 +574,37 @@ fn api_routes() -> Router<AppState> {
         .route("/{gym}/objects/{id}/changes", get(object_changes))
         // feed (raw websocket) -- to subscribe to object updates (patches)
         .route("/{gym}/feed", any(feed))
+}
+
+async fn delete_session(
+    State(state): State<AppState>,
+    Path(gym): Path<String>,
+    jar: CookieJar,
+) -> Result<impl IntoResponse, AppError> {
+    let parent_path = state.db.parent_path("gyms", gym)?;
+    let session_id = jar
+        .get("session")
+        .ok_or(AppError::NoSession())?
+        .value()
+        .to_owned();
+
+    state
+        .db
+        .fluent()
+        .delete()
+        .from(SESSIONS_COLLECTION)
+        .parent(&parent_path)
+        .document_id(&session_id)
+        .execute()
+        .await?;
+
+    let cookie = Cookie::build(("session", session_id.clone()))
+        .path("/")
+        .max_age(Duration::seconds(0))
+        .secure(true) // TODO not sure about this
+        .http_only(true);
+
+    Ok(jar.add(cookie))
 }
 
 async fn lookup_session(
@@ -603,6 +644,7 @@ async fn lookup_session(
         }),
     ))
 }
+
 async fn new_object(
     State(state): State<AppState>,
     Path(gym): Path<String>,
@@ -658,8 +700,8 @@ async fn lookup_object(
     }
 
     let role = account_role(&state, &gym, &created_by).await?;
-    // or if the user is an admin
-    if role == AccountRole::Admin {
+    // or if the user is an admin/setter
+    if role == AccountRole::Admin || role == AccountRole::Setter {
         Ok(response)
     } else {
         Err(AppError::NotAuthorized())

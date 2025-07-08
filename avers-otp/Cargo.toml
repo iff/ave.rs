@@ -4,7 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+arbitrary = { version = "1", features = ["derive"] }
 chrono = "0.4.38"
-firestore = "0.37.2"
+quickcheck = "1"
+quickcheck_macros = "1"
 serde = { version = "1.0.189", features = ["derive"] }
 serde_json = "1.0.117"
