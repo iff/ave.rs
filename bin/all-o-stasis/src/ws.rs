@@ -130,6 +130,7 @@ async fn drain_channel(
                         let patch: Patch = serde_json::from_str(&t).expect("parsing patch");
 
                         // Try to get lock and check subscription
+                        tracing::debug!("checking if object_id is in subs: {}", patch.object_id);
                         let should_send = match subscriptions.try_lock() {
                             Ok(subscriptions) => subscriptions.contains(&patch.object_id),
                             Err(_) => {
@@ -206,7 +207,10 @@ async fn sub(
             }
             Ok(Some(msg)) => match msg {
                 Message::Text(t) => match handle_subscribe(&t) {
-                    Ok(object_id) => subscriptions.lock().await.push(object_id),
+                    Ok(object_id) => {
+                        subscriptions.lock().await.push(object_id.clone());
+                        tracing::debug!("+++ {who} subscribing to {object_id}");
+                    }
                     Err(e) => {
                         tracing::debug!(">>> {who} sent unexpected message: {e:?}");
                     }
