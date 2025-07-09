@@ -822,11 +822,25 @@ async fn feed(
         String::from("Unknown browser")
     };
     tracing::debug!("`{user_agent}` at {addr} connected.");
+
+    // keeping ugly version for now
+    let path = state.db.parent_path("gyms", gym).expect("gym exitsts");
+
     // finalize the upgrade process by returning upgrade callback.
-    // TODO expect
-    let parent_path = state.db.parent_path("gyms", gym).expect("need a gym");
-    AppError::NotImplemented()
-    // ws.on_upgrade(move |socket| handle_socket(socket, addr, state, parent_path))
+    ws.on_upgrade(move |socket| handle_socket(socket, addr, state, path))
+
+    // TODO this seems to break upgrade somehow?
+    // match state.db.parent_path("gyms", gym.clone()) {
+    //     Ok(path) => ws.on_upgrade(move |socket| handle_socket(socket, addr, state, path)),
+    //     Err(e) => {
+    //         tracing::error!("firestore parent_path {gym}: {e:?}");
+    //         (
+    //             StatusCode::INTERNAL_SERVER_ERROR,
+    //             format!("firestore parent_path {gym}: {e:?}"),
+    //         )
+    //             .into_response()
+    //     }
+    // };
 }
 
 // XXX maybe don't needed
