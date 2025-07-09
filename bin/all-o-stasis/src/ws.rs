@@ -54,6 +54,8 @@ async fn patch_listener(
         Err(..) => return None,
     };
 
+    // TODO this actually returns the full collection
+    // and we only want whatever is NEW after the client subscibed
     let _ = state
         .db
         .fluent()
@@ -166,24 +168,16 @@ async fn drain_channel(
 }
 
 fn handle_subscribe(t: &Utf8Bytes) -> Result<String, AppError> {
-    // we expect the text to have the format: "changeFeedSubscription(h, ["+", id])"
-    let json: Vec<String> = match serde_json::from_str(t) {
-        Ok(json) => json,
-        Err(_e) => {
-            return Err(AppError::ParseError(format!("unexpected text: {t}")));
-        }
-    };
+    // we expect the text to have the format: "["+", id]"
+    let json: Vec<String> = serde_json::from_str(t).map_err(|e| {
+        AppError::ParseError(format!("unexpected text: {t}, parsing failed with {e:?}"))
+    })?;
 
-    if let [op, obj_id] = &json[..] {
-        if op == "+" {
-            Ok(obj_id.to_string())
-        } else {
-            Err(AppError::ParseError(format!("unexpected op: {op}")))
-        }
-    } else {
-        Err(AppError::ParseError(format!(
+    match &json[..] {
+        [op, obj_id] if op == "+" => Ok(obj_id.clone()),
+        _ => Err(AppError::ParseError(format!(
             "unexpected subscribe message: {json:?}"
-        )))
+        ))),
     }
 }
 
