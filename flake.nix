@@ -42,6 +42,7 @@
           PROJECT_ID=all-o-stasis
           SERVICE=api
           CLOUD_RUN_SERVICE_NAME=$SERVICE
+          SG_API_KEY=$(op read op://personal/SG_API_KEY/credential --no--newline)
 
           # TODO: try skopeo and imageId (see cruel world)
           nix build
@@ -50,7 +51,8 @@
           docker tag $TAG $IMAGE
           docker push $IMAGE
 
-          gcloud --project $PROJECT_ID run deploy $CLOUD_RUN_SERVICE_NAME --image=$IMAGE --region=europe-west1
+          gcloud --project $PROJECT_ID run deploy $CLOUD_RUN_SERVICE_NAME --image=$IMAGE --region=europe-west1 \
+            --set-env-vars SG_API_KEY=$SG_API_KEY
         '';
 
       app = pkgs.rustPlatform.buildRustPackage {
