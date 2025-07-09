@@ -21,7 +21,7 @@ use crate::{AppError, AppState};
 
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
-struct PatchReply {
+struct WsPatchResponse {
     content: Patch,
     #[serde(rename = "type")]
     ot_type: String,
@@ -152,7 +152,7 @@ async fn drain_channel(
                         match subscriptions.try_lock() {
                             Ok(subscriptions) => {
                                 if subscriptions.contains(&patch.object_id) {
-                                    let reply = PatchReply {
+                                    let reply = WsPatchResponse {
                                         content: patch,
                                         ot_type: String::from("patch"),
                                     };
