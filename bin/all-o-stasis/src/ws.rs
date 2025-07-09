@@ -64,8 +64,6 @@ async fn patch_listener(
         Err(..) => return None,
     };
 
-    // TODO this actually returns the full collection
-    // and we only want whatever is NEW after the client subscibed
     let _ = state
         .db
         .fluent()
@@ -82,7 +80,7 @@ async fn handle_listener_event(
     event: FirestoreListenEvent,
     send_tx_patch: Sender<Message>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
-    tracing::debug!("got listener change: {event:?}");
+    // tracing::debug!("got listener change: {event:?}");
     match event {
         FirestoreListenEvent::DocumentChange(ref doc_change) => {
             tracing::debug!("document changed: {doc_change:?}");
@@ -91,7 +89,6 @@ async fn handle_listener_event(
                 // here we need the object id so we need to parse
                 let patch: Patch =
                     FirestoreDb::deserialize_doc_to::<Patch>(doc).expect("deserialized object");
-                tracing::debug!("sending patch {}", patch);
 
                 let msg = Message::Text(
                     serde_json::to_string(&patch)
@@ -100,16 +97,15 @@ async fn handle_listener_event(
                 );
                 let ps = send_tx_patch.send(msg).await;
                 if let Err(err) = ps {
-                    tracing::debug!("error: failed to sent patch with {err}");
+                    tracing::error!("failed to sent patch with {err}");
                 }
             }
         }
         _ => {
-            tracing::debug!("received a listen response event to handle: {event:?}");
+            tracing::error!("received a listen response event to handle: {event:?}");
         }
     }
 
-    tracing::debug!("finished listener change: {event:?}");
     Ok(())
 }
 
@@ -118,7 +114,7 @@ async fn ping_client(ws_tx: Sender<Message>) {
         // TODO this eventually fills the channel?
         let sp = ws_tx.send(Message::Ping(Bytes::from_static(&[1]))).await;
         if let Err(err) = sp {
-            tracing::debug!("error: failed to send ping with {err}");
+            tracing::error!("failed to send ping with {err}");
             break;
         }
         tokio::time::sleep(std::time::Duration::from_secs(10)).await;
@@ -134,7 +130,7 @@ async fn drain_channel(
     loop {
         match ws_rx.recv().await {
             None => {
-                tracing::debug!("drain: no new messages and drained - should not be here");
+                tracing::error!("drain_channel: should never be in this case!");
             }
             Some(msg) => {
                 let processed_msg = match msg {
@@ -144,11 +140,11 @@ async fn drain_channel(
                         // only send patches that came in after we started the listener
                         if let Some(created) = patch.created_at {
                             if created < listener_start_time {
-                                tracing::debug!("skipping patch {}", patch.revision_id);
+                                // tracing::debug!("skipping patch {}", patch.revision_id);
                                 continue;
                             }
                         } else {
-                            tracing::debug!("error: patch without created_at");
+                            tracing::error!("patch without created_at");
                             continue;
                         }
 
@@ -170,7 +166,7 @@ async fn drain_channel(
                                 }
                             }
                             Err(_) => {
-                                tracing::debug!("error: failed to lock subscriptions");
+                                tracing::debug!("failed to lock subscriptions.. retrying");
                                 tokio::time::sleep(std::time::Duration::from_millis(10)).await;
                                 continue;
                             }
@@ -178,16 +174,13 @@ async fn drain_channel(
                     }
                     Message::Ping(bytes) => Message::Ping(bytes),
                     t => {
-                        tracing::debug!(
-                            "error: received unexpected message from on ws_send: {t:?}"
-                        );
+                        tracing::error!("received unexpected message from on ws_send: {t:?}");
                         continue;
                     }
                 };
 
-                tracing::debug!(">>> sending out message: {processed_msg:?}");
                 if let Err(err) = sender.send(processed_msg).await {
-                    tracing::debug!("error: failed send message over websocket with {err}");
+                    tracing::error!("failed send message over websocket with {err}");
                     break;
                 }
             }
@@ -220,7 +213,7 @@ async fn sub(
                 // Protocol(ResetWithoutClosingHandshake) means client closed connection
                 // or some other failure and we should exit
                 // TODO what other errors can we expect here?
-                tracing::debug!("sub error: {e:?}");
+                tracing::error!("while receiving: {e:?}");
                 break;
             }
             Ok(None) => {
@@ -231,15 +224,15 @@ async fn sub(
                 Message::Text(t) => match handle_subscribe(&t) {
                     Ok(object_id) => {
                         subscriptions.lock().await.push(object_id.clone());
-                        tracing::debug!("+++ {who} subscribing to {object_id}");
+                        // tracing::debug!("+++ {who} subscribing to {object_id}");
                     }
                     Err(e) => {
-                        tracing::debug!(">>> {who} sent unexpected message: {e:?}");
+                        tracing::error!("{who} sent unexpected message: {e:?}");
                     }
                 },
                 Message::Binary(_) => tracing::debug!(">>> {who} send binary data!"),
                 Message::Close(_c) => {
-                    tracing::debug!(">>> {who} sent close",);
+                    tracing::debug!(">>> {who} sent close");
                     break;
                 }
                 Message::Pong(v) => tracing::debug!(">>> {who} sent pong with {v:?}"),
@@ -278,7 +271,6 @@ pub(crate) async fn handle_socket(
         .await;
     // hack to only send out patches that are added to the collection after we start the listener
     let listener_start_time = Utc::now();
-    tracing::debug!("started firestore listener");
 
     // ping the client every 10 seconds
     let mut ping = tokio::spawn(async move { ping_client(ws_tx).await });
