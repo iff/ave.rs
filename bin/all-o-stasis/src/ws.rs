@@ -4,6 +4,7 @@ use firestore::{
     FirestoreDb, FirestoreListenEvent, FirestoreListener, FirestoreListenerTarget,
     FirestoreMemListenStateStorage, ParentPathBuilder,
 };
+use futures::stream::{SplitSink, SplitStream};
 use futures::{SinkExt, StreamExt};
 use otp::types::{ObjectId, Patch};
 use std::collections::hash_map::DefaultHasher;
@@ -11,7 +12,7 @@ use std::error::Error;
 use std::hash::{Hash, Hasher};
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio::sync::{mpsc, mpsc::Sender, Mutex};
+use tokio::sync::{mpsc, mpsc::Receiver, mpsc::Sender, Mutex};
 
 use crate::storage::PATCHES_COLLECTION;
 use crate::AppState;
@@ -96,6 +97,108 @@ async fn handle_listener_event(
     }
 
     Ok(())
+}
+
+async fn ping_client(ws_tx: Sender<Message>) {
+    loop {
+        // TODO this eventually fills the channel?
+        let sp = ws_tx.send(Message::Ping(Bytes::from_static(&[1]))).await;
+        if let Err(err) = sp {
+            tracing::debug!("error: failed to send ping with {err}");
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+    }
+}
+
+async fn drain_channel(
+    ws_rx: &mut Receiver<Message>,
+    subscriptions: Arc<Mutex<Vec<ObjectId>>>,
+    sender: &mut SplitSink<WebSocket, Message>,
+) {
+    // this only stops once we close the channel?
+    while let Some(msg) = ws_rx.recv().await {
+        let processed_msg = match msg {
+            Message::Text(t) => {
+                let patch: Patch = serde_json::from_str(&t).expect("parsing patch");
+
+                // Try to get lock and check subscription
+                let should_send = match subscriptions.try_lock() {
+                    Ok(subscriptions) => subscriptions.contains(&patch.object_id),
+                    Err(_) => {
+                        tracing::debug!("error: failed to lock subscriptions");
+                        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                        continue;
+                    }
+                };
+
+                if should_send {
+                    tracing::debug!("sending patch");
+                    Message::Text(t)
+                } else {
+                    continue;
+                }
+            }
+            Message::Ping(bytes) => Message::Ping(bytes),
+            t => {
+                tracing::debug!("error: received unexpected message from on ws_send: {t:?}");
+                continue;
+            }
+        };
+
+        if let Err(err) = sender.send(processed_msg).await {
+            tracing::debug!("error: failed send message over websocket with {err}");
+            break;
+        }
+    }
+}
+
+async fn sub(
+    receiver: &mut SplitStream<WebSocket>,
+    subscriptions: Arc<Mutex<Vec<ObjectId>>>,
+    who: SocketAddr,
+) {
+    // this only stops once we close the channel?
+    while let Some(Ok(msg)) = receiver.next().await {
+        match msg {
+            Message::Text(t) => {
+                // message looks like: 169.254.169.126:40748 subscribing to object id ["+","FaI1zp28CfCswCX4I991"]
+                // changeFeedSubscription(h, ["+", id]);
+                let json: Vec<String> = serde_json::from_str(&t).expect("json subscribe message");
+
+                if let [op, obj_id] = &json[..] {
+                    if op == "+" {
+                        tracing::debug!("{who} subscribing to object id {obj_id}");
+                        subscriptions.lock().await.push(obj_id.to_string());
+                    } else {
+                        tracing::debug!(">>> {who} send an unexpected op {op}");
+                    }
+                } else {
+                    tracing::debug!(">>> {who} sent unexpected subscribe message {json:?}");
+                }
+            }
+            Message::Binary(_) => tracing::debug!(">>> {who} send binary data!"),
+            Message::Close(c) => {
+                if let Some(cf) = c {
+                    tracing::debug!(
+                        ">>> {} sent close with code {} and reason `{}`",
+                        who,
+                        cf.code,
+                        cf.reason
+                    );
+                } else {
+                    tracing::debug!(">>> {who} somehow sent close message without CloseFrame");
+                }
+                break;
+            }
+            Message::Pong(v) => {
+                tracing::debug!(">>> {who} sent pong with {v:?}");
+            }
+            Message::Ping(v) => {
+                tracing::debug!(">>> {who} sent ping with {v:?}");
+            }
+        }
+    }
 }
 
 pub(crate) async fn handle_socket(
