@@ -104,6 +104,7 @@ async fn handle_listener_event(
 async fn ping_client(ws_tx: Sender<Message>) {
     loop {
         // TODO this eventually fills the channel?
+        tracing::debug!("ping client");
         let sp = ws_tx.send(Message::Ping(Bytes::from_static(&[1]))).await;
         if let Err(err) = sp {
             tracing::debug!("error: failed to send ping with {err}");
@@ -245,62 +246,47 @@ pub(crate) async fn handle_socket(
     // collect all objects ids the client wants to get notified about changes
     let subscriptions: Arc<Mutex<Vec<ObjectId>>> = Arc::new(Mutex::new(Vec::new()));
 
-    // start firestore listener
-    // let mut listener_task = tokio::spawn(async move {
-    //     let mut listener = match patch_listener(state, parent_path, who).await {
-    //         Some(listener) => listener,
-    //         None => return,
-    //     };
-    //
-    //     // so this really calls tokio::spawn again
-    //     // starting the listener_loop: https://docs.rs/firestore/0.44.1/src/firestore/db/listen_changes.rs.html#360
-    //     // and should only shutdown if we explicitly do that or if there is an error in the
-    //     // listener callback
-    //     // our listener only retrun Ok(()) so this should not stop
-    //     let _ = listener
-    //         .start(move |event| handle_listener_event(event, ws_tx_listener.clone()))
-    //         .await;
-    // });
-    let mut listener = match patch_listener(state, parent_path, who).await {
-        Some(listener) => listener,
-        None => return,
-    };
+    // let mut listener = match patch_listener(state, parent_path, who).await {
+    //     Some(listener) => listener,
+    //     None => return,
+    // };
 
     // so this really calls tokio::spawn again
     // starting the listener_loop: https://docs.rs/firestore/0.44.1/src/firestore/db/listen_changes.rs.html#360
     // and should only shutdown if we explicitly do that or if there is an error in the
     // listener callback
     // our listener only retrun Ok(()) so this should not stop
-    let _ = listener
-        .start(move |event| handle_listener_event(event, ws_tx_listener.clone()))
-        .await;
-    tracing::debug!("started firestore listener");
+    // let _ = listener
+    //     .start(move |event| handle_listener_event(event, ws_tx_listener.clone()))
+    //     .await;
+    // tracing::debug!("started firestore listener");
 
     // ping the client every 10 seconds
     let mut ping = tokio::spawn(async move { ping_client(ws_tx).await });
 
     // keep on sending out what we get on the send channel
-    // we expect and rely patches (Text) and Pings on this channel
+    // we expect and rely patches (Text) for subscribed object ids and Pings on this channel
+    // sender needs to know about subscriptions of object ids - it implements the filtering
     let subs_for_sender = Arc::clone(&subscriptions);
     let mut ws_send = tokio::spawn(async move {
         drain_channel(&mut ws_rx, subs_for_sender, &mut sender).await;
     });
 
     // recieve object ids the client wants to subscibe
-    let mut handle_subscriptions =
-        tokio::spawn(async move { sub(&mut receiver, subscriptions, who).await });
+    // let mut handle_obj_subs =
+    //     tokio::spawn(async move { sub(&mut receiver, subscriptions, who).await });
 
     tokio::select! {
         _ = &mut ping => { tracing::debug!(">>> ping aborted") },
         _ = &mut ws_send => {tracing::debug!(">>> ws_send aborted") },
-        _ = &mut handle_subscriptions => {tracing::debug!(">>> handle_subscriptions aborted") },
+        // _ = &mut handle_obj_subs => {tracing::debug!(">>> handle_subscriptions aborted") },
         // _ = &mut listener_task => {tracing::debug!(">>> listener_task aborted") },
     }
 
-    let _ = listener.shutdown().await;
+    // let _ = listener.shutdown().await;
     ping.abort();
     ws_send.abort();
-    handle_subscriptions.abort();
+    // handle_obj_subs.abort();
     // TODO cleaner shutdown possible?
     // listener_task.abort();
 }
