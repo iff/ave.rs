@@ -121,9 +121,7 @@ async fn drain_channel(
     loop {
         match ws_rx.recv().await {
             None => {
-                // tracing::debug!("drain: no new messages");
-                // rate-limit?
-                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                tracing::debug!("drain: no new messages and drained - should not be here");
             }
             Some(msg) => {
                 let processed_msg = match msg {
@@ -172,11 +170,16 @@ async fn sub(
 ) {
     loop {
         match receiver.try_next().await {
-            Err(e) => tracing::debug!("sub error: {e:?}"),
+            Err(e) => {
+                // Protocol(ResetWithoutClosingHandshake) means client closed connection
+                // or some other failure and we should exit
+                // TODO what other errors can we expect here?
+                tracing::debug!("sub error: {e:?}");
+                break;
+            }
             Ok(None) => {
-                // tracing::debug!("sub: no new messages");
-                // rate-limit?
-                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                // no new message available
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
             }
             Ok(Some(msg)) => {
                 match msg {
