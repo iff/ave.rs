@@ -226,6 +226,7 @@ pub(crate) async fn handle_socket(
         }
     });
 
+    tracing::debug!(">>> closing websocket connection");
     tokio::select! {
         _ = &mut ping => {},
         _ = &mut ws_send => {},
