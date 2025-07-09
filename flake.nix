@@ -42,7 +42,7 @@
           PROJECT_ID=all-o-stasis
           SERVICE=api
           CLOUD_RUN_SERVICE_NAME=$SERVICE
-          SG_API_KEY=$(op read op://personal/SG_API_KEY/credential --no--newline)
+          SG_API_KEY=$(op read "op://personal/SG_API_KEY/credential" --no-newline)
 
           # TODO: try skopeo and imageId (see cruel world)
           nix build
