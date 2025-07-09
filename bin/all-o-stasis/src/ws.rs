@@ -113,7 +113,6 @@ pub(crate) async fn handle_socket(
     let ws_tx_listener = ws_tx.clone();
 
     let subscriptions: Arc<Mutex<Vec<ObjectId>>> = Arc::new(Mutex::new(Vec::new()));
-    let subscriptions_clone = Arc::clone(&subscriptions);
 
     let mut listener = match patch_listener(state, parent_path, who).await {
         Some(listener) => listener,
@@ -129,109 +128,27 @@ pub(crate) async fn handle_socket(
 
     // ping the client every 10 seconds
     let mut ping = tokio::spawn(async move {
-        loop {
-            // TODO this eventually fills the channel?
-            let sp = ws_tx.send(Message::Ping(Bytes::from_static(&[1]))).await;
-            if let Err(err) = sp {
-                tracing::debug!("error: failed to send ping with {err}");
-                break;
-            }
-            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
-        }
+        ping_client(ws_tx).await;
     });
 
     // keep on sending out what we get on the send channel
     // we expect and rely patches (Text) and Pings on this channel
+    let subs_for_sender = Arc::clone(&subscriptions);
     let mut ws_send = tokio::spawn(async move {
-        // this only stops once we close the channel?
-        while let Some(msg) = ws_rx.recv().await {
-            let processed_msg = match msg {
-                Message::Text(t) => {
-                    let patch: Patch = serde_json::from_str(&t).expect("parsing patch");
-
-                    // Try to get lock and check subscription
-                    let should_send = match subscriptions_clone.try_lock() {
-                        Ok(subscriptions) => subscriptions.contains(&patch.object_id),
-                        Err(_) => {
-                            tracing::debug!("error: failed to lock subscriptions");
-                            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-                            continue;
-                        }
-                    };
-
-                    if should_send {
-                        tracing::debug!("sending patch to {who}");
-                        Message::Text(t)
-                    } else {
-                        continue;
-                    }
-                }
-                Message::Ping(bytes) => Message::Ping(bytes),
-                t => {
-                    tracing::debug!("error: received unexpected message from on ws_send: {t:?}");
-                    continue;
-                }
-            };
-
-            if let Err(err) = sender.send(processed_msg).await {
-                tracing::debug!("error: failed send message over websocket with {err}");
-                break;
-            }
-        }
+        drain_channel(&mut ws_rx, subs_for_sender, &mut sender).await;
     });
 
     // recieve object ids the client wants to subscibe
     let mut handle_subscriptions = tokio::spawn(async move {
-        // this only stops once we close the channel?
-        while let Some(Ok(msg)) = receiver.next().await {
-            match msg {
-                Message::Text(t) => {
-                    // message looks like: 169.254.169.126:40748 subscribing to object id ["+","FaI1zp28CfCswCX4I991"]
-                    // changeFeedSubscription(h, ["+", id]);
-                    let json: Vec<String> =
-                        serde_json::from_str(&t).expect("json subscribe message");
-
-                    if let [op, obj_id] = &json[..] {
-                        if op == "+" {
-                            tracing::debug!("{who} subscribing to object id {obj_id}");
-                            subscriptions.lock().await.push(obj_id.to_string());
-                        } else {
-                            tracing::debug!(">>> {who} send an unexpected op {op}");
-                        }
-                    } else {
-                        tracing::debug!(">>> {who} sent unexpected subscribe message {json:?}");
-                    }
-                }
-                Message::Binary(_) => tracing::debug!(">>> {who} send binary data!"),
-                Message::Close(c) => {
-                    if let Some(cf) = c {
-                        tracing::debug!(
-                            ">>> {} sent close with code {} and reason `{}`",
-                            who,
-                            cf.code,
-                            cf.reason
-                        );
-                    } else {
-                        tracing::debug!(">>> {who} somehow sent close message without CloseFrame");
-                    }
-                    break;
-                }
-                Message::Pong(v) => {
-                    tracing::debug!(">>> {who} sent pong with {v:?}");
-                }
-                Message::Ping(v) => {
-                    tracing::debug!(">>> {who} sent ping with {v:?}");
-                }
-            }
-        }
+        sub(&mut receiver, subscriptions, who).await;
     });
 
     tracing::debug!(">>> closing websocket connection");
     tokio::select! {
-        _ = &mut ping => {},
-        _ = &mut ws_send => {},
-        _ = &mut handle_subscriptions => {},
-        _ = &mut listener_task => {},
+        _ = &mut ping => { tracing::debug!(">>> ping aborted") },
+        _ = &mut ws_send => {tracing::debug!(">>> ws_send aborted") },
+        _ = &mut handle_subscriptions => {tracing::debug!(">>> handle_subscriptions aborted") },
+        _ = &mut listener_task => {tracing::debug!(">>> listener_task aborted") },
     }
 
     ping.abort();
