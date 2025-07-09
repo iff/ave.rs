@@ -38,7 +38,9 @@ async fn patch_listener(
     parent_path: ParentPathBuilder,
     who: SocketAddr,
 ) -> Option<FirestoreListener<FirestoreDb, FirestoreMemListenStateStorage>> {
-    let listener_id: FirestoreListenerTarget = FirestoreListenerTarget::new(hash_addr(&who) as u32);
+    let client_id = hash_addr(&who) as u32;
+    let listener_id: FirestoreListenerTarget = FirestoreListenerTarget::new(client_id);
+    tracing::debug!("connection {who} gets firestore listener id: {client_id:?}");
 
     // now start streaming patches using firestore listeners: https://github.com/abdolence/firestore-rs/blob/master/examples/listen-changes.rs
     // do we have enough mem?
