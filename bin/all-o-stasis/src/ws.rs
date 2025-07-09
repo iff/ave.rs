@@ -212,17 +212,8 @@ async fn sub(
                     }
                 },
                 Message::Binary(_) => tracing::debug!(">>> {who} send binary data!"),
-                Message::Close(c) => {
-                    if let Some(cf) = c {
-                        tracing::debug!(
-                            ">>> {} sent close with code {} and reason `{}`",
-                            who,
-                            cf.code,
-                            cf.reason
-                        );
-                    } else {
-                        tracing::debug!(">>> {who} somehow sent close message without CloseFrame");
-                    }
+                Message::Close(_c) => {
+                    tracing::debug!(">>> {who} sent close",);
                     break;
                 }
                 Message::Pong(v) => tracing::debug!(">>> {who} sent pong with {v:?}"),
@@ -254,11 +245,8 @@ pub(crate) async fn handle_socket(
         None => return,
     };
 
-    // so this really calls tokio::spawn again
+    // so this calls tokio::spawn
     // starting the listener_loop: https://docs.rs/firestore/0.44.1/src/firestore/db/listen_changes.rs.html#360
-    // and should only shutdown if we explicitly do that or if there is an error in the
-    // listener callback
-    // our listener only retrun Ok(()) so this should not stop
     let _ = listener
         .start(move |event| handle_listener_event(event, ws_tx_listener.clone()))
         .await;

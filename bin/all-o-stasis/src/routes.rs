@@ -824,11 +824,13 @@ async fn feed(
     };
     tracing::debug!("`{user_agent}` at {addr} connected.");
 
+    // keeping ugly version for now
     let path = state.db.parent_path("gyms", gym).expect("gym exitsts");
 
     // finalize the upgrade process by returning upgrade callback.
     ws.on_upgrade(move |socket| handle_socket(socket, addr, state, path))
 
+    // TODO this seems to break upgrade somehow?
     // match state.db.parent_path("gyms", gym.clone()) {
     //     Ok(path) => ws.on_upgrade(move |socket| handle_socket(socket, addr, state, path)),
     //     Err(e) => {
