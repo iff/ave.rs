@@ -1,5 +1,5 @@
 use axum::body::Bytes;
-use axum::extract::ws::{Message, WebSocket};
+use axum::extract::ws::{Message, Utf8Bytes, WebSocket};
 use firestore::{
     FirestoreDb, FirestoreListenEvent, FirestoreListener, FirestoreListenerTarget,
     FirestoreMemListenStateStorage, ParentPathBuilder,
@@ -15,7 +15,7 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, mpsc::Receiver, mpsc::Sender, Mutex};
 
 use crate::storage::PATCHES_COLLECTION;
-use crate::AppState;
+use crate::{AppError, AppState};
 
 fn hash_addr(addr: &SocketAddr) -> u64 {
     let mut hasher = DefaultHasher::new();
@@ -164,6 +164,28 @@ async fn drain_channel(
     }
 }
 
+fn handle_subscribe(t: &Utf8Bytes) -> Result<String, AppError> {
+    // we expect the text to have the format: "changeFeedSubscription(h, ["+", id])"
+    let json: Vec<String> = match serde_json::from_str(t) {
+        Ok(json) => json,
+        Err(_e) => {
+            return Err(AppError::ParseError(format!("unexpected text: {t}")));
+        }
+    };
+
+    if let [op, obj_id] = &json[..] {
+        if op == "+" {
+            Ok(obj_id.to_string())
+        } else {
+            Err(AppError::ParseError(format!("unexpected op: {op}")))
+        }
+    } else {
+        Err(AppError::ParseError(format!(
+            "unexpected subscribe message: {json:?}"
+        )))
+    }
+}
+
 async fn sub(
     receiver: &mut SplitStream<WebSocket>,
     subscriptions: Arc<Mutex<Vec<ObjectId>>>,
@@ -182,49 +204,30 @@ async fn sub(
                 // no new message available
                 tokio::time::sleep(std::time::Duration::from_millis(100)).await;
             }
-            Ok(Some(msg)) => {
-                match msg {
-                    Message::Text(t) => {
-                        // we expect the text to have the format: "changeFeedSubscription(h, ["+", id])"
-                        let json: Vec<String> = match serde_json::from_str(&t) {
-                            Ok(json) => json,
-                            Err(_e) => {
-                                tracing::debug!("{who} send unexpected text: {t}");
-                                continue;
-                            }
-                        };
-
-                        if let [op, obj_id] = &json[..] {
-                            if op == "+" {
-                                tracing::debug!("{who} subscribing to object id {obj_id}");
-                                subscriptions.lock().await.push(obj_id.to_string());
-                            } else {
-                                tracing::debug!(">>> {who} send an unexpected op {op}");
-                            }
-                        } else {
-                            tracing::debug!(">>> {who} sent unexpected subscribe message {json:?}");
-                        }
+            Ok(Some(msg)) => match msg {
+                Message::Text(t) => match handle_subscribe(&t) {
+                    Ok(object_id) => subscriptions.lock().await.push(object_id),
+                    Err(e) => {
+                        tracing::debug!(">>> {who} sent unexpected message: {e:?}");
                     }
-                    Message::Binary(_) => tracing::debug!(">>> {who} send binary data!"),
-                    Message::Close(c) => {
-                        if let Some(cf) = c {
-                            tracing::debug!(
-                                ">>> {} sent close with code {} and reason `{}`",
-                                who,
-                                cf.code,
-                                cf.reason
-                            );
-                        } else {
-                            tracing::debug!(
-                                ">>> {who} somehow sent close message without CloseFrame"
-                            );
-                        }
-                        break;
+                },
+                Message::Binary(_) => tracing::debug!(">>> {who} send binary data!"),
+                Message::Close(c) => {
+                    if let Some(cf) = c {
+                        tracing::debug!(
+                            ">>> {} sent close with code {} and reason `{}`",
+                            who,
+                            cf.code,
+                            cf.reason
+                        );
+                    } else {
+                        tracing::debug!(">>> {who} somehow sent close message without CloseFrame");
                     }
-                    Message::Pong(v) => tracing::debug!(">>> {who} sent pong with {v:?}"),
-                    Message::Ping(v) => tracing::debug!(">>> {who} sent ping with {v:?}"),
+                    break;
                 }
-            }
+                Message::Pong(v) => tracing::debug!(">>> {who} sent pong with {v:?}"),
+                Message::Ping(v) => tracing::debug!(">>> {who} sent ping with {v:?}"),
+            },
         }
     }
 }
@@ -246,20 +249,20 @@ pub(crate) async fn handle_socket(
     // collect all objects ids the client wants to get notified about changes
     let subscriptions: Arc<Mutex<Vec<ObjectId>>> = Arc::new(Mutex::new(Vec::new()));
 
-    // let mut listener = match patch_listener(state, parent_path, who).await {
-    //     Some(listener) => listener,
-    //     None => return,
-    // };
+    let mut listener = match patch_listener(state, parent_path, who).await {
+        Some(listener) => listener,
+        None => return,
+    };
 
     // so this really calls tokio::spawn again
     // starting the listener_loop: https://docs.rs/firestore/0.44.1/src/firestore/db/listen_changes.rs.html#360
     // and should only shutdown if we explicitly do that or if there is an error in the
     // listener callback
     // our listener only retrun Ok(()) so this should not stop
-    // let _ = listener
-    //     .start(move |event| handle_listener_event(event, ws_tx_listener.clone()))
-    //     .await;
-    // tracing::debug!("started firestore listener");
+    let _ = listener
+        .start(move |event| handle_listener_event(event, ws_tx_listener.clone()))
+        .await;
+    tracing::debug!("started firestore listener");
 
     // ping the client every 10 seconds
     let mut ping = tokio::spawn(async move { ping_client(ws_tx).await });
@@ -273,20 +276,17 @@ pub(crate) async fn handle_socket(
     });
 
     // recieve object ids the client wants to subscibe
-    // let mut handle_obj_subs =
-    //     tokio::spawn(async move { sub(&mut receiver, subscriptions, who).await });
+    let mut handle_obj_subs =
+        tokio::spawn(async move { sub(&mut receiver, subscriptions, who).await });
 
     tokio::select! {
         _ = &mut ping => { tracing::debug!(">>> ping aborted") },
         _ = &mut ws_send => {tracing::debug!(">>> ws_send aborted") },
-        // _ = &mut handle_obj_subs => {tracing::debug!(">>> handle_subscriptions aborted") },
-        // _ = &mut listener_task => {tracing::debug!(">>> listener_task aborted") },
+        _ = &mut handle_obj_subs => {tracing::debug!(">>> handle_subscriptions aborted") },
     }
 
-    // let _ = listener.shutdown().await;
+    let _ = listener.shutdown().await;
     ping.abort();
     ws_send.abort();
-    // handle_obj_subs.abort();
-    // TODO cleaner shutdown possible?
-    // listener_task.abort();
+    handle_obj_subs.abort();
 }
