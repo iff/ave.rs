@@ -1,5 +1,6 @@
 use axum::body::Bytes;
 use axum::extract::ws::{Message, Utf8Bytes, WebSocket};
+use chrono::{DateTime, Utc};
 use firestore::{
     FirestoreDb, FirestoreListenEvent, FirestoreListener, FirestoreListenerTarget,
     FirestoreMemListenStateStorage, ParentPathBuilder,
@@ -106,7 +107,6 @@ async fn handle_listener_event(
 async fn ping_client(ws_tx: Sender<Message>) {
     loop {
         // TODO this eventually fills the channel?
-        tracing::debug!("ping client");
         let sp = ws_tx.send(Message::Ping(Bytes::from_static(&[1]))).await;
         if let Err(err) = sp {
             tracing::debug!("error: failed to send ping with {err}");
@@ -120,6 +120,7 @@ async fn drain_channel(
     ws_rx: &mut Receiver<Message>,
     subscriptions: Arc<Mutex<Vec<ObjectId>>>,
     sender: &mut SplitSink<WebSocket, Message>,
+    listener_start_time: DateTime<Utc>,
 ) {
     loop {
         match ws_rx.recv().await {
@@ -142,7 +143,16 @@ async fn drain_channel(
                             }
                         };
 
-                        if should_send {
+                        // trying to filter out all patches that came in after we started the
+                        // listener
+                        let is_new_patch = if let Some(created) = patch.created_at {
+                            created > listener_start_time
+                        } else {
+                            // TODO not so sure what the default case should be
+                            true
+                        };
+
+                        if should_send && is_new_patch {
                             tracing::debug!("sending patch");
                             Message::Text(t)
                         } else {
@@ -248,6 +258,8 @@ pub(crate) async fn handle_socket(
     let _ = listener
         .start(move |event| handle_listener_event(event, ws_tx_listener.clone()))
         .await;
+    // hack to only send out patches that are added to the collection after we start the listener
+    let listener_start_time = Utc::now();
     tracing::debug!("started firestore listener");
 
     // ping the client every 10 seconds
@@ -258,7 +270,13 @@ pub(crate) async fn handle_socket(
     // sender needs to know about subscriptions of object ids - it implements the filtering
     let subs_for_sender = Arc::clone(&subscriptions);
     let mut ws_send = tokio::spawn(async move {
-        drain_channel(&mut ws_rx, subs_for_sender, &mut sender).await;
+        drain_channel(
+            &mut ws_rx,
+            subs_for_sender,
+            &mut sender,
+            listener_start_time,
+        )
+        .await;
     });
 
     // recieve object ids the client wants to subscibe
