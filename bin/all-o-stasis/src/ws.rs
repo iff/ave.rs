@@ -202,7 +202,7 @@ async fn sub(
 }
 
 pub(crate) async fn handle_socket(
-    socket: WebSocket, // FIXME why not mut?
+    socket: WebSocket,
     who: SocketAddr,
     state: AppState,
     parent_path: ParentPathBuilder,
@@ -212,27 +212,25 @@ pub(crate) async fn handle_socket(
     // TODO use unbounded channel?
     // channel for messages to be sent back
     let (ws_tx, mut ws_rx) = mpsc::channel(1000);
-    // for firestore listener
+    // firestore listener also needs to be able to sned on the channel
     let ws_tx_listener = ws_tx.clone();
 
+    // collect all objects ids the client wants to get notified about changes
     let subscriptions: Arc<Mutex<Vec<ObjectId>>> = Arc::new(Mutex::new(Vec::new()));
-
-    let mut listener = match patch_listener(state, parent_path, who).await {
-        Some(listener) => listener,
-        None => return,
-    };
 
     // start firestore listener
     let mut listener_task = tokio::spawn(async move {
+        let mut listener = match patch_listener(state, parent_path, who).await {
+            Some(listener) => listener,
+            None => return,
+        };
         let _ = listener
             .start(move |event| handle_listener_event(event, ws_tx_listener.clone()))
             .await;
     });
 
     // ping the client every 10 seconds
-    let mut ping = tokio::spawn(async move {
-        ping_client(ws_tx).await;
-    });
+    let mut ping = tokio::spawn(async move { ping_client(ws_tx).await });
 
     // keep on sending out what we get on the send channel
     // we expect and rely patches (Text) and Pings on this channel
@@ -242,9 +240,8 @@ pub(crate) async fn handle_socket(
     });
 
     // recieve object ids the client wants to subscibe
-    let mut handle_subscriptions = tokio::spawn(async move {
-        sub(&mut receiver, subscriptions, who).await;
-    });
+    let mut handle_subscriptions =
+        tokio::spawn(async move { sub(&mut receiver, subscriptions, who).await });
 
     tracing::debug!(">>> closing websocket connection");
     tokio::select! {
