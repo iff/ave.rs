@@ -8,6 +8,7 @@ use firestore::{
 use futures::stream::{SplitSink, SplitStream};
 use futures::{SinkExt, StreamExt, TryStreamExt};
 use otp::types::{ObjectId, Patch};
+use serde::Serialize;
 use std::collections::hash_map::DefaultHasher;
 use std::error::Error;
 use std::hash::{Hash, Hasher};
@@ -17,6 +18,14 @@ use tokio::sync::{mpsc, mpsc::Receiver, mpsc::Sender, Mutex};
 
 use crate::storage::PATCHES_COLLECTION;
 use crate::{AppError, AppState};
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct PatchReply {
+    content: Patch,
+    #[serde(rename = "type")]
+    ot_type: String,
+}
 
 fn hash_addr(addr: &SocketAddr) -> u64 {
     let mut hasher = DefaultHasher::new();
@@ -132,31 +141,39 @@ async fn drain_channel(
                     Message::Text(t) => {
                         let patch: Patch = serde_json::from_str(&t).expect("parsing patch");
 
-                        // Try to get lock and check subscription
-                        tracing::debug!("checking if object_id is in subs: {}", patch.object_id);
-                        let should_send = match subscriptions.try_lock() {
-                            Ok(subscriptions) => subscriptions.contains(&patch.object_id),
+                        // only send patches that came in after we started the listener
+                        if let Some(created) = patch.created_at {
+                            if created < listener_start_time {
+                                tracing::debug!("skipping patch {}", patch.revision_id);
+                                continue;
+                            }
+                        } else {
+                            tracing::debug!("error: patch without created_at");
+                            continue;
+                        }
+
+                        // only send out patches the client subscribed
+                        match subscriptions.try_lock() {
+                            Ok(subscriptions) => {
+                                if subscriptions.contains(&patch.object_id) {
+                                    let reply = PatchReply {
+                                        content: patch,
+                                        ot_type: String::from("patch"),
+                                    };
+                                    Message::Text(
+                                        serde_json::to_string(&reply)
+                                            .expect("serialize reply")
+                                            .into(),
+                                    )
+                                } else {
+                                    continue;
+                                }
+                            }
                             Err(_) => {
                                 tracing::debug!("error: failed to lock subscriptions");
                                 tokio::time::sleep(std::time::Duration::from_millis(10)).await;
                                 continue;
                             }
-                        };
-
-                        // trying to filter out all patches that came in after we started the
-                        // listener
-                        let is_new_patch = if let Some(created) = patch.created_at {
-                            created > listener_start_time
-                        } else {
-                            // TODO not so sure what the default case should be
-                            true
-                        };
-
-                        if should_send && is_new_patch {
-                            tracing::debug!("sending patch");
-                            Message::Text(t)
-                        } else {
-                            continue;
                         }
                     }
                     Message::Ping(bytes) => Message::Ping(bytes),
@@ -168,6 +185,7 @@ async fn drain_channel(
                     }
                 };
 
+                tracing::debug!(">>> sending out message: {processed_msg:?}");
                 if let Err(err) = sender.send(processed_msg).await {
                     tracing::debug!("error: failed send message over websocket with {err}");
                     break;
