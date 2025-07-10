@@ -1,5 +1,4 @@
 /// implementing a subset of OT operations to patch serde_json::Value::Objects and serde_json::Value::Array.
-// no concrete types expected here, maybe we want to change that?
 use crate::types::{Operation, Patch, Path};
 use serde_json::Value;
 use std::error::Error;
@@ -14,25 +13,21 @@ pub enum PatchError {
     KeyError(String),
     NoId(),
     PathError(String),
-    Unknown(),
+    Unknown(String),
     ValueIsNotArray(),
 }
 
-impl Error for PatchError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        todo!()
-    }
-}
+impl Error for PatchError {}
 
 impl fmt::Display for PatchError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::InconsistentTypes() => write!(f, "InconsistentTypes"),
-            Self::IndexError(e) => write!(f, "IndexError: {}", e),
-            Self::KeyError(e) => write!(f, "KeyError: {}", e),
+            Self::IndexError(e) => write!(f, "IndexError: {e}"),
+            Self::KeyError(e) => write!(f, "KeyError: {e}"),
             Self::NoId() => write!(f, "NoId"),
-            Self::PathError(e) => write!(f, "PathError: {}", e),
-            Self::Unknown() => write!(f, "UnknownError"),
+            Self::PathError(e) => write!(f, "PathError: {e}"),
+            Self::Unknown(e) => write!(f, "UnknownError: {e}"),
             Self::ValueIsNotArray() => write!(f, "ValueIsNotArray"),
         }
     }
@@ -46,12 +41,12 @@ pub fn apply(value: Value, operation: Operation) -> Result<Value, PatchError> {
             value: op_value,
         } => {
             if path.is_empty() {
-                // TODO what do we do with Nones here?
-                return op_value.ok_or(PatchError::Unknown());
+                return op_value.ok_or(PatchError::Unknown(String::from(
+                    "can't remove the empty path",
+                )));
             }
 
             // delete key (path) if op_Value is empty else insert key (path)
-            // TODO do we want mut?
             let ins_or_del = |key: String, map: &mut Object| match op_value {
                 Some(v) => map.insert(key, v),
                 None => map.remove(&key),
@@ -74,10 +69,8 @@ pub fn apply(value: Value, operation: Operation) -> Result<Value, PatchError> {
                 // check if the indices are within the allowed range
                 if a.len() < op_index + op_remove {
                     return Err(PatchError::IndexError(format!(
-                        "len: {}, index: {}, remove: {}",
+                        "len {} <= index {op_index} + remove {op_remove}",
                         a.len(),
-                        op_index,
-                        op_remove
                     )));
                 };
 
@@ -117,13 +110,10 @@ pub fn apply(value: Value, operation: Operation) -> Result<Value, PatchError> {
                             return Err(PatchError::InconsistentTypes());
                         }
 
-                        // TODO nicer way to write this check without as_object (eg match)
-                        if !(a
-                            .iter()
-                            .all(|a| a.as_object().expect("checked before").contains_key("id"))
-                            && op_insert
-                                .iter()
-                                .all(|a| a.as_object().expect("checked before").contains_key("id")))
+                        // we already have checked all elements are objects
+                        // now check if they all have an id
+                        if !(a.iter().all(|a| a.get("id").is_some())
+                            && op_insert.iter().all(|a| a.get("id").is_some()))
                         {
                             return Err(PatchError::NoId());
                         }
@@ -131,9 +121,6 @@ pub fn apply(value: Value, operation: Operation) -> Result<Value, PatchError> {
                     _ => return Err(PatchError::InconsistentTypes()),
                 };
 
-                // TODO check that is indeed the same operation
-                // wereHamster tells me it should act like js splice
-                // V.take opIndex a V.++ V.fromList opInsert V.++ V.drop (opIndex + opRemove) a
                 let _ = a.splice(op_index..op_index + op_remove, op_insert.iter().cloned());
                 Ok(a)
             };
@@ -163,7 +150,9 @@ where
 
     match content {
         Value::Object(o) => Ok(Value::from(f(key_to_change.to_string(), o))),
-        _ => Err(PatchError::Unknown()),
+        _ => Err(PatchError::Unknown(String::from(
+            "value is expected to be a Value::Object",
+        ))),
     }?;
 
     // FIXME new object?
@@ -199,7 +188,9 @@ where
 
     match content {
         Value::Object(o) => Ok(o.insert(key_to_change.to_string(), new_array)),
-        _ => Err(PatchError::Unknown()),
+        _ => Err(PatchError::Unknown(String::from(
+            "value is expected to be a Value::Object",
+        ))),
     }?;
 
     Ok(value)
