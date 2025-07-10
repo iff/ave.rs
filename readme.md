@@ -1,18 +1,55 @@
-# Name to be decided
+# ave.rs
 
-This is a simplified rewrite of [avers](https://github.com/wereHamster/avers) in Rust.
+A simplified rewrite of [Avers][avers] in Rust, providing operational transformation capabilities with Firestore backend integration.
 
-Motivations:
+## Overview
 
-- migrating from RethinkDB to Firestore: simplifying cloud deployment
-- having one API running that can host multiple different gyms
-- learning how to write a backend in Rust
+This project is a Rust-based backend that implements operational transformation (OT) for collaborative applications, specifically designed to work with multiple climbing gym management systems through a single API.
 
-Shortcuts I took along the way:
+## Motivation
 
-- splitting the code in a simplified OT crate and the backend
-- object types are currently hardcoded (boulders or accounts) so the OT crate can't be reused
-- getting rid of some features the old backend implementation did not use (eg. no releases)
+- **Database Migration**: Moving from RethinkDB to Firestore for simplified cloud deployment
+- **Multi-tenant Architecture**: Supporting multiple gyms through a single API instance
+- **Learning Opportunity**: Gaining experience with Axum backends in Rust
 
-The previous app [all-o-stasis-avers](https://github.com/iff/all-o-stasis-avers) now uses this
-backend: [all-o-stasis-oxy](https://github.com/iff/all-o-stasis-oxy).
+## Architecture
+
+The codebase is split into two main components:
+
+- **OT Crate**: Simplified operational transformation implementation
+- **Backend**: Axum-based API server with Firestore integration
+
+## Current Limitations
+
+### Implementation Shortcuts
+
+- Object types are hardcoded (boulders and accounts), preventing OT crate reusability
+- Some unused features from the original backend were removed (e.g., releases)
+
+### Technical Constraints
+
+- **Firestore Listeners**: Limited client support (polling might be more suitable for larger scale)
+- **OT Operations**: Supports the same subset of operations as the original Avers implementation
+
+## Why a Custom OT Implementation?
+
+While excellent Rust OT implementations exist, this project uses a custom implementation because:
+
+- **Focused Scope**: Only implements the operations we actually need
+- **Learning Experience**: Provides hands-on experience with OT concepts
+- **Compatibility**: Maintains compatibility with existing Avers-based systems
+
+## Related Projects
+
+- **Previous Client**: [all-o-stasis-avers][all-o-stasis-avers] (now deprecated)
+- **Current Client**: [all-o-stasis-oxy][all-o-stasis-oxy] (uses this backend)
+
+## Resources
+
+- [Original Avers Implementation][avers]
+- [Previous Client Implementation][all-o-stasis-avers]
+- [Current Client Implementation][all-o-stasis-oxy]
+
+[avers]: https://github.com/wereHamster/avers
+[all-o-stasis-avers]: https://github.com/iff/all-o-stasis-avers
+[all-o-stasis-oxy]: https://github.com/iff/all-o-stasis-oxy
