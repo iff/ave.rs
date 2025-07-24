@@ -225,71 +225,36 @@ fn op_ot(content: &Value, base: &Operation, op: Operation) -> Option<Operation> 
         return None;
     }
 
-    // if neither is a prefix of the other (they touch distinct parts of the object)
-    // then it's safe to accept the op
-    if !base.path().starts_with(&op.path()) && !op.path().starts_with(&base.path()) {
+    let (base_path, op_path) = (base.path(), op.path());
+
+    // disjoint paths are always safe
+    if !base_path.starts_with(&op_path) && !op_path.starts_with(&base_path) {
         return Some(op);
     }
 
-    // FIXME clone
-    match (base, op.clone()) {
-        (
-            Operation::Set {
-                path: base_path,
-                value: _,
-            },
-            Operation::Set {
-                path: op_path,
-                value: _,
-            },
-        ) => {
-            if *base_path == op_path {
+    let same_path = base_path == op_path;
+    let base_contains_op = base_path.starts_with(&op_path);
+
+    match (base, &op) {
+        (Operation::Set { .. }, Operation::Set { .. }) => {
+            if same_path || !base_contains_op {
+                Some(op)
+            } else {
+                None
+            }
+        }
+        (Operation::Set { .. }, Operation::Splice { .. }) => {
+            if same_path || base_contains_op {
+                None
+            } else {
+                Some(op)
+            }
+        }
+        (Operation::Splice { .. }, Operation::Set { .. }) => {
+            if same_path {
                 return Some(op);
             }
-            if (*base_path).starts_with(&op_path) {
-                return None;
-            }
-            Some(op)
-        }
-        (
-            Operation::Set {
-                path: base_path,
-                value: _,
-            },
-            Operation::Splice {
-                path: op_path,
-                index: _,
-                remove: _,
-                insert: _,
-            },
-        ) => {
-            if *base_path == op_path {
-                return None;
-            }
-            if (*base_path).starts_with(&op_path) {
-                return None;
-            }
-            Some(op)
-        }
-        (
-            Operation::Splice {
-                path: base_path,
-                index: _,
-                remove: _,
-                insert: _,
-            },
-            Operation::Set {
-                path: op_path,
-                value: _,
-            },
-        ) => {
-            if *base_path == op_path {
-                return Some(op);
-            }
-            if (*base_path).starts_with(&op_path) {
-                if is_reachable(op_path, content) {
-                    return Some(op);
-                }
+            if base_contains_op && !is_reachable(op_path, content) {
                 return None;
             }
             Some(op)
@@ -308,34 +273,34 @@ fn op_ot(content: &Value, base: &Operation, op: Operation) -> Option<Operation> 
                 insert: op_insert,
             },
         ) => {
-            if *base_path == op_path {
-                if base_index + base_remove <= op_index {
-                    let base_insert_len = base_insert
-                        .as_array()
-                        .expect("ot with splice needs array")
-                        .len();
-                    //  FIXME copy/clone?
-                    return Some(Operation::Splice {
-                        path: op_path,
-                        index: op_index + base_insert_len - base_remove,
-                        remove: op_remove,
-                        insert: op_insert,
-                    });
-                }
-
-                if op_index + op_remove < *base_index {
-                    return Some(op);
-                }
-
-                return None;
+            if base_path != op_path {
+                return if base_path.starts_with(op_path)
+                    && is_reachable(op_path.to_owned(), content)
+                {
+                    Some(op)
+                } else {
+                    None
+                };
             }
-            if base_path.starts_with(&op_path) {
-                if is_reachable(op_path, content) {
-                    return Some(op);
-                }
-                return None;
+
+            // same path splice
+            if base_index + base_remove <= *op_index {
+                let adjustment = base_insert
+                    .as_array()
+                    .expect("ot with splice needs array")
+                    .len()
+                    - base_remove;
+                Some(Operation::Splice {
+                    path: op_path.to_owned(),
+                    index: op_index + adjustment,
+                    remove: *op_remove,
+                    insert: op_insert.to_owned(),
+                })
+            } else if op_index + op_remove < *base_index {
+                Some(op)
+            } else {
+                None
             }
-            None
         }
     }
 }
