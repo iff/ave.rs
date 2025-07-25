@@ -281,14 +281,13 @@ fn op_ot(content: &Value, base: &Operation, op: Operation) -> Option<Operation> 
 
             // same path splice
             if base_index + base_remove <= *op_index {
-                let adjustment = base_insert
+                let base_insert_len = base_insert
                     .as_array()
                     .expect("ot with splice needs array")
-                    .len()
-                    - base_remove;
+                    .len();
                 Some(Operation::Splice {
                     path: op_path.to_owned(),
-                    index: op_index + adjustment,
+                    index: op_index + base_insert_len - base_remove,
                     remove: *op_remove,
                     insert: op_insert.to_owned(),
                 })
@@ -339,17 +338,24 @@ fn is_reachable(path: impl Into<Path>, value: &Value) -> bool {
 /// This function assumes that the patches apply cleanly to the content. Otherwise the function
 /// will panic.
 pub fn rebase(content: Value, op: Operation, patches: &[Patch]) -> Option<Operation> {
-    let mut new_content = content;
+    let mut content = content;
     let mut op = Some(op);
 
     for patch in patches {
-        match apply(new_content, &patch.operation) {
+        match apply(content, &patch.operation) {
             Ok(value) => {
-                new_content = value;
-                op = op_ot(&new_content, &patch.operation, op?);
+                content = value;
+                op = op_ot(&content, &patch.operation, op?);
             }
-            // TODO maybe not panic here? we dont need to replicate the original avers?
-            Err(e) => panic!("unexpected failure while applying patches (rebase): {}", e),
+            // None means conflict
+            Err(_) => return None,
+            // TODO use Rebase error instead
+            // Err(e) => {
+            //     return Err(PatchError::Rebase(format!(
+            //         "unexpected failure while applying patches (rebase): {}",
+            //         e
+            //     )))
+            // }
         }
     }
 

@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 arbitrary = { version = "1", features = ["derive"] }
-chrono = "0.4.38"
+chrono = { version = "0.4.38", features = ["serde"] }
 quickcheck = "1"
 quickcheck_macros = "1"
 serde = { version = "1.0.189", features = ["derive"] }
