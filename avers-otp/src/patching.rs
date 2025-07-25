@@ -236,10 +236,12 @@ fn op_ot(content: &Value, base: &Operation, op: Operation) -> Option<Operation> 
 
     match (base, &op) {
         (Operation::Set { .. }, Operation::Set { .. }) => {
-            if same_path || !base_contains_op {
-                Some(op)
-            } else {
+            // reject Set on different path but base contains op
+            // eg. foo -> foo.bar
+            if !same_path && base_contains_op {
                 None
+            } else {
+                Some(op)
             }
         }
         (Operation::Set { .. }, Operation::Splice { .. }) => {
@@ -273,9 +275,7 @@ fn op_ot(content: &Value, base: &Operation, op: Operation) -> Option<Operation> 
             },
         ) => {
             if base_path != op_path {
-                return if base_path.starts_with(op_path)
-                    && is_reachable(op_path.to_owned(), content)
-                {
+                return if base_contains_op && is_reachable(op_path, content) {
                     Some(op)
                 } else {
                     None
@@ -305,7 +305,8 @@ fn op_ot(content: &Value, base: &Operation, op: Operation) -> Option<Operation> 
 }
 
 /// Check if path is reachable starting from value
-fn is_reachable(path: Path, value: &Value) -> bool {
+fn is_reachable(path: impl Into<Path>, value: &Value) -> bool {
+    let path = path.into();
     if path.is_empty() {
         return true;
     }
