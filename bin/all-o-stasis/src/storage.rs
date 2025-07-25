@@ -392,7 +392,7 @@ fn apply_patch_to_snapshot(snapshot: &Snapshot, patch: &Patch) -> Result<Snapsho
     let s = Snapshot {
         object_id: snapshot.object_id.clone(),
         revision_id: patch.revision_id,
-        content: apply(snapshot.content.clone(), patch.operation.clone())?,
+        content: apply(snapshot.content.clone(), &patch.operation)?,
     };
     tracing::debug!("applying patch={patch} to {snapshot} results in snapshot={s}");
     Ok(s)
@@ -443,7 +443,7 @@ pub async fn apply_object_updates(
             author.clone(),
             (base_snapshot.content).clone(),
             &latest_snapshot,
-            previous_patches.clone(),
+            &previous_patches,
             op,
             !skip_validation,
         )
@@ -510,18 +510,18 @@ async fn save_operation(
     author_id: ObjectId,
     base_content: Value,
     snapshot: &Snapshot,
-    previous_patches: Vec<Patch>,
+    previous_patches: &[Patch],
     op: Operation,
     validate: bool,
 ) -> Result<Option<Patch>, AppError> {
     let Some(new_op) = rebase(base_content, op, previous_patches) else {
-        tracing::debug!("error: rebase failed!");
+        tracing::debug!("error: rebase op onto base_content failed!");
         return Ok(None);
     };
 
     tracing::debug!("save_operation: {snapshot}, op={new_op}");
     // FIXME clone?
-    let new_content = apply(snapshot.content.clone(), new_op.clone())?;
+    let new_content = apply(snapshot.content.to_owned(), &new_op)?;
     if new_content == snapshot.content {
         tracing::debug!("skipping save operation: content did not change");
         return Ok(None);
@@ -533,7 +533,7 @@ async fn save_operation(
     let rev_id = snapshot.revision_id + 1;
     // now we know that the patch can be applied cleanly, so we can store both
     let new_snapshot = Snapshot {
-        object_id: snapshot.object_id.clone(),
+        object_id: snapshot.object_id.to_owned(),
         revision_id: rev_id,
         content: new_content,
     };
@@ -549,7 +549,7 @@ async fn save_operation(
         revision_id: rev_id,
         author_id,
         created_at: None,
-        operation: new_op.clone(),
+        operation: new_op.to_owned(),
     };
     store_patch(state, gym, &patch)
         .await?
