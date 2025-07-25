@@ -79,21 +79,21 @@ fn check_type_consistency(a: &[Value], b: &[Value]) -> Result<(), PatchError> {
 }
 
 /// apply `op` to `value`. Panics if the operation is invalid.
-pub fn apply(value: Value, operation: Operation) -> Result<Value, PatchError> {
+pub fn apply(value: Value, operation: &Operation) -> Result<Value, PatchError> {
     match operation {
         Operation::Set {
             path,
             value: op_value,
         } => {
             if path.is_empty() {
-                return op_value.ok_or(PatchError::Unknown(String::from(
+                return op_value.to_owned().ok_or(PatchError::Unknown(String::from(
                     "can't remove the empty path",
                 )));
             }
 
             // delete key (path) if op_Value is empty else insert key (path)
             let ins_or_del = |key: String, map: &mut Object| match op_value {
-                Some(v) => map.insert(key, v),
+                Some(v) => map.insert(key, v.to_owned()),
                 None => map.remove(&key),
             };
             change_object(value, path, ins_or_del)
@@ -120,7 +120,7 @@ pub fn apply(value: Value, operation: Operation) -> Result<Value, PatchError> {
                 };
 
                 check_type_consistency(&a, op_insert)?;
-                let _ = a.splice(op_index..op_index + op_remove, op_insert.iter().cloned());
+                let _ = a.splice(op_index..&(op_index + op_remove), op_insert.iter().cloned());
                 Ok(a)
             };
 
@@ -130,17 +130,16 @@ pub fn apply(value: Value, operation: Operation) -> Result<Value, PatchError> {
 }
 
 /// Travers the path and then either insert or delete at the very end
-fn change_object<F>(mut value: Value, path: Path, f: F) -> Result<Value, PatchError>
+fn change_object<F>(mut value: Value, path: impl Into<Path>, f: F) -> Result<Value, PatchError>
 where
     F: FnOnce(String, &mut Object) -> Option<Value>,
 {
+    let path = path.into();
     let paths: Vec<&str> = path.split('.').collect();
-    let key_to_change = *paths.last().ok_or(PatchError::PathError(path.clone()))?;
+    let key_to_change = *paths.last().ok_or(PatchError::PathError(path.to_owned()))?;
 
     let mut content = &mut value;
-
-    let len = paths.len();
-    for key in &paths[..(len - 1)] {
+    for key in &paths[..(paths.len() - 1)] {
         match content.get_mut(key) {
             Some(value) => content = value,
             None => return Err(PatchError::KeyError(key.to_string())),
@@ -153,17 +152,16 @@ where
             "value is expected to be a Value::Object",
         ))),
     }?;
-
-    // FIXME new object?
     Ok(value)
 }
 
-fn change_array<F>(mut value: Value, path: Path, f: F) -> Result<Value, PatchError>
+fn change_array<F>(mut value: Value, path: impl Into<Path>, f: F) -> Result<Value, PatchError>
 where
     F: FnOnce(Vec<Value>) -> Result<Vec<Value>, PatchError>,
 {
     // FIXME almost like change_object - combine as trait?
     // resolving path and then depending on the Value::Array | Object do something different
+    let path = path.into();
     let paths: Vec<&str> = path.split('.').collect();
     let key_to_change = *paths.last().ok_or(PatchError::PathError(path.clone()))?;
 
@@ -191,7 +189,6 @@ where
             "value is expected to be a Value::Object",
         ))),
     }?;
-
     Ok(value)
 }
 
@@ -341,13 +338,12 @@ fn is_reachable(path: impl Into<Path>, value: &Value) -> bool {
 ///
 /// This function assumes that the patches apply cleanly to the content. Otherwise the function
 /// will panic.
-pub fn rebase(content: Value, op: Operation, patches: Vec<Patch>) -> Option<Operation> {
+pub fn rebase(content: Value, op: Operation, patches: &[Patch]) -> Option<Operation> {
     let mut new_content = content;
     let mut op = Some(op);
 
     for patch in patches {
-        // FIXME clone
-        match apply(new_content, patch.operation.clone()) {
+        match apply(new_content, &patch.operation) {
             Ok(value) => {
                 new_content = value;
                 op = op_ot(&new_content, &patch.operation, op?);
@@ -448,7 +444,7 @@ mod tests {
             value: None,
         };
 
-        apply(value, op).ok().is_none()
+        apply(value, &op).ok().is_none()
     }
 
     #[quickcheck]
@@ -459,7 +455,7 @@ mod tests {
             value: Some(value.clone()),
         };
 
-        Some(value) == apply(json!({}), op).ok()
+        Some(value) == apply(json!({}), &op).ok()
     }
 
     #[quickcheck]
@@ -471,7 +467,7 @@ mod tests {
             value: Some(overwrite.clone()),
         };
 
-        Some(overwrite) == apply(base, op).ok()
+        Some(overwrite) == apply(base, &op).ok()
     }
 
     #[quickcheck]
@@ -488,7 +484,7 @@ mod tests {
         };
 
         let expected = serde_json::to_value(&expected).expect("serialise value");
-        Some(expected) == apply(base, op).ok()
+        Some(expected) == apply(base, &op).ok()
     }
 
     #[quickcheck]
@@ -500,7 +496,7 @@ mod tests {
             value: None,
         };
 
-        Some(expected) == apply(base, op).ok()
+        Some(expected) == apply(base, &op).ok()
     }
 
     #[quickcheck]
@@ -512,7 +508,7 @@ mod tests {
             value: Some(object),
         };
 
-        Some(expected) == apply(json!({}), op).ok()
+        Some(expected) == apply(json!({}), &op).ok()
     }
 
     // splice
@@ -527,7 +523,7 @@ mod tests {
         };
 
         let val = json!({ "x": [1,2,3,4], "z": "z"});
-        let res = apply(val, op);
+        let res = apply(val, &op);
         let exp = json!({ "x": [1, 42, 43, 2, 3, 4], "z": "z"});
         match res {
             Ok(v) => assert_eq!(v, exp),
@@ -545,7 +541,7 @@ mod tests {
         };
 
         let val = json!({ "x": [1,2,3,4], "z": "z"});
-        let res = apply(val, op);
+        let res = apply(val, &op);
         match res {
             Ok(_) => panic!(),
             Err(e) => match e {
@@ -567,7 +563,7 @@ mod tests {
 
         let val = json!({ "x": ["a", "b", "c", "d"], "z": "z"});
         let exp = json!({ "x": ["a", "42", "43", "b", "c", "d"], "z": "z"});
-        assert_eq!(Some(exp), apply(val, op).ok())
+        assert_eq!(Some(exp), apply(val, &op).ok())
     }
 
     #[test]
@@ -581,7 +577,7 @@ mod tests {
 
         let val = json!({ "x": [1,2,3,4], "z": "z"});
         let exp = json!({ "x": [1, 42, 43, 4], "z": "z"});
-        assert_eq!(Some(exp), apply(val, op).ok())
+        assert_eq!(Some(exp), apply(val, &op).ok())
     }
 
     // rebase
@@ -596,7 +592,7 @@ mod tests {
         };
 
         let patches = vec![];
-        let rebased = rebase(json!({}), op.clone(), patches);
+        let rebased = rebase(json!({}), op.clone(), &patches);
         Some(op) == rebased
     }
 
@@ -626,7 +622,7 @@ mod tests {
         }];
 
         // The rebased operation should be unchanged since they affect different properties
-        Some(op2.clone()) == rebase(base_val, op2, patches)
+        Some(op2.clone()) == rebase(base_val, op2, &patches)
     }
 
     #[quickcheck]
@@ -653,7 +649,7 @@ mod tests {
             operation: op1,
         }];
 
-        Some(op2.clone()) == rebase(base_val, op2, patches)
+        Some(op2.clone()) == rebase(base_val, op2, &patches)
     }
 
     #[quickcheck]
@@ -681,7 +677,7 @@ mod tests {
             operation: op1,
         }];
 
-        Some(op2.clone()) == rebase(base_val, op2, patches)
+        Some(op2.clone()) == rebase(base_val, op2, &patches)
     }
 
     #[quickcheck]
@@ -711,7 +707,7 @@ mod tests {
             operation: op1,
         }];
 
-        Some(op2.clone()) == rebase(base_val, op2, patches)
+        Some(op2.clone()) == rebase(base_val, op2, &patches)
     }
 
     #[test]
@@ -748,7 +744,7 @@ mod tests {
         // The rebased operation should be adjusted to account for the changed indices
         // After op1, the element at index 3 in the original array has moved to index 4
         // The rebased operation should still remove the same logical element
-        let rebased = rebase(base_val, op2, patches);
+        let rebased = rebase(base_val, op2, &patches);
 
         // The expected rebased operation
         let expected = Operation::Splice {
@@ -792,7 +788,7 @@ mod tests {
             operation: op1,
         }];
 
-        assert_eq!(Some(op2.clone()), rebase(base_val, op2, patches))
+        assert_eq!(Some(op2.clone()), rebase(base_val, op2, &patches))
     }
 
     #[test]
@@ -852,7 +848,7 @@ mod tests {
             insert: json!([10, 20]),
         };
 
-        assert_eq!(Some(op3_after_rebase), rebase(base_val, op3, patches))
+        assert_eq!(Some(op3_after_rebase), rebase(base_val, op3, &patches))
     }
 
     // Tests for op_ot function
