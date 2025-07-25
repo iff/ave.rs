@@ -33,6 +33,51 @@ impl fmt::Display for PatchError {
     }
 }
 
+/// Elements of arrays we want to merge/change must have the same type.
+/// Furthermore, if the array consists of objects, each object is required to have an "id" field.
+fn check_type_consistency(a: &[Value], b: &[Value]) -> Result<(), PatchError> {
+    match (a.first(), b.first()) {
+        (Some(_), None) => {
+            // if we only remove elements there is nothing to check
+            Ok(())
+        }
+        (Some(Value::Number(_)), Some(Value::Number(_))) => {
+            if a.iter().all(|a| a.is_number()) && b.iter().all(|a| a.is_number()) {
+                Ok(())
+            } else {
+                Err(PatchError::InconsistentTypes())
+            }
+        }
+        (Some(Value::Bool(_)), Some(Value::Bool(_))) => {
+            if a.iter().all(|a| a.is_boolean()) && b.iter().all(|a| a.is_boolean()) {
+                Ok(())
+            } else {
+                Err(PatchError::InconsistentTypes())
+            }
+        }
+        (Some(Value::String(_)), Some(Value::String(_))) => {
+            if a.iter().all(|a| a.is_string()) && b.iter().all(|a| a.is_string()) {
+                Ok(())
+            } else {
+                Err(PatchError::InconsistentTypes())
+            }
+        }
+        (Some(Value::Object(_)), Some(Value::Object(_))) => {
+            if !(a.iter().all(|a| a.is_object()) && b.iter().all(|a| a.is_object())) {
+                return Err(PatchError::InconsistentTypes());
+            }
+
+            // all elements are objects - do they have all have an id?
+            if a.iter().all(|a| a.get("id").is_some()) && b.iter().all(|a| a.get("id").is_some()) {
+                Ok(())
+            } else {
+                Err(PatchError::NoId())
+            }
+        }
+        _ => Err(PatchError::InconsistentTypes()),
+    }
+}
+
 /// apply `op` to `value`. Panics if the operation is invalid.
 pub fn apply(value: Value, operation: Operation) -> Result<Value, PatchError> {
     match operation {
@@ -74,53 +119,7 @@ pub fn apply(value: Value, operation: Operation) -> Result<Value, PatchError> {
                     )));
                 };
 
-                // The existing array and the elements we want to insert must have the same type.
-                // Furthermore, if the array consists of objects, each object is required to have an "id" field.
-                match (a.first(), op_insert.first()) {
-                    (Some(_), None) => {
-                        // if we only remove elements there is nothing to check
-                    }
-                    // TODO: avers is just checking strings?
-                    (Some(Value::Number(_)), Some(Value::Number(_))) => {
-                        if !(a.iter().all(|a| a.is_number())
-                            && op_insert.iter().all(|a| a.is_number()))
-                        {
-                            return Err(PatchError::InconsistentTypes());
-                        }
-                    }
-                    // TODO: avers is just checking strings?
-                    (Some(Value::Bool(_)), Some(Value::Bool(_))) => {
-                        if !(a.iter().all(|a| a.is_boolean())
-                            && op_insert.iter().all(|a| a.is_boolean()))
-                        {
-                            return Err(PatchError::InconsistentTypes());
-                        }
-                    }
-                    (Some(Value::String(_)), Some(Value::String(_))) => {
-                        if !(a.iter().all(|a| a.is_string())
-                            && op_insert.iter().all(|a| a.is_string()))
-                        {
-                            return Err(PatchError::InconsistentTypes());
-                        }
-                    }
-                    (Some(Value::Object(_)), Some(Value::Object(_))) => {
-                        if !(a.iter().all(|a| a.is_object())
-                            && op_insert.iter().all(|a| a.is_object()))
-                        {
-                            return Err(PatchError::InconsistentTypes());
-                        }
-
-                        // we already have checked all elements are objects
-                        // now check if they all have an id
-                        if !(a.iter().all(|a| a.get("id").is_some())
-                            && op_insert.iter().all(|a| a.get("id").is_some()))
-                        {
-                            return Err(PatchError::NoId());
-                        }
-                    }
-                    _ => return Err(PatchError::InconsistentTypes()),
-                };
-
+                check_type_consistency(&a, op_insert)?;
                 let _ = a.splice(op_index..op_index + op_remove, op_insert.iter().cloned());
                 Ok(a)
             };
