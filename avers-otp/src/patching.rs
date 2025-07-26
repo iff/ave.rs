@@ -12,7 +12,6 @@ pub enum PatchError {
     Key(String),
     NoId(),
     Path(String),
-    Unknown(String), // TODO remove
     Type(String),
     ValueIsNotArray(),
 }
@@ -27,7 +26,6 @@ impl fmt::Display for PatchError {
             Self::NoId() => write!(f, "NoId"),
             Self::Path(e) => write!(f, "PathError: {e}"),
             Self::Type(e) => write!(f, "TypeError: {e}"),
-            Self::Unknown(e) => write!(f, "UnknownError: {e}"),
             Self::ValueIsNotArray() => write!(f, "ValueIsNotArray"),
         }
     }
