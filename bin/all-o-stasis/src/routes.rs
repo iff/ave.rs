@@ -732,7 +732,7 @@ async fn patch_object(
                     .operations
                     .clone()
                     .into_iter()
-                    .find(|op| op.path_contains("role".to_string()));
+                    .find(|op| op.path_contains("role"));
                 if patch_changes_role.is_some() {
                     return Err(AppError::NotAuthorized());
                 }
