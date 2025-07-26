@@ -3,6 +3,7 @@ use std::fmt;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::error::Error;
 
 pub type Path = String;
 
@@ -20,6 +21,23 @@ pub type RevId = i64;
 pub const ZERO_REV_ID: RevId = 0;
 
 pub type ObjectId = String;
+
+#[derive(Debug)]
+pub enum OtError {
+    EmptyPath(),
+    ValueIsNotArray(),
+}
+
+impl Error for OtError {}
+
+impl fmt::Display for OtError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::EmptyPath() => write!(f, "NoId"),
+            Self::ValueIsNotArray() => write!(f, "ValueIsNotArray"),
+        }
+    }
+}
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 #[serde(tag = "type")]
@@ -58,6 +76,36 @@ impl fmt::Display for Operation {
 }
 
 impl Operation {
+    pub fn try_new_set(path: impl Into<Path>, value: Option<Value>) -> Result<Self, OtError> {
+        let path = path.into();
+        if path.is_empty() {
+            Err(OtError::EmptyPath())
+        } else {
+            Ok(Self::Set { path, value })
+        }
+    }
+
+    pub fn try_new_splice(
+        path: impl Into<Path>,
+        index: usize,
+        remove: usize,
+        insert: Value,
+    ) -> Result<Self, OtError> {
+        let path = path.into();
+        if path.is_empty() {
+            Err(OtError::EmptyPath())
+        } else if insert.is_array() {
+            Err(OtError::ValueIsNotArray())
+        } else {
+            Ok(Self::Splice {
+                path,
+                index,
+                remove,
+                insert,
+            })
+        }
+    }
+
     pub fn path(&self) -> Path {
         match self {
             Operation::Set { path, value: _ } => path.to_owned(),
@@ -70,7 +118,8 @@ impl Operation {
         }
     }
 
-    pub fn path_contains(&self, p: Path) -> bool {
+    pub fn path_contains(&self, p: impl Into<Path>) -> bool {
+        let p = p.into();
         match self {
             Operation::Set { path, value: _ } => path.contains(&p),
             Operation::Splice {
