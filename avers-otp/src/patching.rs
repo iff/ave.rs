@@ -332,11 +332,11 @@ fn is_reachable(path: impl Into<Path>, value: &Value) -> bool {
     true
 }
 
-/// Given an `op` which was created against a particular `content`, rebase it on top of patches
-/// which were created against the very same content in parallel.
+/// Given an `op` which was created against a particular `content`, rebase it on top
+/// of patches which were created against the very same content in parallel.
 ///
-/// This function assumes that the patches apply cleanly to the content. Otherwise the function
-/// will panic.
+/// This function assumes that the patches apply cleanly to the content. Otherwise
+/// the function returns None.
 pub fn rebase(content: Value, op: Operation, patches: &[Patch]) -> Option<Operation> {
     let mut content = content;
     let mut op = Some(op);
@@ -347,7 +347,7 @@ pub fn rebase(content: Value, op: Operation, patches: &[Patch]) -> Option<Operat
                 content = value;
                 op = op_ot(&content, &patch.operation, op?);
             }
-            // None means conflict
+            // None means conflict but here we abuse it for error occured
             Err(_) => return None,
             // TODO use Rebase error instead
             // Err(e) => {
