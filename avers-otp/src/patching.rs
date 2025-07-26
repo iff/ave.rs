@@ -8,12 +8,12 @@ type Object = serde_json::Map<String, Value>;
 
 #[derive(Debug)]
 pub enum PatchError {
-    InconsistentTypes(),
-    IndexError(String),
-    KeyError(String),
+    Index(String),
+    Key(String),
     NoId(),
-    PathError(String),
+    Path(String),
     Unknown(String),
+    Type(String),
     ValueIsNotArray(),
 }
 
@@ -22,11 +22,11 @@ impl Error for PatchError {}
 impl fmt::Display for PatchError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::InconsistentTypes() => write!(f, "InconsistentTypes"),
-            Self::IndexError(e) => write!(f, "IndexError: {e}"),
-            Self::KeyError(e) => write!(f, "KeyError: {e}"),
+            Self::Index(e) => write!(f, "IndexError: {e}"),
+            Self::Key(e) => write!(f, "KeyError: {e}"),
             Self::NoId() => write!(f, "NoId"),
-            Self::PathError(e) => write!(f, "PathError: {e}"),
+            Self::Path(e) => write!(f, "PathError: {e}"),
+            Self::Type(e) => write!(f, "TypeError: {e}"),
             Self::Unknown(e) => write!(f, "UnknownError: {e}"),
             Self::ValueIsNotArray() => write!(f, "ValueIsNotArray"),
         }
@@ -45,26 +45,34 @@ fn check_type_consistency(a: &[Value], b: &[Value]) -> Result<(), PatchError> {
             if a.iter().all(|a| a.is_number()) && b.iter().all(|a| a.is_number()) {
                 Ok(())
             } else {
-                Err(PatchError::InconsistentTypes())
+                Err(PatchError::Type(String::from(
+                    "not all array elements of type Number",
+                )))
             }
         }
         (Some(Value::Bool(_)), Some(Value::Bool(_))) => {
             if a.iter().all(|a| a.is_boolean()) && b.iter().all(|a| a.is_boolean()) {
                 Ok(())
             } else {
-                Err(PatchError::InconsistentTypes())
+                Err(PatchError::Type(String::from(
+                    "not all array elements of type Bool",
+                )))
             }
         }
         (Some(Value::String(_)), Some(Value::String(_))) => {
             if a.iter().all(|a| a.is_string()) && b.iter().all(|a| a.is_string()) {
                 Ok(())
             } else {
-                Err(PatchError::InconsistentTypes())
+                Err(PatchError::Type(String::from(
+                    "not all array elements of type String",
+                )))
             }
         }
         (Some(Value::Object(_)), Some(Value::Object(_))) => {
             if !(a.iter().all(|a| a.is_object()) && b.iter().all(|a| a.is_object())) {
-                return Err(PatchError::InconsistentTypes());
+                return Err(PatchError::Type(String::from(
+                    "not all array elements of type Object",
+                )));
             }
 
             // all elements are objects - do they have all have an id?
@@ -74,7 +82,9 @@ fn check_type_consistency(a: &[Value], b: &[Value]) -> Result<(), PatchError> {
                 Err(PatchError::NoId())
             }
         }
-        _ => Err(PatchError::InconsistentTypes()),
+        _ => Err(PatchError::Type(String::from(
+            "arrays have different types",
+        ))),
     }
 }
 
@@ -113,7 +123,7 @@ pub fn apply(value: Value, operation: &Operation) -> Result<Value, PatchError> {
             let f = |mut a: Vec<Value>| {
                 // check if the indices are within the allowed range
                 if a.len() < op_index + op_remove {
-                    return Err(PatchError::IndexError(format!(
+                    return Err(PatchError::Index(format!(
                         "len {} <= index {op_index} + remove {op_remove}",
                         a.len(),
                     )));
@@ -136,19 +146,19 @@ where
 {
     let path = path.into();
     let paths: Vec<&str> = path.split('.').collect();
-    let key_to_change = *paths.last().ok_or(PatchError::PathError(path.to_owned()))?;
+    let key_to_change = *paths.last().ok_or(PatchError::Path(path.to_owned()))?;
 
     let mut content = &mut value;
     for key in &paths[..(paths.len() - 1)] {
         match content.get_mut(key) {
             Some(value) => content = value,
-            None => return Err(PatchError::KeyError(key.to_string())),
+            None => return Err(PatchError::Key(key.to_string())),
         }
     }
 
     match content {
         Value::Object(o) => Ok(Value::from(f(key_to_change.to_string(), o))),
-        _ => Err(PatchError::Unknown(String::from(
+        _ => Err(PatchError::Type(String::from(
             "value is expected to be a Value::Object",
         ))),
     }?;
@@ -163,7 +173,7 @@ where
     // resolving path and then depending on the Value::Array | Object do something different
     let path = path.into();
     let paths: Vec<&str> = path.split('.').collect();
-    let key_to_change = *paths.last().ok_or(PatchError::PathError(path.clone()))?;
+    let key_to_change = *paths.last().ok_or(PatchError::Path(path.clone()))?;
 
     let mut content = &mut value;
 
@@ -171,7 +181,7 @@ where
     for key in &paths[..(len - 1)] {
         match content.get_mut(key) {
             Some(value) => content = value,
-            None => return Err(PatchError::KeyError(key.to_string())),
+            None => return Err(PatchError::Key(key.to_string())),
         }
     }
 
@@ -180,12 +190,12 @@ where
             Value::Array(array) => Ok(Value::from(f(array.to_vec())?)),
             _ => Err(PatchError::ValueIsNotArray()),
         },
-        None => Err(PatchError::KeyError(key_to_change.to_string())),
+        None => Err(PatchError::Key(key_to_change.to_string())),
     }?;
 
     match content {
         Value::Object(o) => Ok(o.insert(key_to_change.to_string(), new_array)),
-        _ => Err(PatchError::Unknown(String::from(
+        _ => Err(PatchError::Type(String::from(
             "value is expected to be a Value::Object",
         ))),
     }?;
@@ -271,6 +281,8 @@ fn op_ot(content: &Value, base: &Operation, op: Operation) -> Option<Operation> 
                 insert: op_insert,
             },
         ) => {
+            // TODO we should check that both inserts are arrays?
+
             if base_path != op_path {
                 return if base_contains_op && is_reachable(op_path, content) {
                     Some(op)
@@ -281,13 +293,10 @@ fn op_ot(content: &Value, base: &Operation, op: Operation) -> Option<Operation> 
 
             // same path splice
             if base_index + base_remove <= *op_index {
-                let base_insert_len = base_insert
-                    .as_array()
-                    .expect("ot with splice needs array")
-                    .len();
+                let base_insert = base_insert.as_array()?;
                 Some(Operation::Splice {
                     path: op_path.to_owned(),
-                    index: op_index + base_insert_len - base_remove,
+                    index: op_index + base_insert.len() - base_remove,
                     remove: *op_remove,
                     insert: op_insert.to_owned(),
                 })
@@ -551,7 +560,7 @@ mod tests {
         match res {
             Ok(_) => panic!(),
             Err(e) => match e {
-                PatchError::InconsistentTypes() => (),
+                PatchError::Type(_) => (),
                 _ => panic!(),
             },
         }
