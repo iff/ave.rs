@@ -274,12 +274,10 @@ async fn confirm_passport(
         .ok_or_else(AppError::Query)?; // FIXME error
 
         // mark as valid
-        let op = Operation::Set {
-            path: "validity".to_string(),
-            value: Some(
-                serde_json::to_value(&PassportValidity::Valid).expect("serialising PVValid"),
-            ),
-        };
+        let op = Operation::try_new_set(
+            "validity",
+            Some(serde_json::to_value(&PassportValidity::Valid).expect("serialising PVValid")),
+        )?;
         let _ = apply_object_updates(
             &state,
             &gym,
@@ -332,12 +330,10 @@ async fn await_passport_confirmation(
         }
     };
 
-    let op = Operation::Set {
-        path: "validity".to_string(),
-        value: Some(
-            serde_json::to_value(&PassportValidity::Expired).expect("serialising PVExpired"),
-        ),
-    };
+    let op = Operation::try_new_set(
+        "validity",
+        Some(serde_json::to_value(&PassportValidity::Expired).expect("serialising PVExpired")),
+    )?;
     let _ = apply_object_updates(
         &state,
         &gym,
