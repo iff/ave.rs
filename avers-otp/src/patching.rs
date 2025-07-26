@@ -81,7 +81,7 @@ pub fn rebase(content: Value, op: Operation, patches: &[Patch]) -> Option<Operat
     op
 }
 
-/// Apply an [`Operation`] to a [`Value`]. The [`Path`] is expected to be non-empty.
+/// Apply an [`Operation`] (with a non-empty [`Path`]) to a [`Value`].
 ///
 /// Support Operations are [`Operation::Set`] and [`Operation::Splice`].
 ///
@@ -127,13 +127,6 @@ pub fn apply(value: Value, operation: &Operation) -> Result<Value, PatchError> {
             path,
             value: op_value,
         } => {
-            // TODO enforce with type system?
-            if path.is_empty() {
-                return op_value.to_owned().ok_or(PatchError::Unknown(String::from(
-                    "can't remove the empty path",
-                )));
-            }
-
             // delete key (path) if op_Value is empty else insert key (path)
             let ins_or_del = |key: String, map: &mut Object| match op_value {
                 Some(v) => map.insert(key, v.to_owned()),

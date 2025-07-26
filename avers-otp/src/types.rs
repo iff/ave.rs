@@ -39,6 +39,8 @@ impl fmt::Display for OtError {
     }
 }
 
+// TODO hide behind struct to disallow use outside?
+// TODO serde serializer also needs to check
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 #[serde(tag = "type")]
 #[serde(rename_all = "camelCase")]

@@ -60,6 +60,12 @@ impl From<PatchError> for AppError {
     }
 }
 
+impl From<otp::OtError> for AppError {
+    fn from(_inner: otp::OtError) -> Self {
+        AppError::Ot(OtError::ToBeNamed)
+    }
+}
+
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let (status, error_message) = match self {
@@ -133,6 +139,7 @@ enum OtError {
     InvalidObjectId,
     // simply wrap all patching errors for now
     PatchError,
+    ToBeNamed,
 }
 
 #[tokio::main]

@@ -119,10 +119,7 @@ pub(crate) async fn create_object(
 
     let obj = obj.ok_or_else(AppError::Query)?;
 
-    let op = Operation::Set {
-        path: ROOT_PATH.to_string(),
-        value: Some(value.clone()),
-    };
+    let op = Operation::try_new_set(ROOT_PATH.to_string(), Some(value.clone()))?;
     let patch = Patch {
         object_id: obj.id(),
         revision_id: ZERO_REV_ID,
