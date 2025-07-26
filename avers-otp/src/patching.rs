@@ -12,7 +12,7 @@ pub enum PatchError {
     Key(String),
     NoId(),
     Path(String),
-    Unknown(String),
+    Unknown(String), // TODO remove
     Type(String),
     ValueIsNotArray(),
 }
@@ -29,6 +29,145 @@ impl fmt::Display for PatchError {
             Self::Type(e) => write!(f, "TypeError: {e}"),
             Self::Unknown(e) => write!(f, "UnknownError: {e}"),
             Self::ValueIsNotArray() => write!(f, "ValueIsNotArray"),
+        }
+    }
+}
+
+/// Given an `op` which was created against a particular `content`, rebase it on top
+/// of patches which were created against the very same content in parallel.
+///
+/// This function assumes that the patches apply cleanly to the content. Otherwise
+/// the function returns None.
+///
+/// ## Example
+///
+/// ```rust
+/// // An operation rebased through an empty list of patches should be unchanged
+/// let object = Object {
+///     name: "",
+/// };
+/// let value = serde_json::to_value(&object).unwrap();
+/// let op = Operation::Set {
+///     path: ROOT_PATH.into(),
+///     value: Some(value.clone()),
+/// };
+///
+/// let patches = vec![];
+/// let rebased = rebase(json!({}), op.clone(), &patches);
+/// assert!(Some(op) == rebased)
+/// ```
+pub fn rebase(content: Value, op: Operation, patches: &[Patch]) -> Option<Operation> {
+    let mut content = content;
+    let mut op = Some(op);
+
+    for patch in patches {
+        match apply(content, &patch.operation) {
+            Ok(value) => {
+                content = value;
+                op = op_ot(&content, &patch.operation, op?);
+            }
+            // None means conflict but here we abuse it for error occured
+            Err(_) => return None,
+            // TODO use Rebase error instead
+            // Err(e) => {
+            //     return Err(PatchError::Rebase(format!(
+            //         "unexpected failure while applying patches (rebase): {}",
+            //         e
+            //     )))
+            // }
+        }
+    }
+
+    op
+}
+
+/// Apply an [`Operation`] to a [`Value`]. The [`Path`] is expected to be non-empty.
+///
+/// Support Operations are [`Operation::Set`] and [`Operation::Splice`].
+///
+/// Returns the [`Value`] of the [`Operation`] if the operation is successful.
+/// Otherwise
+/// - [`PatchError::Key`] if splice operation contains invalid keys
+/// - [`PatchError::Unknown`] if path is empty
+/// - [`PatchError::Type`] if array types dont match or we dont work on object
+/// - [`PatchError::ValueIsNotArray`] if splice insert opertion does not contain arrays
+///
+/// ## Set
+///
+/// Applied to [`serde_json::Value::Object`] for adding, updating and inserting multiple
+/// elements in a single op.
+///
+/// ## Splice
+///
+/// Manipulate [`serde_json::Value::Array`] (remove, insert multiple elements in a single op)
+/// mimicing js/rust splice implementation.
+/// - elements of arrays to be changed must have the same type
+/// - if the array consists of objects, each object is required to have an "id" field
+///
+/// ## Example
+///
+/// ```rust
+/// // TODO fix example
+/// // An operation rebased through an empty list of patches should be unchanged
+/// let object = Object::new(
+///     ObjectType::Account,
+///     ObjectId::from("some account id"),
+/// );
+/// let value = serde_json::to_value(&object).unwrap();
+/// let op = Operation::Set {
+///     path: ROOT_PATH.to_string(),
+///     value: None,
+/// };
+///
+/// apply(value, &op).ok().is_none()
+/// ```
+pub fn apply(value: Value, operation: &Operation) -> Result<Value, PatchError> {
+    match operation {
+        Operation::Set {
+            path,
+            value: op_value,
+        } => {
+            // TODO enforce with type system?
+            if path.is_empty() {
+                return op_value.to_owned().ok_or(PatchError::Unknown(String::from(
+                    "can't remove the empty path",
+                )));
+            }
+
+            // delete key (path) if op_Value is empty else insert key (path)
+            let ins_or_del = |key: String, map: &mut Object| match op_value {
+                Some(v) => map.insert(key, v.to_owned()),
+                None => map.remove(&key),
+            };
+            change_object(value, path, ins_or_del)
+        }
+        Operation::Splice {
+            path,
+            index: op_index,
+            remove: op_remove,
+            insert: op_insert,
+        } => {
+            // convert op_insert (Value::Array) to Vec<Value>
+            let op_insert = match op_insert.as_array() {
+                Some(v) => Ok(v),
+                None => Err(PatchError::ValueIsNotArray()),
+            }?;
+
+            let f = |mut a: Vec<Value>| {
+                // check if the indices are within the allowed range
+                if a.len() < op_index + op_remove {
+                    return Err(PatchError::Index(format!(
+                        "len {} <= index {op_index} + remove {op_remove}",
+                        a.len(),
+                    )));
+                };
+
+                check_type_consistency(&a, op_insert)?;
+                let _ = a.splice(op_index..&(op_index + op_remove), op_insert.iter().cloned());
+                Ok(a)
+            };
+
+            change_array(value, path, f)
         }
     }
 }
@@ -85,57 +224,6 @@ fn check_type_consistency(a: &[Value], b: &[Value]) -> Result<(), PatchError> {
         _ => Err(PatchError::Type(String::from(
             "arrays have different types",
         ))),
-    }
-}
-
-/// apply `op` to `value`. Panics if the operation is invalid.
-pub fn apply(value: Value, operation: &Operation) -> Result<Value, PatchError> {
-    match operation {
-        Operation::Set {
-            path,
-            value: op_value,
-        } => {
-            if path.is_empty() {
-                return op_value.to_owned().ok_or(PatchError::Unknown(String::from(
-                    "can't remove the empty path",
-                )));
-            }
-
-            // delete key (path) if op_Value is empty else insert key (path)
-            let ins_or_del = |key: String, map: &mut Object| match op_value {
-                Some(v) => map.insert(key, v.to_owned()),
-                None => map.remove(&key),
-            };
-            change_object(value, path, ins_or_del)
-        }
-        Operation::Splice {
-            path,
-            index: op_index,
-            remove: op_remove,
-            insert: op_insert,
-        } => {
-            // convert op_insert (Value::Array) to Vec<Value>
-            let op_insert = match op_insert.as_array() {
-                Some(v) => Ok(v),
-                None => Err(PatchError::ValueIsNotArray()),
-            }?;
-
-            let f = |mut a: Vec<Value>| {
-                // check if the indices are within the allowed range
-                if a.len() < op_index + op_remove {
-                    return Err(PatchError::Index(format!(
-                        "len {} <= index {op_index} + remove {op_remove}",
-                        a.len(),
-                    )));
-                };
-
-                check_type_consistency(&a, op_insert)?;
-                let _ = a.splice(op_index..&(op_index + op_remove), op_insert.iter().cloned());
-                Ok(a)
-            };
-
-            change_array(value, path, f)
-        }
     }
 }
 
@@ -339,36 +427,6 @@ fn is_reachable(path: impl Into<Path>, value: &Value) -> bool {
     }
 
     true
-}
-
-/// Given an `op` which was created against a particular `content`, rebase it on top
-/// of patches which were created against the very same content in parallel.
-///
-/// This function assumes that the patches apply cleanly to the content. Otherwise
-/// the function returns None.
-pub fn rebase(content: Value, op: Operation, patches: &[Patch]) -> Option<Operation> {
-    let mut content = content;
-    let mut op = Some(op);
-
-    for patch in patches {
-        match apply(content, &patch.operation) {
-            Ok(value) => {
-                content = value;
-                op = op_ot(&content, &patch.operation, op?);
-            }
-            // None means conflict but here we abuse it for error occured
-            Err(_) => return None,
-            // TODO use Rebase error instead
-            // Err(e) => {
-            //     return Err(PatchError::Rebase(format!(
-            //         "unexpected failure while applying patches (rebase): {}",
-            //         e
-            //     )))
-            // }
-        }
-    }
-
-    op
 }
 
 #[cfg(test)]
