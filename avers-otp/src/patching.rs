@@ -42,6 +42,9 @@ impl fmt::Display for PatchError {
 /// This function assumes that the patches apply cleanly to the content. Otherwise
 /// the function returns None.
 ///
+/// Returns the resulting Operation if rebase was successful, `None` if patches have
+/// conflicts and [`PatchError::Rebase`] if rebase operation fails.
+///
 /// ## Example
 ///
 /// ```rust
@@ -100,7 +103,6 @@ pub fn rebase(
 /// Otherwise
 /// - [`PatchError::Key`] if splice operation contains invalid keys
 /// - [`PatchError::Type`] if array types dont match or we dont work on object
-/// - [`PatchError::Rebase`] if rebase operation fails
 /// - [`PatchError::ValueIsNotArray`] if splice insert opertion does not contain arrays
 ///
 /// ## Set
