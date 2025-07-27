@@ -99,8 +99,8 @@ pub fn rebase(
 /// Returns the [`Value`] of the [`Operation`] if the operation is successful.
 /// Otherwise
 /// - [`PatchError::Key`] if splice operation contains invalid keys
-/// - [`PatchError::Unknown`] if path is empty
 /// - [`PatchError::Type`] if array types dont match or we dont work on object
+/// - [`PatchError::Rebase`] if rebase operation fails
 /// - [`PatchError::ValueIsNotArray`] if splice insert opertion does not contain arrays
 ///
 /// ## Set
