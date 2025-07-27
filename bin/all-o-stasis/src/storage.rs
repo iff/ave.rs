@@ -505,9 +505,16 @@ async fn save_operation(
     op: Operation,
     validate: bool,
 ) -> Result<Option<Patch>, AppError> {
-    let Some(new_op) = rebase(base_content, op, previous_patches) else {
-        tracing::debug!("error: rebase op onto base_content failed!");
-        return Ok(None);
+    let new_op = match rebase(base_content, op, previous_patches) {
+        Ok(Some(new_op)) => new_op,
+        Ok(None) => {
+            tracing::debug!("rebase had a conflicting patch");
+            return Ok(None);
+        }
+        Err(e) => {
+            tracing::debug!("rebase failed with error: {e}");
+            return Ok(None);
+        }
     };
 
     tracing::debug!("save_operation: {snapshot}, op={new_op}");
