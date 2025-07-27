@@ -11,7 +11,9 @@ pub enum PatchError {
     Index(String),
     Key(String),
     NoId(),
+    Operation(String),
     Path(String),
+    Rebase(String),
     Type(String),
     ValueIsNotArray(),
 }
@@ -24,8 +26,10 @@ impl fmt::Display for PatchError {
             Self::Index(e) => write!(f, "IndexError: {e}"),
             Self::Key(e) => write!(f, "KeyError: {e}"),
             Self::NoId() => write!(f, "NoId"),
+            Self::Operation(e) => write!(f, "Operation: {e}"),
             Self::Path(e) => write!(f, "PathError: {e}"),
             Self::Type(e) => write!(f, "TypeError: {e}"),
+            Self::Rebase(e) => write!(f, "Rebase: {e}"),
             Self::ValueIsNotArray() => write!(f, "ValueIsNotArray"),
         }
     }
@@ -95,6 +99,8 @@ pub fn rebase(content: Value, op: Operation, patches: &[Patch]) -> Option<Operat
 /// Applied to [`serde_json::Value::Object`] for adding, updating and inserting multiple
 /// elements in a single op.
 ///
+/// A set operation with empty path and no value is undefined and will return an error.
+///
 /// ## Splice
 ///
 /// Manipulate [`serde_json::Value::Array`] (remove, insert multiple elements in a single op)
@@ -125,6 +131,15 @@ pub fn apply(value: Value, operation: &Operation) -> Result<Value, PatchError> {
             path,
             value: op_value,
         } => {
+            // the combination of root path and an operation with no value is invalid
+            if path.is_empty() {
+                return op_value
+                    .to_owned()
+                    .ok_or(PatchError::Operation(String::from(
+                        "set operation with an empty path and no value is undefined",
+                    )));
+            }
+
             // delete key (path) if op_Value is empty else insert key (path)
             let ins_or_del = |key: String, map: &mut Object| match op_value {
                 Some(v) => map.insert(key, v.to_owned()),
