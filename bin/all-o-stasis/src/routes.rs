@@ -19,7 +19,6 @@ use futures::stream::BoxStream;
 use futures::TryStreamExt;
 use otp::types::ObjectType;
 use otp::types::{Object, ObjectId, Operation, Patch, RevId};
-use otp::ROOT_OBJ_ID;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -30,6 +29,7 @@ use tower_http::cors::CorsLayer;
 use axum::extract::connect_info::ConnectInfo;
 
 use crate::passport::{passport_routes, Session};
+use crate::session::{account_role, author_from_session};
 use crate::storage::{
     apply_object_updates, create_object, lookup_latest_snapshot, lookup_object_,
     ACCOUNTS_VIEW_COLLECTION, BOULDERS_VIEW_COLLECTION, OBJECTS_COLLECTION, PATCHES_COLLECTION,
@@ -117,58 +117,6 @@ impl PatchObjectResponse {
             num_processed_operations,
             resulting_patches,
         }
-    }
-}
-
-async fn author_from_session(
-    state: &AppState,
-    gym: &String,
-    session_id: Option<&Cookie<'static>>,
-) -> Result<String, AppError> {
-    let session_id = if let Some(session_id) = session_id {
-        session_id.value().to_owned()
-    } else {
-        return Ok(ROOT_OBJ_ID.to_owned());
-    };
-
-    let parent_path = state.db.parent_path("gyms", gym)?;
-    let session: Option<Session> = state
-        .db
-        .fluent()
-        .select()
-        .by_id_in(SESSIONS_COLLECTION)
-        .parent(&parent_path)
-        .obj()
-        .one(&session_id)
-        .await?;
-
-    if let Some(session) = session {
-        Ok(session.obj_id)
-    } else {
-        Err(AppError::NotAuthorized())
-    }
-}
-
-async fn account_role(
-    state: &AppState,
-    gym: &String,
-    object_id: &ObjectId,
-) -> Result<AccountRole, AppError> {
-    let parent_path = state.db.parent_path("gyms", gym)?;
-    let account: Option<Account> = state
-        .db
-        .fluent()
-        .select()
-        .by_id_in(ACCOUNTS_VIEW_COLLECTION)
-        .parent(&parent_path)
-        .obj()
-        .one(object_id)
-        .await?;
-
-    if let Some(account) = account {
-        Ok(account.role)
-    } else {
-        Err(AppError::NotAuthorized())
     }
 }
 

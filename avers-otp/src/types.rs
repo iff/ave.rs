@@ -9,11 +9,11 @@ pub type Path = String;
 
 // This path refers to the root of an object. It is only used in 'Set'
 // operations.
-pub const ROOT_PATH: &str = "";
+pub(crate) const ROOT_PATH: &str = "";
 
 // The root object id is used for object created internally or when there
 // is no applicable creator.
-pub const ROOT_OBJ_ID: &str = "";
+pub(crate) const ROOT_OBJ_ID: &str = "";
 
 pub type RevId = i64;
 
@@ -78,6 +78,13 @@ impl fmt::Display for Operation {
 }
 
 impl Operation {
+    pub fn new_set_unchecked(path: impl Into<Path>, value: Option<Value>) -> Self {
+        Self::Set {
+            path: path.into(),
+            value,
+        }
+    }
+
     pub fn try_new_set(path: impl Into<Path>, value: Option<Value>) -> Result<Self, OtError> {
         let path = path.into();
         if path.is_empty() {
@@ -157,7 +164,7 @@ pub enum ObjectType {
 }
 
 impl Object {
-    pub fn new(object_type: ObjectType, created_by: ObjectId) -> Object {
+    pub fn new(object_type: ObjectType) -> Object {
         // TODO generete random id? (see Avers/Storage.hs)
         // or use firestore ids
         // TODO should we only allow to create Objects with non-optional id?
@@ -166,7 +173,7 @@ impl Object {
             id: None,
             object_type,
             created_at: None,
-            created_by,
+            created_by: ROOT_OBJ_ID.to_owned(),
             deleted: None,
         }
     }
@@ -202,6 +209,19 @@ impl fmt::Display for Patch {
     }
 }
 
+impl Patch {
+    pub fn new(object_id: ObjectId, author_id: String, value: &Value) -> Self {
+        let op = Operation::new_set_unchecked(ROOT_PATH.to_owned(), Some(value.to_owned()));
+        Self {
+            object_id,
+            revision_id: ZERO_REV_ID,
+            author_id,
+            created_at: None,
+            operation: op,
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Snapshot {
@@ -214,6 +234,7 @@ impl Snapshot {
     pub fn new(object_id: ObjectId) -> Self {
         Self {
             object_id,
+            // FIXME why is this not ZERO_REV_ID?
             revision_id: -1,
             content: json!({}),
         }
@@ -228,46 +249,4 @@ impl fmt::Display for Snapshot {
             self.object_id, self.revision_id, self.content
         )
     }
-}
-
-#[cfg(test)]
-mod tests {
-    // use super::*;
-    // use serde_json::{from_str, to_string, Value};
-
-    // #[test]
-    // fn object_additional_fields_as_value() {
-    //     let object = Object::new(ObjectType::Boulder, String::from("deadbeef"));
-    //     let json = to_string(&object).unwrap();
-    //
-    //     // I think the only way to handle custom keys on the Object is to actually parse it as a
-    //     // Value..
-    //     // but I'm pretty sure we need to have this in a typed manner, eg as
-    //     //   Either<Vec, key/value tuple>
-    //     // ?
-    //     match from_str::<Value>(&json[..]) {
-    //         Ok(o) => {
-    //             if o.get("grade").is_some() {
-    //                 panic!("grade should be none")
-    //             }
-    //         }
-    //         Err(e) => {
-    //             panic!("{}", e);
-    //         }
-    //     }
-    // }
-
-    // #[test]
-    // fn object_additional_fields_using_extra() {
-    //     let mut object = Object::new(ObjectType::Boulder, String::from("deadbeef"));
-    //     object
-    //         .content
-    //         .insert(String::from("grade"), Value::String(String::from("blue")));
-    //
-    //     let json = to_string(&object).unwrap();
-    //     match serde_json::from_str::<Object>(&json[..]) {
-    //         Ok(o) => o.content.get("grade").expect("should have grade field"),
-    //         Err(e) => panic!("{}", e),
-    //     };
-    // }
 }
