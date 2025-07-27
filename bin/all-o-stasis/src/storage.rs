@@ -4,7 +4,8 @@ use axum::Json;
 use firestore::{path_camel_case, FirestoreQueryDirection, FirestoreResult};
 use futures::stream::BoxStream;
 use futures::TryStreamExt;
-use otp::types::{Object, ObjectId, ObjectType, Operation, Patch, RevId, Snapshot};
+use otp::operation::Operation;
+use otp::types::{Object, ObjectId, ObjectType, Patch, RevId, Snapshot};
 use otp::{apply, rebase, ZERO_REV_ID};
 use serde_json::{from_value, Value};
 

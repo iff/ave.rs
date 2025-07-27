@@ -61,8 +61,8 @@ impl From<PatchError> for AppError {
     }
 }
 
-impl From<otp::OtError> for AppError {
-    fn from(_inner: otp::OtError) -> Self {
+impl From<otp::operation::OperationError> for AppError {
+    fn from(_inner: otp::operation::OperationError) -> Self {
         AppError::Ot(OtError::ToBeNamed)
     }
 }

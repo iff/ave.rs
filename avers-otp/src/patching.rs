@@ -1,5 +1,6 @@
+use crate::operation::Operation;
 /// implementing a subset of OT operations to patch serde_json::Value::Objects and serde_json::Value::Array.
-use crate::types::{Operation, Patch, Path};
+use crate::types::{Patch, Path};
 use serde_json::Value;
 use std::error::Error;
 use std::fmt;
@@ -45,12 +46,15 @@ impl fmt::Display for PatchError {
 ///
 /// ```rust
 /// // An operation rebased through an empty list of patches should be unchanged
-/// let object = Object {
-///     name: "",
-/// };
+/// use serde_json::json;
+/// use otp::Object;
+/// use otp::types::ObjectType;
+/// use otp::{rebase, Operation};
+///
+/// let object = Object::new(ObjectType::Account);
 /// let value = serde_json::to_value(&object).unwrap();
 /// let op = Operation::Set {
-///     path: ROOT_PATH.into(),
+///     path: String::from(""),
 ///     value: Some(value.clone()),
 /// };
 ///
@@ -112,18 +116,20 @@ pub fn rebase(content: Value, op: Operation, patches: &[Patch]) -> Option<Operat
 ///
 /// ```rust
 /// // TODO fix example
+/// use serde_json::json;
+/// use otp::Object;
+/// use otp::types::ObjectType;
+/// use otp::{apply, Operation};
+///
 /// // An operation rebased through an empty list of patches should be unchanged
-/// let object = Object::new(
-///     ObjectType::Account,
-///     ObjectId::from("some account id"),
-/// );
+/// let object = Object::new(ObjectType::Account);
 /// let value = serde_json::to_value(&object).unwrap();
 /// let op = Operation::Set {
-///     path: ROOT_PATH.to_string(),
+///     path: String::from(""),
 ///     value: None,
 /// };
 ///
-/// apply(value, &op).ok().is_none()
+/// assert!(apply(value, &op).ok().is_none());
 /// ```
 pub fn apply(value: Value, operation: &Operation) -> Result<Value, PatchError> {
     match operation {
@@ -438,7 +444,8 @@ fn is_reachable(path: impl Into<Path>, value: &Value) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{Operation, ROOT_PATH};
+    use crate::types::ROOT_PATH;
+    use crate::Operation;
     use quickcheck::{Arbitrary, Gen};
     use quickcheck_macros::quickcheck;
     use serde::{Deserialize, Serialize};
