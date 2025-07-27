@@ -1,5 +1,7 @@
+pub mod operation;
 pub mod patching;
 pub mod types;
 
+pub use crate::operation::{Operation, OperationError};
 pub use crate::patching::{apply, rebase, PatchError};
-pub use crate::types::{Object, Operation, ROOT_OBJ_ID, ROOT_PATH, ZERO_REV_ID};
+pub use crate::types::{Object, ZERO_REV_ID};

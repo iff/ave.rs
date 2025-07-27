@@ -13,7 +13,7 @@ use firestore::{path_camel_case, FirestoreResult};
 use futures::{stream::BoxStream, TryStreamExt};
 use otp::{
     types::{ObjectId, ObjectType},
-    Operation, ROOT_OBJ_ID,
+    Operation,
 };
 use rand::Rng;
 use sendgrid::v3::*;
@@ -194,14 +194,14 @@ async fn create_passport(
                 id: None,
                 email: payload.email.clone(),
                 role: AccountRole::User,
-                login: "aaa".to_string(),
+                login: "aaa".to_string(), // FIXME??
                 name: None,
             };
             let value = serde_json::to_value(account.clone()).expect("serialising account");
             let obj = create_object(
                 &state,
                 &gym,
-                ROOT_OBJ_ID.to_owned(),
+                String::from(""), // TODO fine?
                 ObjectType::Account,
                 value,
             )
@@ -274,18 +274,16 @@ async fn confirm_passport(
         .ok_or_else(AppError::Query)?; // FIXME error
 
         // mark as valid
-        let op = Operation::Set {
-            path: "validity".to_string(),
-            value: Some(
-                serde_json::to_value(&PassportValidity::Valid).expect("serialising PVValid"),
-            ),
-        };
+        let op = Operation::try_new_set(
+            "validity",
+            Some(serde_json::to_value(&PassportValidity::Valid).expect("serialising PVValid")),
+        )?;
         let _ = apply_object_updates(
             &state,
             &gym,
             pport.passport_id,
             snapshot.revision_id,
-            ROOT_OBJ_ID.to_string(),
+            String::from(""), // TODO fine?
             [op].to_vec(),
             false,
         )
@@ -332,18 +330,16 @@ async fn await_passport_confirmation(
         }
     };
 
-    let op = Operation::Set {
-        path: "validity".to_string(),
-        value: Some(
-            serde_json::to_value(&PassportValidity::Expired).expect("serialising PVExpired"),
-        ),
-    };
+    let op = Operation::try_new_set(
+        "validity",
+        Some(serde_json::to_value(&PassportValidity::Expired).expect("serialising PVExpired")),
+    )?;
     let _ = apply_object_updates(
         &state,
         &gym,
         pport.passport_id,
         revision_id,
-        ROOT_OBJ_ID.to_string(),
+        String::from(""), // TODO fine?
         [op].to_vec(),
         false,
     )

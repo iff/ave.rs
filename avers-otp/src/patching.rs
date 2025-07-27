@@ -1,5 +1,6 @@
+use crate::operation::Operation;
 /// implementing a subset of OT operations to patch serde_json::Value::Objects and serde_json::Value::Array.
-use crate::types::{Operation, Patch, Path};
+use crate::types::{Patch, Path};
 use serde_json::Value;
 use std::error::Error;
 use std::fmt;
@@ -11,8 +12,9 @@ pub enum PatchError {
     Index(String),
     Key(String),
     NoId(),
+    Operation(String),
     Path(String),
-    Unknown(String),
+    Rebase(String),
     Type(String),
     ValueIsNotArray(),
 }
@@ -25,10 +27,164 @@ impl fmt::Display for PatchError {
             Self::Index(e) => write!(f, "IndexError: {e}"),
             Self::Key(e) => write!(f, "KeyError: {e}"),
             Self::NoId() => write!(f, "NoId"),
+            Self::Operation(e) => write!(f, "Operation: {e}"),
             Self::Path(e) => write!(f, "PathError: {e}"),
             Self::Type(e) => write!(f, "TypeError: {e}"),
-            Self::Unknown(e) => write!(f, "UnknownError: {e}"),
+            Self::Rebase(e) => write!(f, "Rebase: {e}"),
             Self::ValueIsNotArray() => write!(f, "ValueIsNotArray"),
+        }
+    }
+}
+
+/// Given an `op` which was created against a particular `content`, rebase it on top
+/// of patches which were created against the very same content in parallel.
+///
+/// This function assumes that the patches apply cleanly to the content. Otherwise
+/// the function returns None.
+///
+/// Returns the resulting Operation if rebase was successful, `None` if patches have
+/// conflicts and [`PatchError::Rebase`] if rebase operation fails.
+///
+/// ## Example
+///
+/// ```rust
+/// // An operation rebased through an empty list of patches should be unchanged
+/// use serde_json::json;
+/// use otp::Object;
+/// use otp::types::ObjectType;
+/// use otp::{rebase, Operation};
+///
+/// let object = Object::new(ObjectType::Account);
+/// let value = serde_json::to_value(&object).unwrap();
+/// let op = Operation::Set {
+///     path: String::from(""),
+///     value: Some(value.clone()),
+/// };
+///
+/// let patches = vec![];
+/// let rebased = rebase(json!({}), op.clone(), &patches).unwrap();
+/// assert!(Some(op) == rebased)
+/// ```
+pub fn rebase(
+    content: Value,
+    op: Operation,
+    patches: &[Patch],
+) -> Result<Option<Operation>, PatchError> {
+    let mut content = content;
+    let mut op = Some(op);
+
+    for patch in patches {
+        match apply(content, &patch.operation) {
+            Ok(value) => {
+                content = value;
+                if let Some(next_op) = op {
+                    op = op_ot(&content, &patch.operation, next_op);
+                } else {
+                    return Err(PatchError::Rebase(String::from("op_ot: rejecting patch")));
+                }
+            }
+            Err(e) => {
+                return Err(PatchError::Rebase(format!(
+                    "unexpected failure while applying patches: {e}"
+                )))
+            }
+        }
+    }
+
+    Ok(op)
+}
+
+/// Apply an [`Operation`] (with a non-empty [`Path`]) to a [`Value`].
+///
+/// Support Operations are [`Operation::Set`] and [`Operation::Splice`].
+///
+/// Returns the [`Value`] of the [`Operation`] if the operation is successful.
+/// Otherwise
+/// - [`PatchError::Key`] if splice operation contains invalid keys
+/// - [`PatchError::Type`] if array types dont match or we dont work on object
+/// - [`PatchError::ValueIsNotArray`] if splice insert opertion does not contain arrays
+///
+/// ## Set
+///
+/// Applied to [`serde_json::Value::Object`] for adding, updating and inserting multiple
+/// elements in a single op.
+///
+/// A set operation with empty path and no value is undefined and will return an error.
+///
+/// ## Splice
+///
+/// Manipulate [`serde_json::Value::Array`] (remove, insert multiple elements in a single op)
+/// mimicing js/rust splice implementation.
+/// - elements of arrays to be changed must have the same type
+/// - if the array consists of objects, each object is required to have an "id" field
+///
+/// ## Example
+///
+/// ```rust
+/// use serde_json::json;
+/// use otp::Object;
+/// use otp::types::ObjectType;
+/// use otp::{apply, Operation};
+///
+/// // An operation rebased through an empty list of patches should be unchanged
+/// let object = Object::new(ObjectType::Account);
+/// let value = serde_json::to_value(&object).unwrap();
+/// let op = Operation::Set {
+///     path: String::from(""),
+///     value: None,
+/// };
+///
+/// assert!(apply(value, &op).ok().is_none());
+/// ```
+pub fn apply(value: Value, operation: &Operation) -> Result<Value, PatchError> {
+    match operation {
+        Operation::Set {
+            path,
+            value: op_value,
+        } => {
+            // the combination of root path and an operation with no value is invalid
+            if path.is_empty() {
+                return op_value
+                    .to_owned()
+                    .ok_or(PatchError::Operation(String::from(
+                        "set operation with an empty path and no value is undefined",
+                    )));
+            }
+
+            // delete key (path) if op_Value is empty else insert key (path)
+            let ins_or_del = |key: String, map: &mut Object| match op_value {
+                Some(v) => map.insert(key, v.to_owned()),
+                None => map.remove(&key),
+            };
+            change_object(value, path, ins_or_del)
+        }
+        Operation::Splice {
+            path,
+            index: op_index,
+            remove: op_remove,
+            insert: op_insert,
+        } => {
+            // convert op_insert (Value::Array) to Vec<Value>
+            let op_insert = match op_insert.as_array() {
+                Some(v) => Ok(v),
+                None => Err(PatchError::ValueIsNotArray()),
+            }?;
+
+            let f = |mut a: Vec<Value>| {
+                // check if the indices are within the allowed range
+                if a.len() < op_index + op_remove {
+                    return Err(PatchError::Index(format!(
+                        "len {} <= index {op_index} + remove {op_remove}",
+                        a.len(),
+                    )));
+                };
+
+                check_type_consistency(&a, op_insert)?;
+                let _ = a.splice(op_index..&(op_index + op_remove), op_insert.iter().cloned());
+                Ok(a)
+            };
+
+            change_array(value, path, f)
         }
     }
 }
@@ -85,57 +241,6 @@ fn check_type_consistency(a: &[Value], b: &[Value]) -> Result<(), PatchError> {
         _ => Err(PatchError::Type(String::from(
             "arrays have different types",
         ))),
-    }
-}
-
-/// apply `op` to `value`. Panics if the operation is invalid.
-pub fn apply(value: Value, operation: &Operation) -> Result<Value, PatchError> {
-    match operation {
-        Operation::Set {
-            path,
-            value: op_value,
-        } => {
-            if path.is_empty() {
-                return op_value.to_owned().ok_or(PatchError::Unknown(String::from(
-                    "can't remove the empty path",
-                )));
-            }
-
-            // delete key (path) if op_Value is empty else insert key (path)
-            let ins_or_del = |key: String, map: &mut Object| match op_value {
-                Some(v) => map.insert(key, v.to_owned()),
-                None => map.remove(&key),
-            };
-            change_object(value, path, ins_or_del)
-        }
-        Operation::Splice {
-            path,
-            index: op_index,
-            remove: op_remove,
-            insert: op_insert,
-        } => {
-            // convert op_insert (Value::Array) to Vec<Value>
-            let op_insert = match op_insert.as_array() {
-                Some(v) => Ok(v),
-                None => Err(PatchError::ValueIsNotArray()),
-            }?;
-
-            let f = |mut a: Vec<Value>| {
-                // check if the indices are within the allowed range
-                if a.len() < op_index + op_remove {
-                    return Err(PatchError::Index(format!(
-                        "len {} <= index {op_index} + remove {op_remove}",
-                        a.len(),
-                    )));
-                };
-
-                check_type_consistency(&a, op_insert)?;
-                let _ = a.splice(op_index..&(op_index + op_remove), op_insert.iter().cloned());
-                Ok(a)
-            };
-
-            change_array(value, path, f)
-        }
     }
 }
 
@@ -341,40 +446,11 @@ fn is_reachable(path: impl Into<Path>, value: &Value) -> bool {
     true
 }
 
-/// Given an `op` which was created against a particular `content`, rebase it on top
-/// of patches which were created against the very same content in parallel.
-///
-/// This function assumes that the patches apply cleanly to the content. Otherwise
-/// the function returns None.
-pub fn rebase(content: Value, op: Operation, patches: &[Patch]) -> Option<Operation> {
-    let mut content = content;
-    let mut op = Some(op);
-
-    for patch in patches {
-        match apply(content, &patch.operation) {
-            Ok(value) => {
-                content = value;
-                op = op_ot(&content, &patch.operation, op?);
-            }
-            // None means conflict but here we abuse it for error occured
-            Err(_) => return None,
-            // TODO use Rebase error instead
-            // Err(e) => {
-            //     return Err(PatchError::Rebase(format!(
-            //         "unexpected failure while applying patches (rebase): {}",
-            //         e
-            //     )))
-            // }
-        }
-    }
-
-    op
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{Operation, ROOT_PATH};
+    use crate::types::ROOT_PATH;
+    use crate::Operation;
     use quickcheck::{Arbitrary, Gen};
     use quickcheck_macros::quickcheck;
     use serde::{Deserialize, Serialize};
@@ -607,7 +683,7 @@ mod tests {
         };
 
         let patches = vec![];
-        let rebased = rebase(json!({}), op.clone(), &patches);
+        let rebased = rebase(json!({}), op.clone(), &patches).unwrap();
         Some(op) == rebased
     }
 
@@ -637,7 +713,7 @@ mod tests {
         }];
 
         // The rebased operation should be unchanged since they affect different properties
-        Some(op2.clone()) == rebase(base_val, op2, &patches)
+        Some(op2.clone()) == rebase(base_val, op2, &patches).unwrap()
     }
 
     #[quickcheck]
@@ -664,7 +740,7 @@ mod tests {
             operation: op1,
         }];
 
-        Some(op2.clone()) == rebase(base_val, op2, &patches)
+        Some(op2.clone()) == rebase(base_val, op2, &patches).unwrap()
     }
 
     #[quickcheck]
@@ -692,7 +768,7 @@ mod tests {
             operation: op1,
         }];
 
-        Some(op2.clone()) == rebase(base_val, op2, &patches)
+        Some(op2.clone()) == rebase(base_val, op2, &patches).unwrap()
     }
 
     #[quickcheck]
@@ -722,7 +798,7 @@ mod tests {
             operation: op1,
         }];
 
-        Some(op2.clone()) == rebase(base_val, op2, &patches)
+        Some(op2.clone()) == rebase(base_val, op2, &patches).unwrap()
     }
 
     #[test]
@@ -769,7 +845,7 @@ mod tests {
             insert: json!([30, 40]),
         };
 
-        assert_eq!(Some(expected), rebased)
+        assert_eq!(Some(expected), rebased.unwrap())
     }
 
     #[test]
@@ -803,7 +879,7 @@ mod tests {
             operation: op1,
         }];
 
-        assert_eq!(Some(op2.clone()), rebase(base_val, op2, &patches))
+        assert_eq!(Some(op2.clone()), rebase(base_val, op2, &patches).unwrap())
     }
 
     #[test]
@@ -863,7 +939,10 @@ mod tests {
             insert: json!([10, 20]),
         };
 
-        assert_eq!(Some(op3_after_rebase), rebase(base_val, op3, &patches))
+        assert_eq!(
+            Some(op3_after_rebase),
+            rebase(base_val, op3, &patches).unwrap()
+        )
     }
 
     // Tests for op_ot function

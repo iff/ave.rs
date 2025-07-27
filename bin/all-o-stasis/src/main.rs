@@ -12,6 +12,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod passport;
 mod routes;
+mod session;
 mod storage;
 mod types;
 mod word_list;
@@ -57,6 +58,12 @@ impl From<FirestoreError> for AppError {
 impl From<PatchError> for AppError {
     fn from(_inner: PatchError) -> Self {
         AppError::Ot(OtError::PatchError)
+    }
+}
+
+impl From<otp::operation::OperationError> for AppError {
+    fn from(_inner: otp::operation::OperationError) -> Self {
+        AppError::Ot(OtError::ToBeNamed)
     }
 }
 
@@ -133,6 +140,7 @@ enum OtError {
     InvalidObjectId,
     // simply wrap all patching errors for now
     PatchError,
+    ToBeNamed,
 }
 
 #[tokio::main]

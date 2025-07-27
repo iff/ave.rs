@@ -4,8 +4,9 @@ use axum::Json;
 use firestore::{path_camel_case, FirestoreQueryDirection, FirestoreResult};
 use futures::stream::BoxStream;
 use futures::TryStreamExt;
-use otp::types::{Object, ObjectId, ObjectType, Operation, Patch, RevId, Snapshot};
-use otp::{apply, rebase, ROOT_OBJ_ID, ROOT_PATH, ZERO_REV_ID};
+use otp::operation::Operation;
+use otp::types::{Object, ObjectId, ObjectType, Patch, RevId, Snapshot};
+use otp::{apply, rebase, ZERO_REV_ID};
 use serde_json::{from_value, Value};
 
 use crate::routes::{LookupObjectResponse, PatchObjectResponse};
@@ -105,7 +106,7 @@ pub(crate) async fn create_object(
     value: Value,
 ) -> Result<Object, AppError> {
     let parent_path = state.db.parent_path("gyms", gym)?;
-    let obj = Object::new(object_type, ROOT_OBJ_ID.to_owned());
+    let obj = Object::new(object_type);
     let obj: Option<Object> = state
         .db
         .fluent()
@@ -119,17 +120,7 @@ pub(crate) async fn create_object(
 
     let obj = obj.ok_or_else(AppError::Query)?;
 
-    let op = Operation::Set {
-        path: ROOT_PATH.to_string(),
-        value: Some(value.clone()),
-    };
-    let patch = Patch {
-        object_id: obj.id(),
-        revision_id: ZERO_REV_ID,
-        author_id,
-        created_at: None,
-        operation: op,
-    };
+    let patch = Patch::new(obj.id(), author_id, &value);
     let patch = store_patch(state, gym, &patch).await?;
     let _ = patch.ok_or_else(AppError::Query)?;
 
@@ -514,9 +505,16 @@ async fn save_operation(
     op: Operation,
     validate: bool,
 ) -> Result<Option<Patch>, AppError> {
-    let Some(new_op) = rebase(base_content, op, previous_patches) else {
-        tracing::debug!("error: rebase op onto base_content failed!");
-        return Ok(None);
+    let new_op = match rebase(base_content, op, previous_patches) {
+        Ok(Some(new_op)) => new_op,
+        Ok(None) => {
+            tracing::debug!("rebase had a conflicting patch");
+            return Ok(None);
+        }
+        Err(e) => {
+            tracing::debug!("rebase failed with error: {e}");
+            return Ok(None);
+        }
     };
 
     tracing::debug!("save_operation: {snapshot}, op={new_op}");
