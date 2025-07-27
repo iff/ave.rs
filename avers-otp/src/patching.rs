@@ -85,8 +85,7 @@ pub fn rebase(
             }
             Err(e) => {
                 return Err(PatchError::Rebase(format!(
-                    "unexpected failure while applying patches: {}",
-                    e
+                    "unexpected failure while applying patches: {e}"
                 )))
             }
         }
