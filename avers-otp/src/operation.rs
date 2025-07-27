@@ -6,7 +6,7 @@ use std::fmt;
 
 #[derive(Debug)]
 pub enum OperationError {
-    EmptyPath(),
+    InvalidSetOp(),
     ValueIsNotArray(),
 }
 
@@ -15,7 +15,7 @@ impl Error for OperationError {}
 impl fmt::Display for OperationError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::EmptyPath() => write!(f, "NoId"),
+            Self::InvalidSetOp() => write!(f, "NoId"),
             Self::ValueIsNotArray() => write!(f, "ValueIsNotArray"),
         }
     }
@@ -59,10 +59,10 @@ impl fmt::Display for Operation {
 }
 
 impl Operation {
-    pub fn new_set_unchecked(path: impl Into<Path>, value: Option<Value>) -> Self {
+    pub fn new_set(path: impl Into<Path>, value: Value) -> Self {
         Self::Set {
             path: path.into(),
-            value,
+            value: Some(value),
         }
     }
 
@@ -71,8 +71,8 @@ impl Operation {
         value: Option<Value>,
     ) -> Result<Self, OperationError> {
         let path = path.into();
-        if path.is_empty() {
-            Err(OperationError::EmptyPath())
+        if path.is_empty() && value.is_none() {
+            Err(OperationError::InvalidSetOp())
         } else {
             Ok(Self::Set { path, value })
         }
@@ -85,9 +85,7 @@ impl Operation {
         insert: Value,
     ) -> Result<Self, OperationError> {
         let path = path.into();
-        if path.is_empty() {
-            Err(OperationError::EmptyPath())
-        } else if insert.is_array() {
+        if insert.is_array() {
             Err(OperationError::ValueIsNotArray())
         } else {
             Ok(Self::Splice {

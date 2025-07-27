@@ -92,7 +92,7 @@ impl fmt::Display for Patch {
 
 impl Patch {
     pub fn new(object_id: ObjectId, author_id: String, value: &Value) -> Self {
-        let op = Operation::new_set_unchecked(ROOT_PATH.to_owned(), Some(value.to_owned()));
+        let op = Operation::new_set(ROOT_PATH.to_owned(), value.to_owned());
         Self {
             object_id,
             revision_id: ZERO_REV_ID,
