@@ -59,10 +59,14 @@ impl fmt::Display for PatchError {
 /// };
 ///
 /// let patches = vec![];
-/// let rebased = rebase(json!({}), op.clone(), &patches);
+/// let rebased = rebase(json!({}), op.clone(), &patches).unwrap();
 /// assert!(Some(op) == rebased)
 /// ```
-pub fn rebase(content: Value, op: Operation, patches: &[Patch]) -> Option<Operation> {
+pub fn rebase(
+    content: Value,
+    op: Operation,
+    patches: &[Patch],
+) -> Result<Option<Operation>, PatchError> {
     let mut content = content;
     let mut op = Some(op);
 
@@ -70,21 +74,22 @@ pub fn rebase(content: Value, op: Operation, patches: &[Patch]) -> Option<Operat
         match apply(content, &patch.operation) {
             Ok(value) => {
                 content = value;
-                op = op_ot(&content, &patch.operation, op?);
+                if let Some(next_op) = op {
+                    op = op_ot(&content, &patch.operation, next_op);
+                } else {
+                    return Err(PatchError::Rebase(String::from("op_ot: rejecting patch")));
+                }
             }
-            // None means conflict but here we abuse it for error occured
-            Err(_) => return None,
-            // TODO use Rebase error instead
-            // Err(e) => {
-            //     return Err(PatchError::Rebase(format!(
-            //         "unexpected failure while applying patches (rebase): {}",
-            //         e
-            //     )))
-            // }
+            Err(e) => {
+                return Err(PatchError::Rebase(format!(
+                    "unexpected failure while applying patches: {}",
+                    e
+                )))
+            }
         }
     }
 
-    op
+    Ok(op)
 }
 
 /// Apply an [`Operation`] (with a non-empty [`Path`]) to a [`Value`].
@@ -677,7 +682,7 @@ mod tests {
         };
 
         let patches = vec![];
-        let rebased = rebase(json!({}), op.clone(), &patches);
+        let rebased = rebase(json!({}), op.clone(), &patches).unwrap();
         Some(op) == rebased
     }
 
@@ -707,7 +712,7 @@ mod tests {
         }];
 
         // The rebased operation should be unchanged since they affect different properties
-        Some(op2.clone()) == rebase(base_val, op2, &patches)
+        Some(op2.clone()) == rebase(base_val, op2, &patches).unwrap()
     }
 
     #[quickcheck]
@@ -734,7 +739,7 @@ mod tests {
             operation: op1,
         }];
 
-        Some(op2.clone()) == rebase(base_val, op2, &patches)
+        Some(op2.clone()) == rebase(base_val, op2, &patches).unwrap()
     }
 
     #[quickcheck]
@@ -762,7 +767,7 @@ mod tests {
             operation: op1,
         }];
 
-        Some(op2.clone()) == rebase(base_val, op2, &patches)
+        Some(op2.clone()) == rebase(base_val, op2, &patches).unwrap()
     }
 
     #[quickcheck]
@@ -792,7 +797,7 @@ mod tests {
             operation: op1,
         }];
 
-        Some(op2.clone()) == rebase(base_val, op2, &patches)
+        Some(op2.clone()) == rebase(base_val, op2, &patches).unwrap()
     }
 
     #[test]
@@ -839,7 +844,7 @@ mod tests {
             insert: json!([30, 40]),
         };
 
-        assert_eq!(Some(expected), rebased)
+        assert_eq!(Some(expected), rebased.unwrap())
     }
 
     #[test]
@@ -873,7 +878,7 @@ mod tests {
             operation: op1,
         }];
 
-        assert_eq!(Some(op2.clone()), rebase(base_val, op2, &patches))
+        assert_eq!(Some(op2.clone()), rebase(base_val, op2, &patches).unwrap())
     }
 
     #[test]
@@ -933,7 +938,10 @@ mod tests {
             insert: json!([10, 20]),
         };
 
-        assert_eq!(Some(op3_after_rebase), rebase(base_val, op3, &patches))
+        assert_eq!(
+            Some(op3_after_rebase),
+            rebase(base_val, op3, &patches).unwrap()
+        )
     }
 
     // Tests for op_ot function
