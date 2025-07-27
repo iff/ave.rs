@@ -115,7 +115,6 @@ pub fn rebase(content: Value, op: Operation, patches: &[Patch]) -> Option<Operat
 /// ## Example
 ///
 /// ```rust
-/// // TODO fix example
 /// use serde_json::json;
 /// use otp::Object;
 /// use otp::types::ObjectType;
