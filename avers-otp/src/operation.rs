@@ -111,14 +111,6 @@ impl Operation {
 
     pub fn path_contains(&self, p: impl Into<Path>) -> bool {
         let p = p.into();
-        match self {
-            Operation::Set { path, value: _ } => path.contains(&p),
-            Operation::Splice {
-                path,
-                index: _,
-                remove: _,
-                insert: _,
-            } => path.contains(&p),
-        }
+        self.path().contains(&p)
     }
 }
