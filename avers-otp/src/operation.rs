@@ -108,9 +108,4 @@ impl Operation {
             } => path.to_owned(),
         }
     }
-
-    pub fn path_contains(&self, p: impl Into<Path>) -> bool {
-        let p = p.into();
-        self.path().contains(&p)
-    }
 }
