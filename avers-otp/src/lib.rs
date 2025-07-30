@@ -1,14 +1,14 @@
 use std::error::Error;
 use std::fmt;
 
-pub mod operation;
-pub(crate) mod path;
-pub mod rebase;
+mod operation;
+mod path;
+mod rebase;
 pub mod types;
 
 pub use crate::operation::Operation;
 pub use crate::rebase::rebase;
-pub use crate::types::{Object, ZERO_REV_ID};
+// pub use crate::types::{Object, ZERO_REV_ID};
 
 #[derive(Debug)]
 pub enum OtError {
