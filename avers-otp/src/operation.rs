@@ -52,10 +52,7 @@ impl Operation {
         }
     }
 
-    pub fn try_new_set(
-        path: impl Into<Path>,
-        value: Option<Value>,
-    ) -> Result<Self, OtError> {
+    pub fn try_new_set(path: impl Into<Path>, value: Option<Value>) -> Result<Self, OtError> {
         let path = path.into();
         if path.is_empty() && value.is_none() {
             Err(OtError::InvalidSetOp())
@@ -144,11 +141,9 @@ impl Operation {
             } => {
                 // the combination of root path and an operation with no value is invalid
                 if path.is_empty() {
-                    return op_value
-                        .to_owned()
-                        .ok_or(OtError::Operation(String::from(
-                            "set operation with an empty path and no value is undefined",
-                        )));
+                    return op_value.to_owned().ok_or(OtError::Operation(String::from(
+                        "set operation with an empty path and no value is undefined",
+                    )));
                 }
 
                 // delete key (path) if op_Value is empty else insert key (path)
@@ -239,9 +234,7 @@ fn check_type_consistency(a: &[Value], b: &[Value]) -> Result<(), OtError> {
                 Err(OtError::NoId())
             }
         }
-        _ => Err(OtError::Type(String::from(
-            "arrays have different types",
-        ))),
+        _ => Err(OtError::Type(String::from("arrays have different types"))),
     }
 }
 
