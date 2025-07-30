@@ -6,7 +6,7 @@ use futures::stream::BoxStream;
 use futures::TryStreamExt;
 use otp::operation::Operation;
 use otp::types::{Object, ObjectId, ObjectType, Patch, RevId, Snapshot};
-use otp::{apply, rebase, ZERO_REV_ID};
+use otp::{rebase, ZERO_REV_ID};
 use serde_json::{from_value, Value};
 
 use crate::routes::{LookupObjectResponse, PatchObjectResponse};
@@ -383,7 +383,7 @@ fn apply_patch_to_snapshot(snapshot: &Snapshot, patch: &Patch) -> Result<Snapsho
     let s = Snapshot {
         object_id: snapshot.object_id.clone(),
         revision_id: patch.revision_id,
-        content: apply(snapshot.content.clone(), &patch.operation)?,
+        content: patch.operation.apply_to(snapshot.content.clone())?,
     };
     tracing::debug!("applying patch={patch} to {snapshot} results in snapshot={s}");
     Ok(s)
@@ -519,7 +519,7 @@ async fn save_operation(
 
     tracing::debug!("save_operation: {snapshot}, op={new_op}");
     // FIXME clone?
-    let new_content = apply(snapshot.content.to_owned(), &new_op)?;
+    let new_content = new_op.apply_to(snapshot.content.to_owned())?;
     if new_content == snapshot.content {
         tracing::debug!("skipping save operation: content did not change");
         return Ok(None);
