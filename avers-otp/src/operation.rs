@@ -4,8 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fmt;
 
-// FIXME naming?
-type Object = serde_json::Map<String, Value>;
+type SerdeObject = serde_json::Map<String, Value>;
 
 // TODO hide behind struct to disallow use outside?
 // TODO serde serializer also needs to check
@@ -147,7 +146,7 @@ impl Operation {
                 }
 
                 // delete key (path) if op_Value is empty else insert key (path)
-                let ins_or_del = |key: String, map: &mut Object| match op_value {
+                let ins_or_del = |key: String, map: &mut SerdeObject| match op_value {
                     Some(v) => map.insert(key, v.to_owned()),
                     None => map.remove(&key),
                 };
@@ -241,7 +240,7 @@ fn check_type_consistency(a: &[Value], b: &[Value]) -> Result<(), OtError> {
 /// Travers the path and then either insert or delete at the very end
 fn change_object<F>(mut value: Value, path: impl Into<Path>, f: F) -> Result<Value, OtError>
 where
-    F: FnOnce(String, &mut Object) -> Option<Value>,
+    F: FnOnce(String, &mut SerdeObject) -> Option<Value>,
 {
     let path = path.into();
     let paths: Vec<&str> = path.split('.').collect();
