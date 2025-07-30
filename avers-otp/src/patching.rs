@@ -1,40 +1,7 @@
 use crate::operation::Operation;
-/// implementing a subset of OT operations to patch serde_json::Value::Objects and serde_json::Value::Array.
 use crate::types::{Patch, Path};
+use crate::OtError;
 use serde_json::Value;
-use std::error::Error;
-use std::fmt;
-
-type Object = serde_json::Map<String, Value>;
-
-#[derive(Debug)]
-pub enum PatchError {
-    Index(String),
-    Key(String),
-    NoId(),
-    Operation(String),
-    Path(String),
-    Rebase(String),
-    Type(String),
-    ValueIsNotArray(),
-}
-
-impl Error for PatchError {}
-
-impl fmt::Display for PatchError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Index(e) => write!(f, "IndexError: {e}"),
-            Self::Key(e) => write!(f, "KeyError: {e}"),
-            Self::NoId() => write!(f, "NoId"),
-            Self::Operation(e) => write!(f, "Operation: {e}"),
-            Self::Path(e) => write!(f, "PathError: {e}"),
-            Self::Type(e) => write!(f, "TypeError: {e}"),
-            Self::Rebase(e) => write!(f, "Rebase: {e}"),
-            Self::ValueIsNotArray() => write!(f, "ValueIsNotArray"),
-        }
-    }
-}
 
 /// Given an `op` which was created against a particular `content`, rebase it on top
 /// of patches which were created against the very same content in parallel.
@@ -69,22 +36,22 @@ pub fn rebase(
     content: Value,
     op: Operation,
     patches: &[Patch],
-) -> Result<Option<Operation>, PatchError> {
+) -> Result<Option<Operation>, OtError> {
     let mut content = content;
     let mut op = Some(op);
 
     for patch in patches {
-        match apply(content, &patch.operation) {
+        match patch.operation.apply_to(content) {
             Ok(value) => {
                 content = value;
                 if let Some(next_op) = op {
                     op = op_ot(&content, &patch.operation, next_op);
                 } else {
-                    return Err(PatchError::Rebase(String::from("op_ot: rejecting patch")));
+                    return Err(OtError::Rebase(String::from("op_ot: rejecting patch")));
                 }
             }
             Err(e) => {
-                return Err(PatchError::Rebase(format!(
+                return Err(OtError::Rebase(format!(
                     "unexpected failure while applying patches: {e}"
                 )))
             }
@@ -92,219 +59,6 @@ pub fn rebase(
     }
 
     Ok(op)
-}
-
-/// Apply an [`Operation`] (with a non-empty [`Path`]) to a [`Value`].
-///
-/// Support Operations are [`Operation::Set`] and [`Operation::Splice`].
-///
-/// Returns the [`Value`] of the [`Operation`] if the operation is successful.
-/// Otherwise
-/// - [`PatchError::Key`] if splice operation contains invalid keys
-/// - [`PatchError::Type`] if array types dont match or we dont work on object
-/// - [`PatchError::ValueIsNotArray`] if splice insert opertion does not contain arrays
-///
-/// ## Set
-///
-/// Applied to [`serde_json::Value::Object`] for adding, updating and inserting multiple
-/// elements in a single op.
-///
-/// A set operation with empty path and no value is undefined and will return an error.
-///
-/// ## Splice
-///
-/// Manipulate [`serde_json::Value::Array`] (remove, insert multiple elements in a single op)
-/// mimicing js/rust splice implementation.
-/// - elements of arrays to be changed must have the same type
-/// - if the array consists of objects, each object is required to have an "id" field
-///
-/// ## Example
-///
-/// ```rust
-/// use serde_json::json;
-/// use otp::Object;
-/// use otp::types::ObjectType;
-/// use otp::{apply, Operation};
-///
-/// // An operation rebased through an empty list of patches should be unchanged
-/// let object = Object::new(ObjectType::Account);
-/// let value = serde_json::to_value(&object).unwrap();
-/// let op = Operation::Set {
-///     path: String::from(""),
-///     value: None,
-/// };
-///
-/// assert!(apply(value, &op).ok().is_none());
-/// ```
-pub fn apply(value: Value, operation: &Operation) -> Result<Value, PatchError> {
-    match operation {
-        Operation::Set {
-            path,
-            value: op_value,
-        } => {
-            // the combination of root path and an operation with no value is invalid
-            if path.is_empty() {
-                return op_value
-                    .to_owned()
-                    .ok_or(PatchError::Operation(String::from(
-                        "set operation with an empty path and no value is undefined",
-                    )));
-            }
-
-            // delete key (path) if op_Value is empty else insert key (path)
-            let ins_or_del = |key: String, map: &mut Object| match op_value {
-                Some(v) => map.insert(key, v.to_owned()),
-                None => map.remove(&key),
-            };
-            change_object(value, path, ins_or_del)
-        }
-        Operation::Splice {
-            path,
-            index: op_index,
-            remove: op_remove,
-            insert: op_insert,
-        } => {
-            // convert op_insert (Value::Array) to Vec<Value>
-            let op_insert = match op_insert.as_array() {
-                Some(v) => Ok(v),
-                None => Err(PatchError::ValueIsNotArray()),
-            }?;
-
-            let f = |mut a: Vec<Value>| {
-                // check if the indices are within the allowed range
-                if a.len() < op_index + op_remove {
-                    return Err(PatchError::Index(format!(
-                        "len {} <= index {op_index} + remove {op_remove}",
-                        a.len(),
-                    )));
-                };
-
-                check_type_consistency(&a, op_insert)?;
-                let _ = a.splice(op_index..&(op_index + op_remove), op_insert.iter().cloned());
-                Ok(a)
-            };
-
-            change_array(value, path, f)
-        }
-    }
-}
-
-/// Elements of arrays we want to merge/change must have the same type.
-/// Furthermore, if the array consists of objects, each object is required to have an "id" field.
-fn check_type_consistency(a: &[Value], b: &[Value]) -> Result<(), PatchError> {
-    match (a.first(), b.first()) {
-        (Some(_), None) => {
-            // if we only remove elements there is nothing to check
-            Ok(())
-        }
-        (Some(Value::Number(_)), Some(Value::Number(_))) => {
-            if a.iter().all(|a| a.is_number()) && b.iter().all(|a| a.is_number()) {
-                Ok(())
-            } else {
-                Err(PatchError::Type(String::from(
-                    "not all array elements of type Number",
-                )))
-            }
-        }
-        (Some(Value::Bool(_)), Some(Value::Bool(_))) => {
-            if a.iter().all(|a| a.is_boolean()) && b.iter().all(|a| a.is_boolean()) {
-                Ok(())
-            } else {
-                Err(PatchError::Type(String::from(
-                    "not all array elements of type Bool",
-                )))
-            }
-        }
-        (Some(Value::String(_)), Some(Value::String(_))) => {
-            if a.iter().all(|a| a.is_string()) && b.iter().all(|a| a.is_string()) {
-                Ok(())
-            } else {
-                Err(PatchError::Type(String::from(
-                    "not all array elements of type String",
-                )))
-            }
-        }
-        (Some(Value::Object(_)), Some(Value::Object(_))) => {
-            if !(a.iter().all(|a| a.is_object()) && b.iter().all(|a| a.is_object())) {
-                return Err(PatchError::Type(String::from(
-                    "not all array elements of type Object",
-                )));
-            }
-
-            // all elements are objects - do they have all have an id?
-            if a.iter().all(|a| a.get("id").is_some()) && b.iter().all(|a| a.get("id").is_some()) {
-                Ok(())
-            } else {
-                Err(PatchError::NoId())
-            }
-        }
-        _ => Err(PatchError::Type(String::from(
-            "arrays have different types",
-        ))),
-    }
-}
-
-/// Travers the path and then either insert or delete at the very end
-fn change_object<F>(mut value: Value, path: impl Into<Path>, f: F) -> Result<Value, PatchError>
-where
-    F: FnOnce(String, &mut Object) -> Option<Value>,
-{
-    let path = path.into();
-    let paths: Vec<&str> = path.split('.').collect();
-    let key_to_change = *paths.last().ok_or(PatchError::Path(path.to_owned()))?;
-
-    let mut content = &mut value;
-    for key in &paths[..(paths.len() - 1)] {
-        match content.get_mut(key) {
-            Some(value) => content = value,
-            None => return Err(PatchError::Key(key.to_string())),
-        }
-    }
-
-    match content {
-        Value::Object(o) => Ok(Value::from(f(key_to_change.to_string(), o))),
-        _ => Err(PatchError::Type(String::from(
-            "value is expected to be a Value::Object",
-        ))),
-    }?;
-    Ok(value)
-}
-
-fn change_array<F>(mut value: Value, path: impl Into<Path>, f: F) -> Result<Value, PatchError>
-where
-    F: FnOnce(Vec<Value>) -> Result<Vec<Value>, PatchError>,
-{
-    // FIXME almost like change_object - combine as trait?
-    // resolving path and then depending on the Value::Array | Object do something different
-    let path = path.into();
-    let paths: Vec<&str> = path.split('.').collect();
-    let key_to_change = *paths.last().ok_or(PatchError::Path(path.clone()))?;
-
-    let mut content = &mut value;
-
-    let len = paths.len();
-    for key in &paths[..(len - 1)] {
-        match content.get_mut(key) {
-            Some(value) => content = value,
-            None => return Err(PatchError::Key(key.to_string())),
-        }
-    }
-
-    let new_array = match content.get_mut(key_to_change) {
-        Some(value) => match value {
-            Value::Array(array) => Ok(Value::from(f(array.to_vec())?)),
-            _ => Err(PatchError::ValueIsNotArray()),
-        },
-        None => Err(PatchError::Key(key_to_change.to_string())),
-    }?;
-
-    match content {
-        Value::Object(o) => Ok(o.insert(key_to_change.to_string(), new_array)),
-        _ => Err(PatchError::Type(String::from(
-            "value is expected to be a Value::Object",
-        ))),
-    }?;
-    Ok(value)
 }
 
 /// Apply `op` on top of `base` with values `content`.
@@ -523,152 +277,6 @@ mod tests {
 
         let value = json!(["a", "b", "c"]);
         assert!(!is_reachable(Path::from("c"), &value));
-    }
-
-    // apply tests
-
-    #[quickcheck]
-    fn apply_set_none(input: TestObject) -> bool {
-        let value = serde_json::to_value(&input).expect("serialise value");
-        let op = Operation::Set {
-            path: ROOT_PATH.to_string(),
-            value: None,
-        };
-
-        apply(value, &op).ok().is_none()
-    }
-
-    #[quickcheck]
-    fn apply_set_on_empty(input: TestObject) -> bool {
-        let value = serde_json::to_value(&input).expect("serialise value");
-        let op = Operation::Set {
-            path: ROOT_PATH.into(),
-            value: Some(value.clone()),
-        };
-
-        Some(value) == apply(json!({}), &op).ok()
-    }
-
-    #[quickcheck]
-    fn apply_set_full_overwrite(base: TestObject, overwrite: TestObject) -> bool {
-        let base = serde_json::to_value(&base).expect("serialise value");
-        let overwrite = serde_json::to_value(&overwrite).expect("serialise value");
-        let op = Operation::Set {
-            path: ROOT_PATH.into(),
-            value: Some(overwrite.clone()),
-        };
-
-        Some(overwrite) == apply(base, &op).ok()
-    }
-
-    #[quickcheck]
-    fn apply_set_partial_overwrite(base: TestObject, overwrite: TestObject) -> bool {
-        let expected = TestObject {
-            name: base.name.clone(),
-            num: overwrite.num,
-            maybe: base.maybe,
-        };
-        let base = serde_json::to_value(&base).expect("serialise value");
-        let op = Operation::Set {
-            path: "num".into(),
-            value: Some(json!(overwrite.num)),
-        };
-
-        let expected = serde_json::to_value(&expected).expect("serialise value");
-        Some(expected) == apply(base, &op).ok()
-    }
-
-    #[quickcheck]
-    fn apply_set_path_delete(base: TestObject) -> bool {
-        let expected = json!({ "name": base.name.clone(), "maybe": base.maybe});
-        let base = serde_json::to_value(&base).expect("serialise value");
-        let op = Operation::Set {
-            path: "num".to_string(),
-            value: None,
-        };
-
-        Some(expected) == apply(base, &op).ok()
-    }
-
-    #[quickcheck]
-    fn apply_set_path_insert_object(object: TestObject) -> bool {
-        let expected = json!({ "new": object.clone()});
-        let object = serde_json::to_value(&object).expect("serialise value");
-        let op = Operation::Set {
-            path: "new".to_string(),
-            value: Some(object),
-        };
-
-        Some(expected) == apply(json!({}), &op).ok()
-    }
-
-    // splice
-
-    #[test]
-    fn apply_splice_op_number() {
-        let op = Operation::Splice {
-            path: "x".to_string(),
-            index: 1,
-            remove: 0,
-            insert: json!([42, 43]),
-        };
-
-        let val = json!({ "x": [1,2,3,4], "z": "z"});
-        let res = apply(val, &op);
-        let exp = json!({ "x": [1, 42, 43, 2, 3, 4], "z": "z"});
-        match res {
-            Ok(v) => assert_eq!(v, exp),
-            Err(e) => panic!("{}", e),
-        }
-    }
-
-    #[test]
-    fn apply_splice_op_inconsistent_types() {
-        let op = Operation::Splice {
-            path: "x".to_string(),
-            index: 1,
-            remove: 0,
-            insert: json!(["42", "43"]),
-        };
-
-        let val = json!({ "x": [1,2,3,4], "z": "z"});
-        let res = apply(val, &op);
-        match res {
-            Ok(_) => panic!(),
-            Err(e) => match e {
-                PatchError::Type(_) => (),
-                _ => panic!(),
-            },
-        }
-    }
-
-    // TODO test bool and Object with id
-    #[test]
-    fn apply_splice_op_str() {
-        let op = Operation::Splice {
-            path: "x".to_string(),
-            index: 1,
-            remove: 0,
-            insert: json!(["42", "43"]),
-        };
-
-        let val = json!({ "x": ["a", "b", "c", "d"], "z": "z"});
-        let exp = json!({ "x": ["a", "42", "43", "b", "c", "d"], "z": "z"});
-        assert_eq!(Some(exp), apply(val, &op).ok())
-    }
-
-    #[test]
-    fn apply_splice_op_remove() {
-        let op = Operation::Splice {
-            path: "x".to_string(),
-            index: 1,
-            remove: 2,
-            insert: json!([42, 43]),
-        };
-
-        let val = json!({ "x": [1,2,3,4], "z": "z"});
-        let exp = json!({ "x": [1, 42, 43, 4], "z": "z"});
-        assert_eq!(Some(exp), apply(val, &op).ok())
     }
 
     // rebase

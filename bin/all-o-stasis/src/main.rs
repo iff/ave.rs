@@ -17,7 +17,7 @@ mod storage;
 mod types;
 mod word_list;
 mod ws;
-use otp::PatchError;
+use otp::OtError;
 
 pub fn config_env_var(name: &str) -> Result<String, String> {
     std::env::var(name).map_err(|e| format!("{}: {}", name, e))
@@ -32,8 +32,6 @@ struct AppState {
 #[derive(Debug)]
 enum AppError {
     // Ot operations fail
-    // TODO decide what OT errors we expose and handle those here
-    #[allow(dead_code)]
     Ot(OtError),
     // firestore db errors
     Firestore(FirestoreError),
@@ -54,16 +52,9 @@ impl From<FirestoreError> for AppError {
     }
 }
 
-// maybe like this?
-impl From<PatchError> for AppError {
-    fn from(_inner: PatchError) -> Self {
-        AppError::Ot(OtError::PatchError)
-    }
-}
-
-impl From<otp::operation::OperationError> for AppError {
-    fn from(_inner: otp::operation::OperationError) -> Self {
-        AppError::Ot(OtError::ToBeNamed)
+impl From<OtError> for AppError {
+    fn from(inner: OtError) -> Self {
+        AppError::Ot(inner)
     }
 }
 
@@ -108,8 +99,7 @@ impl IntoResponse for AppError {
             AppError::Firestore(FirestoreError::CacheError(_)) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, "cache error".to_string())
             }
-            // TODO
-            AppError::Ot(_) => (StatusCode::NOT_FOUND, "OT failure".to_string()),
+            AppError::Ot(e) => (StatusCode::NOT_FOUND, format!("OT failure: {e}")),
             AppError::Query() => (StatusCode::BAD_REQUEST, "can't handle req".to_string()),
             AppError::ParseError(err) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -129,18 +119,6 @@ impl IntoResponse for AppError {
 
         (status, body).into_response()
     }
-}
-
-/// Errors that can happen when using OT
-#[derive(Debug)]
-enum OtError {
-    #[allow(dead_code)]
-    NotFound,
-    #[allow(dead_code)]
-    InvalidObjectId,
-    // simply wrap all patching errors for now
-    PatchError,
-    ToBeNamed,
 }
 
 #[tokio::main]
