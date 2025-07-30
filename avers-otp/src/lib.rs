@@ -2,11 +2,11 @@ use std::error::Error;
 use std::fmt;
 
 pub mod operation;
-pub mod patching;
+pub mod rebase;
 pub mod types;
 
 pub use crate::operation::Operation;
-pub use crate::patching::rebase;
+pub use crate::rebase::rebase;
 pub use crate::types::{Object, ZERO_REV_ID};
 
 #[derive(Debug)]
