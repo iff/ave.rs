@@ -2,6 +2,7 @@ use std::error::Error;
 use std::fmt;
 
 pub mod operation;
+pub(crate) mod path;
 pub mod rebase;
 pub mod types;
 
