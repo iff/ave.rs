@@ -119,8 +119,8 @@ impl Operation {
     ///
     /// ```rust
     /// use serde_json::json;
-    /// use otp::{Object, Operation};
-    /// use otp::types::ObjectType;
+    /// use otp::Operation;
+    /// use otp::types::{Object, ObjectType};
     ///
     /// // An operation rebased through an empty list of patches should be unchanged
     /// let object = Object::new(ObjectType::Account);

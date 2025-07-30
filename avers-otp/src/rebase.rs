@@ -18,8 +18,7 @@ use serde_json::Value;
 /// ```rust
 /// // An operation rebased through an empty list of patches should be unchanged
 /// use serde_json::json;
-/// use otp::Object;
-/// use otp::types::ObjectType;
+/// use otp::types::{Object, ObjectType};
 /// use otp::{rebase, Operation};
 ///
 /// let object = Object::new(ObjectType::Account);
