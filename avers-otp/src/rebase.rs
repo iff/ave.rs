@@ -1,6 +1,6 @@
 use crate::operation::Operation;
-use crate::types::Patch;
 use crate::path::is_reachable;
+use crate::types::Patch;
 use crate::OtError;
 use serde_json::Value;
 
