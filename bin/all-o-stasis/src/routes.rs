@@ -783,5 +783,5 @@ async fn feed(
             )
                 .into_response()
         }
-    };
+    }
 }
