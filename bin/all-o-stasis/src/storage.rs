@@ -1,12 +1,12 @@
 use crate::passport::Session;
 use crate::types::{Account, Boulder};
 use axum::Json;
-use firestore::{path_camel_case, FirestoreQueryDirection, FirestoreResult};
-use futures::stream::BoxStream;
+use firestore::{FirestoreQueryDirection, FirestoreResult, path_camel_case};
 use futures::TryStreamExt;
+use futures::stream::BoxStream;
 use otp::types::{Object, ObjectId, ObjectType, Patch, RevId, Snapshot, ZERO_REV_ID};
-use otp::{rebase, Operation};
-use serde_json::{from_value, Value};
+use otp::{Operation, rebase};
+use serde_json::{Value, from_value};
 
 use crate::routes::{LookupObjectResponse, PatchObjectResponse};
 use crate::{AppError, AppState};

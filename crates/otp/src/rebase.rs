@@ -1,7 +1,7 @@
+use crate::OtError;
 use crate::operation::Operation;
 use crate::path::is_reachable;
 use crate::types::Patch;
-use crate::OtError;
 use serde_json::Value;
 
 /// Given an `op` which was created against a particular `content`, rebase it on top
@@ -53,7 +53,7 @@ pub fn rebase(
             Err(e) => {
                 return Err(OtError::Rebase(format!(
                     "unexpected failure while applying patches: {e}"
-                )))
+                )));
             }
         }
     }
@@ -171,8 +171,8 @@ fn op_ot(content: &Value, base: &Operation, op: Operation) -> Option<Operation> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::ROOT_PATH;
     use crate::Operation;
+    use crate::types::ROOT_PATH;
     use quickcheck::{Arbitrary, Gen};
     use quickcheck_macros::quickcheck;
     use serde::{Deserialize, Serialize};

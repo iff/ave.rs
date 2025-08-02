@@ -1,32 +1,32 @@
 use std::fmt;
 
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     response::{IntoResponse, Redirect},
     routing::{get, post},
-    Json, Router,
 };
 use axum_extra::extract::CookieJar;
 use chrono::{DateTime, Utc};
-use cookie::{time::Duration, Cookie, SameSite};
-use firestore::{path_camel_case, FirestoreResult};
-use futures::{stream::BoxStream, TryStreamExt};
+use cookie::{Cookie, SameSite, time::Duration};
+use firestore::{FirestoreResult, path_camel_case};
+use futures::{TryStreamExt, stream::BoxStream};
 use otp::{
-    types::{ObjectId, ObjectType},
     Operation,
+    types::{ObjectId, ObjectType},
 };
 use rand::Rng;
 use sendgrid::v3::*;
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    AppError, AppState,
     storage::{
-        apply_object_updates, create_object, lookup_latest_snapshot, save_session,
-        ACCOUNTS_VIEW_COLLECTION, SESSIONS_COLLECTION,
+        ACCOUNTS_VIEW_COLLECTION, SESSIONS_COLLECTION, apply_object_updates, create_object,
+        lookup_latest_snapshot, save_session,
     },
     types::{Account, AccountRole},
     word_list::make_security_code,
-    AppError, AppState,
 };
 
 pub type SessionId = String;

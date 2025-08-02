@@ -1,24 +1,24 @@
 use axum::response::{IntoResponse, Json};
 use axum::routing::{any, delete};
 use axum::{
+    Router,
     extract::ws::WebSocketUpgrade,
     extract::{Path, State},
     routing::get,
     routing::patch,
     routing::post,
-    Router,
 };
-use axum_extra::extract::cookie::Cookie;
-use axum_extra::extract::CookieJar;
-use axum_extra::headers::UserAgent;
 use axum_extra::TypedHeader;
+use axum_extra::extract::CookieJar;
+use axum_extra::extract::cookie::Cookie;
+use axum_extra::headers::UserAgent;
 use chrono::{DateTime, Datelike, Utc};
 use cookie::time::Duration;
-use firestore::{path_camel_case, FirestoreQueryDirection, FirestoreResult};
-use futures::stream::BoxStream;
+use firestore::{FirestoreQueryDirection, FirestoreResult, path_camel_case};
 use futures::TryStreamExt;
-use otp::types::{Object, ObjectId, ObjectType, Patch, RevId};
+use futures::stream::BoxStream;
 use otp::Operation;
+use otp::types::{Object, ObjectId, ObjectType, Patch, RevId};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -28,12 +28,12 @@ use tower_http::cors::CorsLayer;
 
 use axum::extract::connect_info::ConnectInfo;
 
-use crate::passport::{passport_routes, Session};
+use crate::passport::{Session, passport_routes};
 use crate::session::{account_role, author_from_session};
 use crate::storage::{
-    apply_object_updates, create_object, lookup_latest_snapshot, lookup_object_,
     ACCOUNTS_VIEW_COLLECTION, BOULDERS_VIEW_COLLECTION, OBJECTS_COLLECTION, PATCHES_COLLECTION,
-    SESSIONS_COLLECTION,
+    SESSIONS_COLLECTION, apply_object_updates, create_object, lookup_latest_snapshot,
+    lookup_object_,
 };
 use crate::types::{Account, AccountRole, Boulder};
 use crate::ws::handle_socket;
