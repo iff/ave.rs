@@ -1,3 +1,4 @@
+use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json};
 use axum::routing::{any, delete};
 use axum::{
@@ -766,26 +767,21 @@ async fn feed(
     let user_agent = if let Some(TypedHeader(user_agent)) = user_agent {
         user_agent.to_string()
     } else {
-        String::from("Unknown browser")
+        String::from("unknown browser")
     };
     tracing::debug!("`{user_agent}` at {addr} connected.");
 
-    // keeping ugly version for now
-    let path = state.db.parent_path("gyms", gym).expect("gym exitsts");
-
-    // finalize the upgrade process by returning upgrade callback.
-    ws.on_upgrade(move |socket| handle_socket(socket, addr, state, path))
-
-    // TODO this seems to break upgrade somehow?
-    // match state.db.parent_path("gyms", gym.clone()) {
-    //     Ok(path) => ws.on_upgrade(move |socket| handle_socket(socket, addr, state, path)),
-    //     Err(e) => {
-    //         tracing::error!("firestore parent_path {gym}: {e:?}");
-    //         (
-    //             StatusCode::INTERNAL_SERVER_ERROR,
-    //             format!("firestore parent_path {gym}: {e:?}"),
-    //         )
-    //             .into_response()
-    //     }
-    // };
+    match state.db.parent_path("gyms", &gym) {
+        Ok(path) => ws
+            .on_upgrade(move |socket| handle_socket(socket, addr, state, path))
+            .into_response(),
+        Err(e) => {
+            tracing::error!("firestore parent_path {gym}: {e:?}");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("firestore parent_path {gym}: {e:?}"),
+            )
+                .into_response()
+        }
+    };
 }
