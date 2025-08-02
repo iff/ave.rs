@@ -20,7 +20,7 @@ mod ws;
 use otp::OtError;
 
 pub fn config_env_var(name: &str) -> Result<String, String> {
-    std::env::var(name).map_err(|e| format!("{}: {}", name, e))
+    std::env::var(name).map_err(|e| format!("{name}: {e}"))
 }
 
 #[derive(Clone)]
@@ -37,8 +37,6 @@ enum AppError {
     Firestore(FirestoreError),
     // query error
     Query(),
-    // should not happen but lets see something in the logs otherwise
-    NotImplemented(),
     // unable to parse json content into type
     ParseError(String),
     // No session found
@@ -67,7 +65,7 @@ impl IntoResponse for AppError {
             ),
             AppError::Firestore(FirestoreError::DatabaseError(e)) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("database error: {}", e.details).to_string(),
+                format!("database error: {}", e.details),
             ),
             AppError::Firestore(FirestoreError::DataConflictError(_)) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -103,14 +101,10 @@ impl IntoResponse for AppError {
             AppError::Query() => (StatusCode::BAD_REQUEST, "can't handle req".to_string()),
             AppError::ParseError(err) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("parse error: {}", err).to_string(),
+                format!("parse error: {err}"),
             ),
             AppError::NoSession() => (StatusCode::NOT_FOUND, "session not found".to_string()),
             AppError::NotAuthorized() => (StatusCode::BAD_REQUEST, "not authorized".to_string()),
-            // TODO
-            AppError::NotImplemented() => {
-                (StatusCode::NOT_IMPLEMENTED, "not implemented".to_string())
-            }
         };
 
         let body = Json(json!({
@@ -136,16 +130,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    // see https://github.com/abdolence/gcloud-sdk-rs/blob/master/examples/firestore-client/src/main.rs
-    // Detect Google project ID using environment variables PROJECT_ID/GCP_PROJECT_ID
-    // or GKE metadata server when the app runs inside GKE
-    // let google_project_id = GoogleEnvironment::detect_google_project_id().await
-    //     .expect("No Google Project ID detected. Please specify it explicitly using env variable: PROJECT_ID");
-    //
-    // let cloud_resource_prefix = format!("projects/{}/databases/(default)", google_project_id);
-    // FirestoreDb::with_options(FirestoreDbOptions)
-
-    // TODO arc needed?
     let state = AppState {
         db: Arc::new(FirestoreDb::new(&config_env_var("PROJECT_ID")?).await?),
     };

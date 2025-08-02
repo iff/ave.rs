@@ -517,8 +517,6 @@ fn api_routes() -> Router<AppState> {
         .route("/{gym}/objects/{id}", patch(patch_object))
         // lookup patch
         .route("/{gym}/objects/{id}/patches/{rev_id}", get(lookup_patch))
-        // changes (patches) on object (raw websocket)
-        .route("/{gym}/objects/{id}/changes", get(object_changes))
         // feed (raw websocket) -- to subscribe to object updates (patches)
         .route("/{gym}/feed", any(feed))
 }
@@ -697,6 +695,7 @@ async fn patch_object(
                 // drafts can be edited by any admin/setter
             } else {
                 // admin and setter of boulder or created by
+                #[allow(clippy::collapsible_if)]
                 if role == AccountRole::Setter {
                     if !(id.clone() == created_by || boulder.in_setter(&created_by.clone())) {
                         tracing::debug!("PATCH: setter cant patch this boulder");
@@ -789,13 +788,4 @@ async fn feed(
     //             .into_response()
     //     }
     // };
-}
-
-// XXX maybe don't needed
-
-async fn object_changes(
-    State(_state): State<AppState>,
-    Path((_gym, _id)): Path<(String, String)>,
-) -> Result<Json<Object>, AppError> {
-    Err(AppError::NotImplemented())
 }
