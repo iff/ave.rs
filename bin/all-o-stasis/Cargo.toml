@@ -1,10 +1,10 @@
 [package]
 name = "all-o-stasis"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
-otp = { path = "../../avers-otp", version = "0.1.0" }
+otp = { path = "../../crates/otp", version = "0.1.0" }
 axum = { version = "0.8.1", features = ["ws"] }
 axum-extra = { version = "0.10.1", features = ["cookie", "typed-header"] }
 chrono = "0.4.38"

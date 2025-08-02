@@ -1,3 +1,14 @@
 [workspace]
-members = [ "bin/*", "avers-otp" ]
+members = ["bin/*", "crates/otp"]
 resolver = "2"
+
+[workspace.package]
+publish = false
+edition = "2024"
+
+[profile.release]
+debug = false
+lto = "fat"
+codegen-units = 1
+opt-level = 3
+strip = true
