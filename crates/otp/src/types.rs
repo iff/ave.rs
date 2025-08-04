@@ -35,6 +35,15 @@ pub struct Object {
     pub deleted: Option<bool>,
 }
 
+impl fmt::Display for Object {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.id {
+            None => write!(f, "Object: no id {}", self.object_type),
+            Some(id) => write!(f, "Object: {id} {}", self.object_type),
+        }
+    }
+}
+
 // here we fix types to those instead of doing a generic str to type "cast"
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -42,6 +51,16 @@ pub enum ObjectType {
     Account,
     Boulder,
     Passport,
+}
+
+impl fmt::Display for ObjectType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ObjectType::Account => write!(f, "type=account"),
+            ObjectType::Boulder => write!(f, "type=boulder"),
+            ObjectType::Passport => write!(f, "type=passport"),
+        }
+    }
 }
 
 impl Object {

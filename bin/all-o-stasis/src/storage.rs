@@ -18,8 +18,30 @@ pub const PATCHES_COLLECTION: &str = "patches";
 pub const SESSIONS_COLLECTION: &str = "sessions";
 pub const SNAPSHOTS_COLLECTION: &str = "snapshots";
 
-// TODO generic store op using templates and table name?
-// TODO dont return Option, Err here - for all store and so
+macro_rules! store {
+    ($state:expr, $gym:expr, $entity:expr, $collection:expr) => {{
+        let parent_path = $state.db.parent_path("gyms", $gym)?;
+        let result = $state
+            .db
+            .fluent()
+            .insert()
+            .into($collection)
+            .generate_document_id()
+            .parent(&parent_path)
+            .object($entity)
+            .execute()
+            .await?;
+
+        match &result {
+            Some(r) => tracing::debug!("storing: {r}"),
+            None => tracing::warn!("failed to store: {}", $entity),
+        }
+
+        result
+    }};
+}
+
+// TODO only diff here is that we provide an id
 pub(crate) async fn save_session(
     state: &AppState,
     gym: &String,
@@ -40,58 +62,7 @@ pub(crate) async fn save_session(
 
     match p.clone() {
         Some(p) => tracing::debug!("storing session: {p}"),
-        None => tracing::debug!("failed to store session: {session}"),
-    }
-
-    Ok(p)
-}
-
-// TODO generic store op using templates and table name?
-pub(crate) async fn store_patch(
-    state: &AppState,
-    gym: &String,
-    patch: &Patch,
-) -> Result<Option<Patch>, AppError> {
-    let parent_path = state.db.parent_path("gyms", gym)?;
-    let p: Option<Patch> = state
-        .db
-        .fluent()
-        .insert()
-        .into(PATCHES_COLLECTION)
-        .generate_document_id() // FIXME do generate an id here?
-        .parent(&parent_path)
-        .object(patch)
-        .execute()
-        .await?;
-
-    match p.clone() {
-        Some(p) => tracing::debug!("storing: {p}"),
-        None => tracing::debug!("failed to store: {patch}"),
-    }
-
-    Ok(p)
-}
-
-async fn store_snapshot(
-    state: &AppState,
-    gym: &String,
-    snapshot: &Snapshot,
-) -> Result<Option<Snapshot>, AppError> {
-    let parent_path = state.db.parent_path("gyms", gym)?;
-    let p: Option<Snapshot> = state
-        .db
-        .fluent()
-        .insert()
-        .into(SNAPSHOTS_COLLECTION)
-        .generate_document_id() // FIXME do generate an id here?
-        .parent(&parent_path)
-        .object(snapshot)
-        .execute()
-        .await?;
-
-    match p.clone() {
-        Some(p) => tracing::debug!("storing: {p}"),
-        None => tracing::debug!("failed to store: {snapshot}"),
+        None => tracing::warn!("failed to store session: {session}"),
     }
 
     Ok(p)
@@ -104,23 +75,12 @@ pub(crate) async fn create_object(
     object_type: ObjectType,
     value: Value,
 ) -> Result<Object, AppError> {
-    let parent_path = state.db.parent_path("gyms", gym)?;
     let obj = Object::new(object_type);
-    let obj: Option<Object> = state
-        .db
-        .fluent()
-        .insert()
-        .into(OBJECTS_COLLECTION)
-        .generate_document_id()
-        .parent(&parent_path)
-        .object(&obj)
-        .execute()
-        .await?;
-
+    let obj: Option<Object> = store!(state, gym, &obj, OBJECTS_COLLECTION);
     let obj = obj.ok_or_else(AppError::Query)?;
 
     let patch = Patch::new(obj.id(), author_id, &value);
-    let patch = store_patch(state, gym, &patch).await?;
+    let patch: Option<Patch> = store!(state, gym, &patch, PATCHES_COLLECTION);
     let _ = patch.ok_or_else(AppError::Query)?;
 
     update_view(state, gym, &obj.id(), &value).await?;
@@ -151,7 +111,7 @@ pub(crate) async fn update_view(
     match obj.object_type {
         ObjectType::Account => {
             let account = from_value::<Account>(content.clone())
-                .map_err(|e| AppError::ParseError(format!("{} in: {}", e, content)))?;
+                .map_err(|e| AppError::ParseError(format!("{e} in: {content}")))?;
 
             let _: Option<Account> = state
                 .db
@@ -166,7 +126,7 @@ pub(crate) async fn update_view(
         }
         ObjectType::Boulder => {
             let boulder = from_value::<Boulder>(content.clone())
-                .map_err(|e| AppError::ParseError(format!("{} in: {}", e, content)))?;
+                .map_err(|e| AppError::ParseError(format!("{e} in: {content}")))?;
 
             let _: Option<Boulder> = state
                 .db
@@ -258,7 +218,7 @@ pub(crate) async fn lookup_latest_snapshot(
             tracing::debug!("no snapshot found");
             // XXX we could already create the first snapshot on object creation?
             let snapshot = Snapshot::new(obj_id.clone());
-            store_snapshot(state, gym, &snapshot).await?;
+            let _: Option<Snapshot> = store!(state, gym, &snapshot, SNAPSHOTS_COLLECTION);
             snapshot
         }
     };
@@ -315,7 +275,7 @@ async fn lookup_snapshot_between(
             // TODO we could already create the first snapshot on object creation?
             // TODO why is initial snapshot rev = -1?
             let snapshot = Snapshot::new(obj_id.clone());
-            store_snapshot(state, gym, &snapshot).await?;
+            let _: Option<Snapshot> = store!(state, gym, &snapshot, SNAPSHOTS_COLLECTION);
             Ok(snapshot)
         }
     }
@@ -380,7 +340,7 @@ async fn patches_after_revision(
 
 fn apply_patch_to_snapshot(snapshot: &Snapshot, patch: &Patch) -> Result<Snapshot, AppError> {
     let s = Snapshot {
-        object_id: snapshot.object_id.clone(),
+        object_id: snapshot.object_id.to_owned(),
         revision_id: patch.revision_id,
         content: patch.operation.apply_to(snapshot.content.clone())?,
     };
@@ -493,6 +453,7 @@ pub async fn apply_object_updates(
 }
 
 /// try rebase and then apply the operation to get a new snapshot (or return the old)
+#[allow(clippy::too_many_arguments)]
 async fn save_operation(
     state: &AppState,
     gym: &String,
@@ -534,9 +495,8 @@ async fn save_operation(
         revision_id: rev_id,
         content: new_content,
     };
-    store_snapshot(state, gym, &new_snapshot)
-        .await?
-        .ok_or_else(AppError::Query)?;
+    let s: Option<Snapshot> = store!(state, gym, &new_snapshot, SNAPSHOTS_COLLECTION);
+    s.ok_or_else(AppError::Query)?;
 
     // FIXME moved to here but we should probably only do that for the final snapshot?
     update_view(state, gym, &new_snapshot.object_id, &new_snapshot.content).await?;
@@ -548,9 +508,8 @@ async fn save_operation(
         created_at: None,
         operation: new_op.to_owned(),
     };
-    store_patch(state, gym, &patch)
-        .await?
-        .ok_or_else(AppError::Query)?;
+    let p: Option<Patch> = store!(state, gym, &patch, PATCHES_COLLECTION);
+    p.ok_or_else(AppError::Query)?;
 
     // TODO maybe await here? or return futures?
     Ok(Some(patch))
