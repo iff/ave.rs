@@ -52,7 +52,7 @@ impl fmt::Display for Boulder {
         write!(
             f,
             "Boulder: {}",
-            serde_json::to_string_pretty(self).unwrap()
+            serde_json::to_string_pretty(self).expect("serialisation should not fail")
         )
     }
 }

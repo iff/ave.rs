@@ -468,16 +468,16 @@ async fn save_operation(
     let new_op = match rebase(base_content, op, previous_patches) {
         Ok(Some(new_op)) => new_op,
         Ok(None) => {
-            tracing::debug!("rebase had a conflicting patch");
+            tracing::warn!("rebase had a conflicting patch");
             return Ok(None);
         }
         Err(e) => {
-            tracing::debug!("rebase failed with error: {e}");
+            tracing::error!("rebase failed with error: {e}");
             return Ok(None);
         }
     };
 
-    tracing::debug!("save_operation: {snapshot}, op={new_op}");
+    // tracing::debug!("save_operation: {snapshot}, op={new_op}");
     // FIXME clone?
     let new_content = new_op.apply_to(snapshot.content.to_owned())?;
     if new_content == snapshot.content {

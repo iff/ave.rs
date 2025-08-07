@@ -226,6 +226,7 @@ pub fn app(state: AppState) -> Router {
 }
 
 async fn revision(State(_state): State<AppState>) -> Result<&'static str, AppError> {
+    // TODO return version
     Ok("some git sha - no cheating!")
 }
 
@@ -323,7 +324,7 @@ async fn draft_boulders(
     Ok(Json(
         as_vec
             .into_iter()
-            .map(|b| b.id.expect("object in view has no id")) // TODO no panic
+            .map(|b| b.id.expect("object in view always has an id"))
             .collect(),
     ))
 }
@@ -356,7 +357,7 @@ async fn own_boulders(
     Ok(Json(
         as_vec
             .into_iter()
-            .map(|b| b.id.expect("object in view has no id")) // TODO no panic
+            .map(|b| b.id.expect("object in view always has an id"))
             .collect(),
     ))
 }
@@ -380,7 +381,7 @@ async fn accounts(
     Ok(Json(
         as_vec
             .into_iter()
-            .map(|b| b.id.expect("object in view has no id")) // TODO no panic
+            .map(|b| b.id.expect("object in view always has an id"))
             .collect(),
     ))
 }
@@ -409,7 +410,7 @@ async fn admin_accounts(
     Ok(Json(
         as_vec
             .into_iter()
-            .map(|b| b.id.expect("object in view has no id")) // TODO no panic
+            .map(|b| b.id.expect("object in view always has an id"))
             .collect(),
     ))
 }
