@@ -1,6 +1,6 @@
 use rand::seq::IteratorRandom;
 
-const WORDLIST: [&str; 1626] = [
+static WORDLIST: [&str; 1626] = [
     "Abakus",
     "Abart",
     "abbilden",
