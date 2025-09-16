@@ -16,7 +16,6 @@ use otp::{
     types::{ObjectId, ObjectType},
 };
 use rand::Rng;
-use sendgrid::v3::*;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -28,6 +27,77 @@ use crate::{
     types::{Account, AccountRole},
     word_list::make_security_code,
 };
+
+mod maileroo {
+    use crate::AppError;
+    use reqwest::blocking::Client;
+    use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue};
+    use serde::Serialize;
+
+    const MAILEROO_API_BASE_URL: &str = "https://smtp.maileroo.com/api/v2";
+
+    #[derive(Serialize, Debug)]
+    struct EmailAddress {
+        address: String,
+        display_name: Option<String>,
+    }
+
+    #[derive(Serialize, Debug)]
+    struct EmailData {
+        to: Vec<EmailAddress>,
+        from: EmailAddress,
+        subject: String,
+        html: String,
+    }
+
+    pub struct Email {
+        data: EmailData,
+    }
+
+    impl Email {
+        pub fn new(to: String, subject: String, body: String) -> Self {
+            Self {
+                data: EmailData {
+                    to: vec![EmailAddress {
+                        address: to,
+                        display_name: None,
+                    }],
+                    from: EmailAddress {
+                        address: String::from("auth@boulderhalle.app"),
+                        display_name: None,
+                    },
+                    subject,
+                    html: body,
+                },
+            }
+        }
+
+        pub fn send(self) -> Result<(), AppError> {
+            let api_key = ::std::env::var("MAILEROO_API_KEY").expect("no maileroo api key");
+            let request = serde_json::to_string(&self.data).expect("serialisation to json");
+            let client = Client::new();
+            let mut headers = HeaderMap::new();
+            headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+            let response = client
+                .post(format!("{MAILEROO_API_BASE_URL}/emails"))
+                .headers(headers)
+                .bearer_auth(api_key.to_owned())
+                .body(request)
+                .send();
+            match response {
+                Ok(_response) => {
+                    // response.json::<type>().map_err(AppError::Request())
+                    // keys = [data: {reference_id}, message, success]
+                    Ok(())
+                }
+                Err(error) => {
+                    tracing::error!("{:?}", error);
+                    Err(AppError::Request())
+                }
+            }
+        }
+    }
+}
 
 pub type SessionId = String;
 
@@ -142,24 +212,7 @@ async fn send_email(
         "copy and paste this URL into your browser.".to_string(),
     ];
 
-    let p = Personalization::new(Email::new(email.clone()));
-
-    let m = Message::new(Email::new("auth@boulderhalle.app".to_string()))
-        .set_subject(&subject)
-        .add_content(
-            Content::new()
-                .set_content_type("text/html")
-                .set_value(body.join("<br/>")),
-        )
-        .add_personalization(p);
-
-    let api_key = ::std::env::var("SG_API_KEY").expect("no sendgrid api key");
-    let sender = Sender::new(api_key, None);
-    tracing::debug!("sending message to {email}");
-    let code = sender.send(&m).await;
-    tracing::debug!("{:?}", code);
-
-    Ok(())
+    maileroo::Email::new(email.clone(), subject, body.join("\n")).send()
 }
 
 async fn create_passport(

@@ -44,11 +44,11 @@ jobs:
 
       - name: deploy
         env:
-          SG_API_KEY: ${{ secrets.SG_API_KEY }}
+          MAILEROO_API_KEY: ${{ secrets.MAILEROO_API_KEY }}
         run: |
           BRANCH=${GITHUB_REF##*/}
           IMAGE=europe-west1-docker.pkg.dev/all-o-stasis/all-o-stasis/api:${BRANCH}
           # TODO adapt to branch and add dev/staging?
           CLOUD_RUN_SERVICE_NAME="api"
 
-          gcloud --project all-o-stasis run deploy $CLOUD_RUN_SERVICE_NAME --image=$IMAGE --region=europe-west1 --set-env-vars SG_API_KEY=$SG_API_KEY
+          gcloud --project all-o-stasis run deploy $CLOUD_RUN_SERVICE_NAME --image=$IMAGE --region=europe-west1 --set-env-vars MAILEROO_API_KEY=$MAILEROO_API_KEY
