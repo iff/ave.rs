@@ -32,7 +32,7 @@ mod maileroo {
     use crate::AppError;
     use reqwest::blocking::Client;
     use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue};
-    use serde::Serialize;
+    use serde::{Deserialize, Serialize};
 
     const MAILEROO_API_BASE_URL: &str = "https://smtp.maileroo.com/api/v2";
 
@@ -48,6 +48,20 @@ mod maileroo {
         from: EmailAddress,
         subject: String,
         html: String,
+    }
+
+    #[derive(Deserialize)]
+    struct ResponseData {
+        #[allow(dead_code)]
+        reference_id: String,
+    }
+
+    #[derive(Deserialize)]
+    struct Response {
+        #[allow(dead_code)]
+        data: ResponseData,
+        message: String,
+        success: bool,
     }
 
     pub struct Email {
@@ -73,7 +87,8 @@ mod maileroo {
         }
 
         pub fn send(self) -> Result<(), AppError> {
-            let api_key = ::std::env::var("MAILEROO_API_KEY").expect("no maileroo api key");
+            let api_key = ::std::env::var("MAILEROO_API_KEY")
+                .or(Err(AppError::Passport(String::from("no maileroo api key"))))?;
             let request = serde_json::to_string(&self.data).expect("serialisation to json");
             let client = Client::new();
             let mut headers = HeaderMap::new();
@@ -85,14 +100,22 @@ mod maileroo {
                 .body(request)
                 .send();
             match response {
-                Ok(_response) => {
-                    // response.json::<type>().map_err(AppError::Request())
-                    // keys = [data: {reference_id}, message, success]
-                    Ok(())
+                Ok(response) => {
+                    let r = response.json::<Response>().map_err(|e| {
+                        AppError::Passport(format!("failed to parse response: {e:?}"))
+                    })?;
+                    if r.success {
+                        Ok(())
+                    } else {
+                        Err(AppError::Passport(format!(
+                            "sending email failed: {}",
+                            r.message
+                        )))
+                    }
                 }
                 Err(error) => {
                     tracing::error!("{:?}", error);
-                    Err(AppError::Request())
+                    Err(AppError::Passport(format!("{error:?}")))
                 }
             }
         }

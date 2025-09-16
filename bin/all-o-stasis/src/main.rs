@@ -42,7 +42,7 @@ enum AppError {
     // No session found
     NoSession(),
     NotAuthorized(),
-    Request(),
+    Passport(String),
 }
 
 impl From<FirestoreError> for AppError {
@@ -106,7 +106,7 @@ impl IntoResponse for AppError {
             ),
             AppError::NoSession() => (StatusCode::NOT_FOUND, "session not found".to_string()),
             AppError::NotAuthorized() => (StatusCode::BAD_REQUEST, "not authorized".to_string()),
-            AppError::Request() => (StatusCode::BAD_REQUEST, "failed to send email".to_string()),
+            AppError::Passport(e) => (StatusCode::BAD_REQUEST, format!("passport failure: {e}")),
         };
 
         let body = Json(json!({
