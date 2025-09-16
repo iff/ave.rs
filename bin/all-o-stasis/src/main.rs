@@ -123,7 +123,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
                 format!(
-                    "{}=debug,tower_http=debug,firestore=debug",
+                    // "{}=debug,tower_http=info,firestore=debug",
+                    "{}=info,tower_http=info,firestore=info",
                     env!("CARGO_CRATE_NAME")
                 )
                 .into()
