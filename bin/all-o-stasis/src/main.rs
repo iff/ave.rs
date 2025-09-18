@@ -26,6 +26,7 @@ pub fn config_env_var(name: &str) -> Result<String, String> {
 #[derive(Clone)]
 struct AppState {
     pub db: Arc<FirestoreDb>,
+    pub api_host: String,
 }
 
 // The kinds of errors we can hit in our application.
@@ -135,15 +136,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let gcp_project_id = config_env_var("PROJECT_ID")?;
     // TODO prod should also be a named database
-    let options = match config_env_var("FIRESTORE_DATABASE_ID") {
-        Ok(name) => FirestoreDbOptions::new(gcp_project_id.to_string())
-            .with_database_id(name.to_string())
-            .with_max_retries(5),
-        Err(_) => FirestoreDbOptions::new(gcp_project_id.to_string()),
+    // TODO better configuration
+    let (options, api_host) = match config_env_var("FIRESTORE_DATABASE_ID") {
+        Ok(name) => (
+            FirestoreDbOptions::new(gcp_project_id.to_string())
+                .with_database_id(name.to_string())
+                .with_max_retries(5),
+            "https://apiv2-dev.boulderhalle.app",
+        ),
+        Err(_) => (
+            FirestoreDbOptions::new(gcp_project_id.to_string()),
+            "https://apiv2.boulderhalle.app",
+        ),
     };
 
     let state = AppState {
         db: Arc::new(FirestoreDb::with_options(options).await?),
+        api_host: api_host.to_string(),
     };
     tracing::debug!("connected to firestore");
 

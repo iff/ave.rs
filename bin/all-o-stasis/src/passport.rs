@@ -212,13 +212,14 @@ fn new_id(len: usize) -> String {
 
 async fn send_email(
     email: String,
+    api_host: String,
     api_domain: String,
     passport_id: String,
     security_code: String,
     confirmation_token: String,
 ) -> Result<(), AppError> {
     let confirmation_url = format!(
-        "https://apiv2.boulderhalle.app/{api_domain}/login/confirm?passportId={passport_id}&confirmationToken={confirmation_token}",
+        "{api_host}/{api_domain}/login/confirm?passportId={passport_id}&confirmationToken={confirmation_token}",
     );
     let subject = format!("{api_domain} Login Verification (code: \"{security_code}\")",);
     let body = [
@@ -306,6 +307,7 @@ async fn create_passport(
     // 3. Send email
     send_email(
         payload.email,
+        state.api_host,
         gym.clone(),
         passport_id.clone(),
         security_code.clone(),
@@ -371,10 +373,15 @@ async fn confirm_passport(
             .same_site(SameSite::None)
             .http_only(true);
 
-        // FIXME we need the app url
+        let redirect_host = if state.api_host.contains("dev") {
+            String::from("https://dev.boulderhalle.app")
+        } else {
+            // NOTE for now just map gym => https://gym.boulderhalle.app/email-confirmed
+            format!("https://{gym}.boulderhalle.app")
+        };
         Ok((
             jar.add(cookie),
-            Redirect::permanent("https://all-o-stasis-oxy.vercel.app/email-confirmed"),
+            Redirect::permanent(format!("{redirect_host}/email-confirmed").as_str()),
         ))
     }
 }
