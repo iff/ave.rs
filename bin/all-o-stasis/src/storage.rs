@@ -41,13 +41,13 @@ macro_rules! store {
     }};
 }
 
-// TODO only diff here is that we provide an id
+// TODO only diff here is that we provide an id and update
 pub(crate) async fn save_session(
     state: &AppState,
     gym: &String,
     session: &Session,
     session_id: &str,
-) -> Result<Option<Session>, AppError> {
+) -> Result<Session, AppError> {
     let parent_path = state.db.parent_path("gyms", gym)?;
     let p: Option<Session> = state
         .db
@@ -60,12 +60,16 @@ pub(crate) async fn save_session(
         .execute()
         .await?;
 
-    match p.clone() {
-        Some(p) => tracing::debug!("storing session: {p}"),
-        None => tracing::warn!("failed to store session: {session}"),
+    match p {
+        Some(p) => {
+            tracing::debug!("storing session: {p}");
+            Ok(p)
+        }
+        None => {
+            tracing::warn!("failed to update session: {session} (no such object exists");
+            Err(AppError::NoSession())
+        }
     }
-
-    Ok(p)
 }
 
 pub(crate) async fn create_object(

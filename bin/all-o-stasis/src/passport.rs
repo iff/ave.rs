@@ -346,8 +346,7 @@ async fn confirm_passport(
             },
             &new_id(80),
         )
-        .await?
-        .ok_or_else(AppError::Query)?; // FIXME error
+        .await?;
 
         // mark as valid
         let op = Operation::try_new_set(
