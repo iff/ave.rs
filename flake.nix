@@ -51,7 +51,7 @@
           docker push $IMAGE
 
           gcloud --project $PROJECT_ID run deploy $CLOUD_RUN_SERVICE_NAME --image=$IMAGE --region=europe-west1 \
-            --set-env-vars MAILEROO_API_KEY=$MAILEROO_API_KEY
+            --set-env-vars MAILEROO_API_KEY=$MAILEROO_API_KEY,FIRESTORE_DATABASE_ID=dev-db
         '';
 
       app = pkgs.rustPlatform.buildRustPackage {

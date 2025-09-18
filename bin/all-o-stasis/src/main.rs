@@ -3,8 +3,8 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::response::Json;
 use axum::response::Response;
-use firestore::FirestoreDb;
 use firestore::errors::FirestoreError;
+use firestore::{FirestoreDb, FirestoreDbOptions};
 use serde_json::json;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -133,8 +133,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
+    let gcp_project_id = config_env_var("PROJECT_ID")?;
+    // TODO prod should also be a named database
+    let options = match config_env_var("FIRESTORE_DATABASE_ID") {
+        Ok(name) => FirestoreDbOptions::new(gcp_project_id.to_string())
+            .with_database_id(name.to_string())
+            .with_max_retries(5),
+        Err(_) => FirestoreDbOptions::new(gcp_project_id.to_string()),
+    };
+
     let state = AppState {
-        db: Arc::new(FirestoreDb::new(&config_env_var("PROJECT_ID")?).await?),
+        db: Arc::new(FirestoreDb::with_options(options).await?),
     };
     tracing::debug!("connected to firestore");
 
