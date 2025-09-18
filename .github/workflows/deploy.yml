@@ -7,7 +7,7 @@ on:
       - main
 
 jobs:
-  backup:
+  deploy:
     runs-on: ubuntu-latest
     name: deploy
     permissions:
