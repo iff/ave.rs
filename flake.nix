@@ -40,8 +40,7 @@
           set -eux -o pipefail
 
           PROJECT_ID=all-o-stasis
-          SERVICE=api
-          CLOUD_RUN_SERVICE_NAME=$SERVICE
+          CLOUD_RUN_SERVICE_NAME=api-dev
           MAILEROO_API_KEY=$(op read "op://personal/maileroo boulderapp/credential" --no-newline)
 
           # TODO: try skopeo and imageId (see cruel world)
