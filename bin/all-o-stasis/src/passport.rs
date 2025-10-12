@@ -1,5 +1,6 @@
 use std::fmt;
 
+use crate::types::ObjectType;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
@@ -11,10 +12,7 @@ use chrono::{DateTime, Utc};
 use cookie::{Cookie, SameSite, time::Duration};
 use firestore::{FirestoreResult, path_camel_case};
 use futures::{TryStreamExt, stream::BoxStream};
-use otp::{
-    Operation,
-    types::{ObjectId, ObjectType},
-};
+use otp::{ObjectId, Operation};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 

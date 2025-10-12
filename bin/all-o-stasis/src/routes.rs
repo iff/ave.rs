@@ -1,3 +1,4 @@
+use crate::types::{Object, ObjectDoc, ObjectType, Patch};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json};
 use axum::routing::{any, delete};
@@ -19,7 +20,7 @@ use firestore::{FirestoreQueryDirection, FirestoreResult, path_camel_case};
 use futures::TryStreamExt;
 use futures::stream::BoxStream;
 use otp::Operation;
-use otp::types::{Object, ObjectDoc, ObjectId, ObjectType, Patch, RevId};
+use otp::{ObjectId, RevId};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -138,7 +139,8 @@ async fn object_type(
         .await?;
 
     if let Some(doc) = object_doc {
-        let object: Object = doc.try_into()
+        let object: Object = doc
+            .try_into()
             .map_err(|e| AppError::Query(format!("lookup_object_type: {e}")))?;
         Ok(object.object_type)
     } else {

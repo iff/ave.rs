@@ -1,5 +1,4 @@
-use crate::OtError;
-use crate::types::Path;
+use crate::{OtError, Path};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fmt;
@@ -353,7 +352,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::ROOT_PATH;
+    use crate::ROOT_PATH;
     use quickcheck::{Arbitrary, Gen};
     use quickcheck_macros::quickcheck;
     use serde::{Deserialize, Serialize};

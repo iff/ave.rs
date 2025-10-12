@@ -1,3 +1,4 @@
+use crate::types::Patch;
 use axum::body::Bytes;
 use axum::extract::ws::{Message, Utf8Bytes, WebSocket};
 use chrono::{DateTime, Utc};
@@ -7,7 +8,7 @@ use firestore::{
 };
 use futures::stream::{SplitSink, SplitStream};
 use futures::{SinkExt, StreamExt, TryStreamExt};
-use otp::types::{ObjectId, Patch};
+use otp::ObjectId;
 use serde::Serialize;
 use std::collections::hash_map::DefaultHasher;
 use std::error::Error;

@@ -4,10 +4,26 @@ use std::fmt;
 mod operation;
 mod path;
 mod rebase;
-pub mod types;
 
 pub use crate::operation::Operation;
 pub use crate::rebase::rebase;
+
+pub type Path = String;
+
+// This path refers to the root of an object. It is only used in 'Set'
+// operations.
+pub const ROOT_PATH: &str = "";
+
+// The root object id is used for object created internally or when there
+// is no applicable creator.
+pub const ROOT_OBJ_ID: &str = "";
+
+pub type RevId = i64;
+
+// The 'RevId' which is used for the initial snapshot.
+pub const ZERO_REV_ID: RevId = 0;
+
+pub type ObjectId = String;
 
 #[derive(Debug)]
 pub enum OtError {

@@ -167,8 +167,7 @@ fn op_ot(content: &Value, base: &Operation, op: Operation) -> Option<Operation> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Operation;
-    use crate::types::ROOT_PATH;
+    use crate::{Operation, ROOT_PATH};
     use quickcheck::{Arbitrary, Gen};
     use quickcheck_macros::quickcheck;
     use serde::{Deserialize, Serialize};
