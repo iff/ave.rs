@@ -1,6 +1,5 @@
 use std::fmt;
 
-use crate::types::ObjectType;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
@@ -22,7 +21,7 @@ use crate::{
         ACCOUNTS_VIEW_COLLECTION, SESSIONS_COLLECTION, apply_object_updates, create_object,
         lookup_latest_snapshot, save_session,
     },
-    types::{Account, AccountRole},
+    types::{Account, AccountRole, ObjectType},
     word_list::make_security_code,
 };
 
@@ -122,7 +121,7 @@ mod maileroo {
 
 pub type SessionId = String;
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Session {
     #[serde(alias = "_firestore_id")]
@@ -144,7 +143,7 @@ impl fmt::Display for Session {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Passport {
     account_id: ObjectId,
@@ -153,7 +152,7 @@ struct Passport {
     validity: PassportValidity,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 enum PassportValidity {
     Unconfirmed,
@@ -161,27 +160,27 @@ enum PassportValidity {
     Expired,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CreatePassportBody {
     email: String,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CreatePassportResponse {
     passport_id: String,
     security_code: String,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ConfirmPassport {
     passport_id: String,
     confirmation_token: String,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct AwaitPassportConfirmation {
     passport_id: String,
@@ -299,7 +298,7 @@ async fn create_passport(
         confirmation_token: confirmation_token.clone(),
         validity: PassportValidity::Unconfirmed,
     };
-    let value = serde_json::to_value(passport.clone()).expect("serialising passport");
+    let value = serde_json::to_value(passport).expect("serialising passport");
     let obj = create_object(&state, &gym, account_id, ObjectType::Passport, &value).await?;
 
     let passport_id = obj.id.clone();
@@ -447,7 +446,7 @@ async fn await_passport_confirmation(
 
     let sessions: Vec<Session> = sessions_stream.try_collect().await?;
     let session_id = match sessions.first() {
-        Some(session) => Ok(session.clone().id.expect("session has id")),
+        Some(session) => Ok(session.id.clone().expect("session has id")),
         None => Err(AppError::NotAuthorized()),
     }?;
 
