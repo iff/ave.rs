@@ -1,4 +1,3 @@
-use crate::types::{Object, ObjectDoc, ObjectType, Patch};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json};
 use axum::routing::{any, delete};
@@ -19,8 +18,7 @@ use cookie::time::Duration;
 use firestore::{FirestoreQueryDirection, FirestoreResult, path_camel_case};
 use futures::TryStreamExt;
 use futures::stream::BoxStream;
-use otp::Operation;
-use otp::{ObjectId, RevId};
+use otp::{ObjectId, Operation, RevId};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -37,7 +35,7 @@ use crate::storage::{
     SESSIONS_COLLECTION, apply_object_updates, create_object, lookup_latest_snapshot,
     lookup_object_,
 };
-use crate::types::{Account, AccountRole, Boulder};
+use crate::types::{Account, AccountRole, Boulder, Object, ObjectDoc, ObjectType, Patch};
 use crate::ws::handle_socket;
 use crate::{AppError, AppState};
 

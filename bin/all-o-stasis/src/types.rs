@@ -66,7 +66,6 @@ impl Boulder {
     }
 }
 
-// need to find a way, eg apply trait that Patch implements
 // Object storage representation - used for Firestore serialization
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
