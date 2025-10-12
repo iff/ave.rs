@@ -4,7 +4,7 @@ use axum::Json;
 use firestore::{FirestoreQueryDirection, FirestoreResult, path_camel_case};
 use futures::TryStreamExt;
 use futures::stream::BoxStream;
-use otp::types::{Object, ObjectId, ObjectType, Patch, RevId, Snapshot, ZERO_REV_ID};
+use otp::types::{Object, ObjectDoc, ObjectId, ObjectType, Patch, RevId, Snapshot, ZERO_REV_ID};
 use otp::{Operation, rebase};
 use serde_json::{Value, from_value};
 
@@ -79,19 +79,23 @@ pub(crate) async fn create_object(
     object_type: ObjectType,
     value: &Value,
 ) -> Result<Object, AppError> {
-    let obj = Object::new(object_type);
-    let obj: Option<Object> = store!(state, gym, &obj, OBJECTS_COLLECTION);
-    let obj = obj.ok_or(AppError::Query(
+    let obj_doc = ObjectDoc::new(object_type);
+    let obj_doc: Option<ObjectDoc> = store!(state, gym, &obj_doc, OBJECTS_COLLECTION);
+    let obj_doc = obj_doc.ok_or(AppError::Query(
         "create_object: failed to create object".to_string(),
     ))?;
 
-    let patch = Patch::new(obj.id(), author_id, &value);
+    let obj: Object = obj_doc
+        .try_into()
+        .map_err(|e| AppError::Query(format!("create_object: {e}")))?;
+
+    let patch = Patch::new(obj.id.clone(), author_id, value);
     let patch: Option<Patch> = store!(state, gym, &patch, PATCHES_COLLECTION);
     let _ = patch.ok_or(AppError::Query(
         "create_object: failed to store patch".to_string(),
     ))?;
 
-    update_view(state, gym, &obj.id(), value).await?;
+    update_view(state, gym, &obj.id, value).await?;
 
     Ok(obj)
 }
@@ -105,7 +109,7 @@ pub(crate) async fn update_view(
     let parent_path = state.db.parent_path("gyms", gym)?;
 
     // lookup object to find out what type it is
-    let obj: Object = state
+    let obj: ObjectDoc = state
         .db
         .fluent()
         .select()
@@ -117,6 +121,10 @@ pub(crate) async fn update_view(
         .ok_or(AppError::Query(format!(
             "update_view: failed to update view for {object_id}"
         )))?;
+
+    let obj: Object = obj
+        .try_into()
+        .map_err(|e| AppError::Query(format!("update_view: {e}")))?;
 
     match obj.object_type {
         ObjectType::Account => {
@@ -164,7 +172,7 @@ pub(crate) async fn lookup_object_(
     id: ObjectId,
 ) -> Result<Json<LookupObjectResponse>, AppError> {
     let parent_path = state.db.parent_path("gyms", gym)?;
-    let obj: Object = state
+    let obj: ObjectDoc = state
         .db
         .fluent()
         .select()
@@ -177,14 +185,17 @@ pub(crate) async fn lookup_object_(
             "lookup_object: failed to get object {id}"
         )))?;
 
+    let obj: Object = obj
+        .try_into()
+        .map_err(|e| AppError::Query(format!("lookup_object: {e}")))?;
+
     tracing::debug!("looking up last snapshot for obj={id}");
     let snapshot = lookup_latest_snapshot(state, gym, &id.clone()).await?;
-    let created_at = obj.created_at.expect("object has created_at timestamp");
 
     Ok(Json(LookupObjectResponse {
         id,
         ot_type: obj.object_type,
-        created_at,
+        created_at: obj.created_at,
         created_by: obj.created_by,
         revision_id: snapshot.revision_id,
         content: snapshot.content,

@@ -22,25 +22,77 @@ pub const ZERO_REV_ID: RevId = 0;
 
 pub type ObjectId = String;
 
-#[derive(Serialize, Deserialize)]
+// TODO most of these types should go to a storage crate, only Patch is needed in rebase and we
+// need to find a way, eg apply trait that Patch implements
+// Object storage representation - used for Firestore serialization
+#[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct Object {
+pub struct ObjectDoc {
     #[serde(alias = "_firestore_id")]
-    id: Option<ObjectId>, // not nice that this has to be empty for id generation to work
+    pub id: Option<ObjectId>,
     #[serde(alias = "_firestore_created")]
-    pub created_at: Option<DateTime<Utc>>, // Option<FirestoreTimestamp>,
-    pub object_type: ObjectType, // TODO we should pass those as a template?
+    pub created_at: Option<DateTime<Utc>>,
+    pub object_type: ObjectType,
     pub created_by: ObjectId,
-    // delete the object which has a very different meaning from deleting a boulder
     pub deleted: Option<bool>,
+}
+
+impl ObjectDoc {
+    pub fn new(object_type: ObjectType) -> Self {
+        Self {
+            id: None,
+            object_type,
+            created_at: None,
+            created_by: ROOT_OBJ_ID.to_owned(),
+            deleted: None,
+        }
+    }
+}
+
+impl fmt::Display for ObjectDoc {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.id {
+            None => write!(f, "ObjectDoc: no id {}", self.object_type),
+            Some(id) => write!(f, "ObjectDoc: {id} {}", self.object_type),
+        }
+    }
+}
+
+pub struct Object {
+    pub id: ObjectId,
+    pub created_at: DateTime<Utc>,
+    pub object_type: ObjectType,
+    pub created_by: ObjectId,
+    pub deleted: bool,
+}
+
+impl TryFrom<ObjectDoc> for Object {
+    type Error = &'static str;
+
+    fn try_from(doc: ObjectDoc) -> Result<Self, Self::Error> {
+        Ok(Object {
+            id: doc.id.ok_or("Object missing id")?,
+            created_at: doc.created_at.ok_or("Object missing created_at")?,
+            object_type: doc.object_type,
+            created_by: doc.created_by,
+            deleted: doc.deleted.unwrap_or(false),
+        })
+    }
 }
 
 impl fmt::Display for Object {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &self.id {
-            None => write!(f, "Object: no id {}", self.object_type),
-            Some(id) => write!(f, "Object: {id} {}", self.object_type),
-        }
+        write!(f, "Object: {} {}", self.id, self.object_type)
+    }
+}
+
+impl Object {
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub fn get_type(&self) -> ObjectType {
+        self.object_type.clone()
     }
 }
 
@@ -60,31 +112,6 @@ impl fmt::Display for ObjectType {
             ObjectType::Boulder => write!(f, "type=boulder"),
             ObjectType::Passport => write!(f, "type=passport"),
         }
-    }
-}
-
-impl Object {
-    pub fn new(object_type: ObjectType) -> Object {
-        // TODO generete random id? (see Avers/Storage.hs)
-        // or use firestore ids
-        // TODO should we only allow to create Objects with non-optional id?
-        // eg use a proxy for adding one to the db and then mutate?
-        Object {
-            id: None,
-            object_type,
-            created_at: None,
-            created_by: ROOT_OBJ_ID.to_owned(),
-            deleted: None,
-        }
-    }
-
-    pub fn id(&self) -> String {
-        // FIXME
-        self.id.as_ref().expect("no id").to_string()
-    }
-
-    pub fn get_type(&self) -> ObjectType {
-        self.object_type.clone()
     }
 }
 

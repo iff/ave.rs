@@ -284,7 +284,7 @@ async fn create_passport(
             )
             .await?;
 
-            Ok(obj.id())
+            Ok(obj.id.clone())
         }
     };
     let account_id = maybe_account_id.or(Err(AppError::Query(
@@ -304,7 +304,7 @@ async fn create_passport(
     let value = serde_json::to_value(passport.clone()).expect("serialising passport");
     let obj = create_object(&state, &gym, account_id, ObjectType::Passport, &value).await?;
 
-    let passport_id = obj.id();
+    let passport_id = obj.id.clone();
 
     // 3. Send email
     send_email(

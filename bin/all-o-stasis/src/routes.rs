@@ -19,7 +19,7 @@ use firestore::{FirestoreQueryDirection, FirestoreResult, path_camel_case};
 use futures::TryStreamExt;
 use futures::stream::BoxStream;
 use otp::Operation;
-use otp::types::{Object, ObjectId, ObjectType, Patch, RevId};
+use otp::types::{Object, ObjectDoc, ObjectId, ObjectType, Patch, RevId};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -127,7 +127,7 @@ async fn object_type(
     object_id: ObjectId,
 ) -> Result<ObjectType, AppError> {
     let parent_path = state.db.parent_path("gyms", gym)?;
-    let object: Option<Object> = state
+    let object_doc: Option<ObjectDoc> = state
         .db
         .fluent()
         .select()
@@ -137,7 +137,9 @@ async fn object_type(
         .one(&object_id)
         .await?;
 
-    if let Some(object) = object {
+    if let Some(doc) = object_doc {
+        let object: Object = doc.try_into()
+            .map_err(|e| AppError::Query(format!("lookup_object_type: {e}")))?;
         Ok(object.object_type)
     } else {
         Err(AppError::NotAuthorized())
@@ -620,7 +622,7 @@ async fn new_object(
     let obj = create_object(&state, &gym, created_by, ot_type.clone(), &content).await?;
 
     Ok(Json(CreateObjectResponse {
-        id: obj.id(),
+        id: obj.id.clone(),
         ot_type,
         content,
     }))

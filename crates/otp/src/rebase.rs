@@ -9,19 +9,17 @@ use serde_json::Value;
 /// This function assumes that the patches apply cleanly to the content. Otherwise
 /// the function returns None.
 ///
-/// Returns the resulting Operation if rebase was successful, `None` if patches have
-/// conflicts and [`PatchError::Rebase`] if rebase operation fails.
+/// Returns the resulting Operation if rebase was successful, `None` if operations have
+/// conflicts and [`OtError::Rebase`] if rebase operation fails.
 ///
 /// ## Example
 ///
 /// ```rust
 /// // An operation rebased through an empty list of patches should be unchanged
 /// use serde_json::json;
-/// use otp::types::{Object, ObjectType};
 /// use otp::{rebase, Operation};
 ///
-/// let object = Object::new(ObjectType::Account);
-/// let value = serde_json::to_value(&object).unwrap();
+/// let value = json!({"name": "test", "count": 42});
 /// let op = Operation::Set {
 ///     path: String::from(""),
 ///     value: Some(value.clone()),
