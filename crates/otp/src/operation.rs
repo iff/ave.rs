@@ -1,5 +1,4 @@
-use crate::OtError;
-use crate::types::Path;
+use crate::{OtError, Path};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fmt;
@@ -97,9 +96,9 @@ impl Operation {
     ///
     /// Returns the [`Value`] after applying the [`Operation`] if the operation is successful.
     /// Otherwise
-    /// - [`OperationError::Key`] if splice operation contains invalid keys
-    /// - [`OperationError::Type`] if array types dont match or we dont work on object
-    /// - [`OperationError::ValueIsNotArray`] if splice insert opertion does not contain arrays
+    /// - [`OtError::Index`] if bound checks for splice fail
+    /// - [`OtError::Operation`] if applying the operation fails
+    /// - [`OtError::ValueIsNotArray`] if splice insert opertion does not contain arrays
     ///
     /// ## Set
     ///
@@ -120,11 +119,8 @@ impl Operation {
     /// ```rust
     /// use serde_json::json;
     /// use otp::Operation;
-    /// use otp::types::{Object, ObjectType};
     ///
-    /// // An operation rebased through an empty list of patches should be unchanged
-    /// let object = Object::new(ObjectType::Account);
-    /// let value = serde_json::to_value(&object).unwrap();
+    /// let value = json!({"name": "test", "count": 42});
     /// let op = Operation::Set {
     ///     path: String::from(""),
     ///     value: None,
@@ -356,7 +352,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::ROOT_PATH;
+    use crate::ROOT_PATH;
     use quickcheck::{Arbitrary, Gen};
     use quickcheck_macros::quickcheck;
     use serde::{Deserialize, Serialize};

@@ -1,6 +1,5 @@
+use crate::Path;
 use serde_json::Value;
-
-pub type Path = String;
 
 /// Check if path is reachable starting from value
 pub(crate) fn is_reachable(path: impl Into<Path>, value: &Value) -> bool {

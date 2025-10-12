@@ -3,7 +3,7 @@ use crate::storage::{ACCOUNTS_VIEW_COLLECTION, SESSIONS_COLLECTION};
 use crate::types::{Account, AccountRole};
 use crate::{AppError, AppState};
 use axum_extra::extract::cookie::Cookie;
-use otp::types::ObjectId;
+use otp::ObjectId;
 
 // pub(crate) async fn author_from_session(
 //     state: &AppState,
