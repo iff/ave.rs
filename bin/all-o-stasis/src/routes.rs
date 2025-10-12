@@ -40,7 +40,7 @@ use crate::types::{Account, AccountRole, Boulder};
 use crate::ws::handle_socket;
 use crate::{AppError, AppState};
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 struct BoulderStat {
     set_on: String,
@@ -50,14 +50,14 @@ struct BoulderStat {
     grade: String,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 struct PublicProfile {
     name: String,
     avatar: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CreateObjectBody {
     #[serde(rename = "type")]
@@ -65,7 +65,7 @@ struct CreateObjectBody {
     content: Value,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct LookupObjectResponse {
     pub id: ObjectId,
@@ -77,14 +77,14 @@ pub(crate) struct LookupObjectResponse {
     pub content: Value,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct LookupSessionResponse {
     id: String,
     obj_id: ObjectId,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CreateObjectResponse {
     id: ObjectId,
@@ -92,14 +92,14 @@ struct CreateObjectResponse {
     content: Value,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct PatchObjectBody {
     revision_id: RevId,
     operations: Vec<Operation>,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PatchObjectResponse {
     previous_patches: Vec<Patch>,
@@ -617,7 +617,7 @@ async fn new_object(
     let ot_type = payload.ot_type;
     let content = payload.content;
     // changing this to also add the object to the view
-    let obj = create_object(&state, &gym, created_by, ot_type.clone(), content.clone()).await?;
+    let obj = create_object(&state, &gym, created_by, ot_type.clone(), &content).await?;
 
     Ok(Json(CreateObjectResponse {
         id: obj.id(),
@@ -751,11 +751,15 @@ async fn lookup_patch(
         .stream_query_with_errors()
         .await?;
 
-    let patches: Vec<Patch> = patch_stream.try_collect().await?;
-    match patches.first() {
-        Some(patch) => Ok(Json(patch.clone())),
-        None => Err(AppError::Query()),
+    let mut patches: Vec<Patch> = patch_stream.try_collect().await?;
+    if patches.len() != 1 {
+        return Err(AppError::Query(format!(
+            "lookup_patch found {} patches, expecting only 1",
+            patches.len()
+        )));
     }
+    let patch = patches.pop().unwrap();
+    Ok(Json(patch))
 }
 
 async fn feed(

@@ -8,7 +8,7 @@ type SerdeObject = serde_json::Map<String, Value>;
 
 // TODO hide behind struct to disallow use outside?
 // TODO serde serializer also needs to check
-#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 #[serde(tag = "type")]
 #[serde(rename_all = "camelCase")]
 pub enum Operation {

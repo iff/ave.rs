@@ -22,7 +22,7 @@ pub const ZERO_REV_ID: RevId = 0;
 
 pub type ObjectId = String;
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Object {
     #[serde(alias = "_firestore_id")]
@@ -88,7 +88,7 @@ impl Object {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Patch {
     pub object_id: ObjectId,

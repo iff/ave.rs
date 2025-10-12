@@ -265,7 +265,7 @@ async fn create_passport(
 
     let accounts: Vec<Account> = account_stream.try_collect().await?;
     let maybe_account_id: Result<ObjectId, AppError> = match accounts.first() {
-        Some(account) => Ok(account.clone().id.expect("object has no id")),
+        Some(account) => Ok(account.id.clone().expect("object has no id")),
         None => {
             let account = Account {
                 id: None,
@@ -274,20 +274,22 @@ async fn create_passport(
                 login: "aaa".to_string(), // FIXME??
                 name: None,
             };
-            let value = serde_json::to_value(account.clone()).expect("serialising account");
+            let value = serde_json::to_value(account).expect("serialising account");
             let obj = create_object(
                 &state,
                 &gym,
                 String::from(""), // TODO fine?
                 ObjectType::Account,
-                value,
+                &value,
             )
             .await?;
 
             Ok(obj.id())
         }
     };
-    let account_id = maybe_account_id.or(Err(AppError::Query()))?;
+    let account_id = maybe_account_id.or(Err(AppError::Query(
+        "create_passport: failed to create/get account id".to_string(),
+    )))?;
 
     // 2. Create a new Passport object.
     let security_code = make_security_code().expect("security code creation failed");
@@ -300,7 +302,7 @@ async fn create_passport(
         validity: PassportValidity::Unconfirmed,
     };
     let value = serde_json::to_value(passport.clone()).expect("serialising passport");
-    let obj = create_object(&state, &gym, account_id, ObjectType::Passport, value).await?;
+    let obj = create_object(&state, &gym, account_id, ObjectType::Passport, &value).await?;
 
     let passport_id = obj.id();
 

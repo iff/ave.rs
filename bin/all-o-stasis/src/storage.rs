@@ -77,17 +77,21 @@ pub(crate) async fn create_object(
     gym: &String,
     author_id: ObjectId,
     object_type: ObjectType,
-    value: Value,
+    value: &Value,
 ) -> Result<Object, AppError> {
     let obj = Object::new(object_type);
     let obj: Option<Object> = store!(state, gym, &obj, OBJECTS_COLLECTION);
-    let obj = obj.ok_or_else(AppError::Query)?;
+    let obj = obj.ok_or(AppError::Query(
+        "create_object: failed to create object".to_string(),
+    ))?;
 
     let patch = Patch::new(obj.id(), author_id, &value);
     let patch: Option<Patch> = store!(state, gym, &patch, PATCHES_COLLECTION);
-    let _ = patch.ok_or_else(AppError::Query)?;
+    let _ = patch.ok_or(AppError::Query(
+        "create_object: failed to store patch".to_string(),
+    ))?;
 
-    update_view(state, gym, &obj.id(), &value).await?;
+    update_view(state, gym, &obj.id(), value).await?;
 
     Ok(obj)
 }
@@ -110,7 +114,9 @@ pub(crate) async fn update_view(
         .obj()
         .one(&object_id)
         .await?
-        .ok_or(AppError::Query())?;
+        .ok_or(AppError::Query(format!(
+            "update_view: failed to update view for {object_id}"
+        )))?;
 
     match obj.object_type {
         ObjectType::Account => {
@@ -167,11 +173,13 @@ pub(crate) async fn lookup_object_(
         .obj()
         .one(&id)
         .await?
-        .ok_or(AppError::Query())?;
+        .ok_or(AppError::Query(format!(
+            "lookup_object: failed to get object {id}"
+        )))?;
 
     tracing::debug!("looking up last snapshot for obj={id}");
     let snapshot = lookup_latest_snapshot(state, gym, &id.clone()).await?;
-    let created_at = obj.created_at.ok_or(AppError::Query())?;
+    let created_at = obj.created_at.expect("object has created_at timestamp");
 
     Ok(Json(LookupObjectResponse {
         id,
@@ -500,7 +508,7 @@ async fn save_operation(
         content: new_content,
     };
     let s: Option<Snapshot> = store!(state, gym, &new_snapshot, SNAPSHOTS_COLLECTION);
-    s.ok_or_else(AppError::Query)?;
+    s.ok_or(AppError::Query("storing snapshot failed".to_string()))?;
 
     // FIXME moved to here but we should probably only do that for the final snapshot?
     update_view(state, gym, &new_snapshot.object_id, &new_snapshot.content).await?;
@@ -513,7 +521,7 @@ async fn save_operation(
         operation: new_op.to_owned(),
     };
     let p: Option<Patch> = store!(state, gym, &patch, PATCHES_COLLECTION);
-    p.ok_or_else(AppError::Query)?;
+    p.ok_or(AppError::Query("storing patch failed".to_string()))?;
 
     // TODO maybe await here? or return futures?
     Ok(Some(patch))

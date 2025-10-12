@@ -19,7 +19,7 @@ use tokio::sync::{Mutex, mpsc, mpsc::Receiver, mpsc::Sender};
 use crate::storage::PATCHES_COLLECTION;
 use crate::{AppError, AppState};
 
-#[derive(Serialize, Clone)]
+#[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct WsPatchResponse {
     content: Patch,

@@ -13,7 +13,7 @@ pub enum AccountRole {
     Admin,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Account {
     #[serde(alias = "_firestore_id")]
@@ -25,7 +25,7 @@ pub struct Account {
     pub name: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Boulder {
     #[serde(alias = "_firestore_id")]

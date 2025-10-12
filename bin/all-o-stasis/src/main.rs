@@ -37,7 +37,7 @@ enum AppError {
     // firestore db errors
     Firestore(FirestoreError),
     // query error
-    Query(),
+    Query(String),
     // unable to parse json content into type
     ParseError(String),
     // No session found
@@ -100,7 +100,7 @@ impl IntoResponse for AppError {
                 (StatusCode::INTERNAL_SERVER_ERROR, "cache error".to_string())
             }
             AppError::Ot(e) => (StatusCode::NOT_FOUND, format!("OT failure: {e}")),
-            AppError::Query() => (StatusCode::BAD_REQUEST, "can't handle req".to_string()),
+            AppError::Query(e) => (StatusCode::BAD_REQUEST, format!("Query issue: {e}")),
             AppError::ParseError(err) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("parse error: {err}"),
