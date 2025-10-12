@@ -1,7 +1,7 @@
 use std::fmt;
 
 use chrono::{DateTime, Utc};
-use otp::{ObjectId, Operation, ROOT_OBJ_ID, ROOT_PATH, RevId, ZERO_REV_ID};
+use otp::{ObjectId, Operation, RevId};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -85,7 +85,7 @@ impl ObjectDoc {
             id: None,
             object_type,
             created_at: None,
-            created_by: ROOT_OBJ_ID.to_owned(),
+            created_by: otp::ROOT_OBJ_ID.to_owned(),
             deleted: None,
         }
     }
@@ -171,10 +171,10 @@ impl fmt::Display for Patch {
 
 impl Patch {
     pub fn new(object_id: ObjectId, author_id: String, value: &Value) -> Self {
-        let op = Operation::new_set(ROOT_PATH.to_owned(), value.to_owned());
+        let op = Operation::new_set(otp::ROOT_PATH.to_owned(), value.to_owned());
         Self {
             object_id,
-            revision_id: ZERO_REV_ID,
+            revision_id: otp::ZERO_REV_ID,
             author_id,
             created_at: None,
             operation: op,
