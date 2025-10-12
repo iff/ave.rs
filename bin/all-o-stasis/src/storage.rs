@@ -1,15 +1,15 @@
-use crate::passport::Session;
-use crate::types::{Account, Boulder};
-use crate::types::{Object, ObjectDoc, ObjectType, Patch, Snapshot};
+use crate::{
+    passport::Session,
+    routes::{LookupObjectResponse, PatchObjectResponse},
+    types::{Account, Boulder, Object, ObjectDoc, ObjectType, Patch, Snapshot},
+    {AppError, AppState},
+};
 use axum::Json;
 use firestore::{FirestoreQueryDirection, FirestoreResult, path_camel_case};
 use futures::TryStreamExt;
 use futures::stream::BoxStream;
 use otp::{ObjectId, Operation, RevId, ZERO_REV_ID, rebase};
 use serde_json::{Value, from_value};
-
-use crate::routes::{LookupObjectResponse, PatchObjectResponse};
-use crate::{AppError, AppState};
 
 pub const ACCOUNTS_VIEW_COLLECTION: &str = "accounts_view";
 pub const BOULDERS_VIEW_COLLECTION: &str = "boulders_view";
