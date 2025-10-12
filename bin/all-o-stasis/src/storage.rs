@@ -477,7 +477,11 @@ async fn save_operation(
     op: Operation,
     validate: bool,
 ) -> Result<Option<Patch>, AppError> {
-    let new_op = match rebase(base_content, op, previous_patches) {
+    let new_op = match rebase(
+        base_content,
+        op,
+        previous_patches.iter().map(|p| &p.operation),
+    ) {
         Ok(Some(new_op)) => new_op,
         Ok(None) => {
             tracing::warn!("rebase had a conflicting patch");

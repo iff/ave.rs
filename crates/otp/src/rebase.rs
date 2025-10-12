@@ -1,7 +1,6 @@
 use crate::OtError;
 use crate::operation::Operation;
 use crate::path::is_reachable;
-use crate::types::Patch;
 use serde_json::Value;
 
 /// Given an `op` which was created against a particular `content`, rebase it on top
@@ -28,24 +27,23 @@ use serde_json::Value;
 ///     value: Some(value.clone()),
 /// };
 ///
-/// let patches = vec![];
-/// let rebased = rebase(json!({}), op.clone(), &patches).unwrap();
+/// let rebased = rebase(json!({}), op.clone(), [].iter()).unwrap();
 /// assert!(Some(op) == rebased)
 /// ```
-pub fn rebase(
+pub fn rebase<'a>(
     content: Value,
     op: Operation,
-    patches: &[Patch],
+    operations: impl Iterator<Item = &'a Operation>,
 ) -> Result<Option<Operation>, OtError> {
     let mut content = content;
     let mut op = Some(op);
 
-    for patch in patches {
-        match patch.operation.apply_to(content) {
+    for operation in operations {
+        match operation.apply_to(content) {
             Ok(value) => {
                 content = value;
                 if let Some(next_op) = op {
-                    op = op_ot(&content, &patch.operation, next_op);
+                    op = op_ot(&content, operation, next_op);
                 } else {
                     return Err(OtError::Rebase(String::from("op_ot: rejecting patch")));
                 }
@@ -206,8 +204,7 @@ mod tests {
             value: Some(value.clone()),
         };
 
-        let patches = vec![];
-        let rebased = rebase(json!({}), op.clone(), &patches).unwrap();
+        let rebased = rebase(json!({}), op.clone(), [].iter()).unwrap();
         Some(op) == rebased
     }
 
@@ -228,16 +225,8 @@ mod tests {
             value: Some(json!(b)),
         };
 
-        let patches = vec![Patch {
-            object_id: "test".into(),
-            revision_id: 1,
-            author_id: "test".into(),
-            created_at: None,
-            operation: op1,
-        }];
-
         // The rebased operation should be unchanged since they affect different properties
-        Some(op2.clone()) == rebase(base_val, op2, &patches).unwrap()
+        Some(op2.clone()) == rebase(base_val, op2, [op1].iter()).unwrap()
     }
 
     #[quickcheck]
@@ -256,15 +245,7 @@ mod tests {
             value: Some(json!(a2)),
         };
 
-        let patches = vec![Patch {
-            object_id: "test".into(),
-            revision_id: 1,
-            author_id: "test".into(),
-            created_at: None,
-            operation: op1,
-        }];
-
-        Some(op2.clone()) == rebase(base_val, op2, &patches).unwrap()
+        Some(op2.clone()) == rebase(base_val, op2, [op1].iter()).unwrap()
     }
 
     #[quickcheck]
@@ -284,15 +265,7 @@ mod tests {
             value: Some(json!("new name")),
         };
 
-        let patches = vec![Patch {
-            object_id: "test".into(),
-            revision_id: 1,
-            author_id: "test".into(),
-            created_at: None,
-            operation: op1,
-        }];
-
-        Some(op2.clone()) == rebase(base_val, op2, &patches).unwrap()
+        Some(op2.clone()) == rebase(base_val, op2, [op1].iter()).unwrap()
     }
 
     #[quickcheck]
@@ -314,15 +287,7 @@ mod tests {
             insert: json!([1, 2, 3]),
         };
 
-        let patches = vec![Patch {
-            object_id: "test".into(),
-            revision_id: 1,
-            author_id: "test".into(),
-            created_at: None,
-            operation: op1,
-        }];
-
-        Some(op2.clone()) == rebase(base_val, op2, &patches).unwrap()
+        Some(op2.clone()) == rebase(base_val, op2, [op1].iter()).unwrap()
     }
 
     #[test]
@@ -348,18 +313,10 @@ mod tests {
             insert: json!([30, 40]),
         };
 
-        let patches = vec![Patch {
-            object_id: "test".into(),
-            revision_id: 1,
-            author_id: "test".into(),
-            created_at: None,
-            operation: op1,
-        }];
-
         // The rebased operation should be adjusted to account for the changed indices
         // After op1, the element at index 3 in the original array has moved to index 4
         // The rebased operation should still remove the same logical element
-        let rebased = rebase(base_val, op2, &patches);
+        let rebased = rebase(base_val, op2, [op1].iter());
 
         // The expected rebased operation
         let expected = Operation::Splice {
@@ -395,15 +352,10 @@ mod tests {
             insert: json!(["x", "y"]),
         };
 
-        let patches = vec![Patch {
-            object_id: "test".into(),
-            revision_id: 1,
-            author_id: "test".into(),
-            created_at: None,
-            operation: op1,
-        }];
-
-        assert_eq!(Some(op2.clone()), rebase(base_val, op2, &patches).unwrap())
+        assert_eq!(
+            Some(op2.clone()),
+            rebase(base_val, op2, [op1].iter()).unwrap()
+        )
     }
 
     #[test]
@@ -434,23 +386,6 @@ mod tests {
             insert: op3_insert,
         };
 
-        let patches = vec![
-            Patch {
-                object_id: "test".into(),
-                revision_id: 1,
-                author_id: "test".into(),
-                created_at: None,
-                operation: op1.clone(),
-            },
-            Patch {
-                object_id: "test".into(),
-                revision_id: 2,
-                author_id: "test".into(),
-                created_at: None,
-                operation: op2.clone(),
-            },
-        ];
-
         // The rebased operation should have its index adjusted to account for the removed elements
         // Let's manually compute what happens:
         // 1. After op1: No change to array indices, since it only changes "name"
@@ -465,7 +400,7 @@ mod tests {
 
         assert_eq!(
             Some(op3_after_rebase),
-            rebase(base_val, op3, &patches).unwrap()
+            rebase(base_val, op3, [op1, op2].iter()).unwrap()
         )
     }
 
