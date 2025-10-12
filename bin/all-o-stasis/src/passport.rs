@@ -268,7 +268,7 @@ async fn create_passport(
                 id: None,
                 email: payload.email.clone(),
                 role: AccountRole::User,
-                login: "aaa".to_string(), // FIXME??
+                login: "to be removed".to_string(),
                 name: None,
             };
             let value = serde_json::to_value(account).expect("serialising account");
@@ -454,7 +454,7 @@ async fn await_passport_confirmation(
     let cookie = Cookie::build(("session", session_id))
         .path("/")
         .max_age(Duration::weeks(52))
-        .secure(true) // TODO not sure about this
+        .secure(true)
         .same_site(SameSite::None)
         .http_only(true);
     Ok(jar.add(cookie))

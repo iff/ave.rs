@@ -20,6 +20,7 @@ pub enum AccountRole {
 pub struct Account {
     #[serde(alias = "_firestore_id")]
     pub id: Option<String>,
+    // TODO this is not used - remove
     pub login: String,
     pub role: AccountRole,
     pub email: String,
