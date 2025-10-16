@@ -2,8 +2,6 @@ name: backup db
 
 on:
   workflow_dispatch: {}
-  schedule:
-    - cron: "0 5 * * *"
 
 jobs:
   backup:
