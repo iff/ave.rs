@@ -233,16 +233,12 @@ fn check_type_consistency(a: &[Value], b: &[Value]) -> Result<(), OtError> {
     }
 }
 
-/// Travers the path and then either insert or delete at the very end
-fn change_object<F>(mut value: Value, path: impl Into<Path>, f: F) -> Result<Value, OtError>
-where
-    F: FnOnce(String, &mut SerdeObject) -> Option<Value>,
-{
+fn follow_path(value: &mut Value, path: impl Into<Path>) -> Result<(&mut Value, String), OtError> {
     let path = path.into();
     let paths: Vec<&str> = path.split('.').collect();
     let key_to_change = *paths.last().ok_or(OtError::Path(path.to_owned()))?;
 
-    let mut content = &mut value;
+    let mut content = value;
     for key in &paths[..(paths.len() - 1)] {
         match content.get_mut(key) {
             Some(value) => content = value,
@@ -250,6 +246,15 @@ where
         }
     }
 
+    Ok((content, key_to_change.to_owned()))
+}
+
+/// Travers the path and then either insert or delete at the very end
+fn change_object<F>(mut value: Value, path: impl Into<Path>, f: F) -> Result<Value, OtError>
+where
+    F: FnOnce(String, &mut SerdeObject) -> Option<Value>,
+{
+    let (content, key_to_change) = follow_path(&mut value, path)?;
     match content {
         Value::Object(o) => Ok(Value::from(f(key_to_change.to_string(), o))),
         _ => Err(OtError::Type(String::from(
@@ -263,32 +268,18 @@ fn change_array<F>(mut value: Value, path: impl Into<Path>, f: F) -> Result<Valu
 where
     F: FnOnce(Vec<Value>) -> Result<Vec<Value>, OtError>,
 {
-    // FIXME almost like change_object - combine as trait?
     // resolving path and then depending on the Value::Array | Object do something different
-    let path = path.into();
-    let paths: Vec<&str> = path.split('.').collect();
-    let key_to_change = *paths.last().ok_or(OtError::Path(path.clone()))?;
-
-    let mut content = &mut value;
-
-    let len = paths.len();
-    for key in &paths[..(len - 1)] {
-        match content.get_mut(key) {
-            Some(value) => content = value,
-            None => return Err(OtError::Key(key.to_string())),
-        }
-    }
-
-    let new_array = match content.get_mut(key_to_change) {
+    let (content, key_to_change) = follow_path(&mut value, path)?;
+    let new_array = match content.get_mut(&key_to_change) {
         Some(value) => match value {
             Value::Array(array) => Ok(Value::from(f(array.to_vec())?)),
             _ => Err(OtError::ValueIsNotArray()),
         },
-        None => Err(OtError::Key(key_to_change.to_string())),
+        None => Err(OtError::Key(key_to_change.to_owned())),
     }?;
 
     match content {
-        Value::Object(o) => Ok(o.insert(key_to_change.to_string(), new_array)),
+        Value::Object(o) => Ok(o.insert(key_to_change, new_array)),
         _ => Err(OtError::Type(String::from(
             "value is expected to be a Value::Object",
         ))),
