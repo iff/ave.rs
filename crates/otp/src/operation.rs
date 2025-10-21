@@ -256,7 +256,7 @@ where
 {
     let (content, key_to_change) = follow_path(&mut value, path)?;
     match content {
-        Value::Object(o) => Ok(Value::from(f(key_to_change.to_string(), o))),
+        Value::Object(o) => Ok(Value::from(f(key_to_change, o))),
         _ => Err(OtError::Type(String::from(
             "value is expected to be a Value::Object",
         ))),
