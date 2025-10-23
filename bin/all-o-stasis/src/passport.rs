@@ -186,7 +186,7 @@ struct AwaitPassportConfirmation {
     passport_id: String,
 }
 
-pub(crate) fn passport_routes() -> Router<AppState> {
+pub(crate) fn routes() -> Router<AppState> {
     Router::new()
         .route("/{gym}/login", post(create_passport))
         .route("/{gym}/login/confirm", get(confirm_passport))
