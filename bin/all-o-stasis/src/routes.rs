@@ -3,8 +3,7 @@ use otp::ObjectId;
 use tower_http::cors::CorsLayer;
 
 use crate::{
-    AppError, AppState,
-    passport::passport_routes,
+    AppError, AppState, passport,
     storage::{BOULDERS_VIEW_COLLECTION, OBJECTS_COLLECTION},
     types::{Boulder, Object, ObjectDoc, ObjectType},
 };
@@ -94,7 +93,7 @@ pub fn app(state: AppState) -> Router {
         .merge(collection::routes())
         .merge(stats::routes())
         .merge(api::routes())
-        .merge(passport_routes())
+        .merge(passport::routes())
         //
         .with_state(state)
         .layer(cors)
