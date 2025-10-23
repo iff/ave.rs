@@ -1,12 +1,12 @@
 use std::net::SocketAddr;
 
 use crate::passport::Session;
-use crate::routes::{lookup_boulder, object_type};
 use crate::session::{account_role, author_from_session};
 use crate::storage::{
-    PATCHES_COLLECTION, SESSIONS_COLLECTION, apply_object_updates, create_object, lookup_object_,
+    BOULDERS_VIEW_COLLECTION, OBJECTS_COLLECTION, PATCHES_COLLECTION, SESSIONS_COLLECTION,
+    apply_object_updates, create_object, lookup_object_,
 };
-use crate::types::{AccountRole, ObjectType, Patch};
+use crate::types::{AccountRole, Boulder, Object, ObjectDoc, ObjectType, Patch};
 use crate::ws::handle_socket;
 use crate::{AppError, AppState};
 use axum::{
@@ -91,6 +91,55 @@ impl PatchObjectResponse {
 struct LookupSessionResponse {
     id: String,
     obj_id: ObjectId,
+}
+
+async fn object_type(
+    state: &AppState,
+    gym: &String,
+    object_id: ObjectId,
+) -> Result<ObjectType, AppError> {
+    let parent_path = state.db.parent_path("gyms", gym)?;
+    let object_doc: Option<ObjectDoc> = state
+        .db
+        .fluent()
+        .select()
+        .by_id_in(OBJECTS_COLLECTION)
+        .parent(&parent_path)
+        .obj()
+        .one(&object_id)
+        .await?;
+
+    if let Some(doc) = object_doc {
+        let object: Object = doc
+            .try_into()
+            .map_err(|e| AppError::Query(format!("lookup_object_type: {e}")))?;
+        Ok(object.object_type)
+    } else {
+        Err(AppError::NotAuthorized())
+    }
+}
+
+async fn lookup_boulder(
+    state: &AppState,
+    gym: &String,
+    object_id: &ObjectId,
+) -> Result<Boulder, AppError> {
+    let parent_path = state.db.parent_path("gyms", gym)?;
+    let boulder: Option<Boulder> = state
+        .db
+        .fluent()
+        .select()
+        .by_id_in(BOULDERS_VIEW_COLLECTION)
+        .parent(&parent_path)
+        .obj()
+        .one(&object_id)
+        .await?;
+
+    if let Some(boulder) = boulder {
+        Ok(boulder)
+    } else {
+        Err(AppError::NotAuthorized())
+    }
 }
 
 pub fn routes() -> Router<AppState> {
