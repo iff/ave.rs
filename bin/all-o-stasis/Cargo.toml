@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 otp = { path = "../../crates/otp", version = "0.1.0" }
+built = { version = "0.8", features = ["git2"] }
 axum = { version = "0.8.1", features = ["ws"] }
 axum-extra = { version = "0.10.1", features = ["cookie", "typed-header"] }
 chrono = "0.4.38"
@@ -20,3 +21,6 @@ tokio = { version = "1.33.0", features = ["full", "macros", "rt-multi-thread"] }
 tower-http = { version = "0.6", features = ["cors"] }
 tracing = "0.1.39"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
+
+[build-dependencies]
+built = { version = "0.8", features = ["git2"] }
