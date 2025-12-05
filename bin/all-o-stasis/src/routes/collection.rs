@@ -115,7 +115,10 @@ async fn draft_boulders(
         .select()
         .from(BOULDERS_VIEW_COLLECTION)
         .parent(&parent_path)
-        .filter(|q| q.for_all([q.field(path_camel_case!(Boulder::is_draft)).neq(0)]))
+        .filter(|q| q.for_all([
+                q.field(path_camel_case!(Boulder::removed)).eq(0),
+                q.field(path_camel_case!(Boulder::is_draft)).neq(0),
+        ]))
         .obj()
         .stream_query_with_errors()
         .await?;
