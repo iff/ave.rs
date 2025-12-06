@@ -376,7 +376,11 @@ async fn confirm_passport(
             String::from("https://dev.boulderhalle.app")
         } else {
             // NOTE for now just map gym => https://gym.boulderhalle.app/email-confirmed
-            format!("https://{gym}.boulderhalle.app")
+            if gym == "leutsch" {
+                format!("https://minimum-{gym}.boulderhalle.app")
+            } else {
+                format!("https://{gym}.boulderhalle.app")
+            }
         };
         Ok((
             jar.add(cookie),
