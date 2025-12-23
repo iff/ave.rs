@@ -390,11 +390,7 @@ pub async fn apply_object_updates(
     rev_id: RevId, // TODO this is what? first is 0?
     author: ObjectId,
     operations: Vec<Operation>,
-    skip_validation: bool,
 ) -> Result<Json<PatchObjectResponse>, AppError> {
-    // first check that the object exists. We'll need its metadata later
-    // let id = base_id(&obj_id);
-
     // the 'Snapshot' against which the submitted operations were created
     // this only contains patches until base_snapshot.revision_id
     tracing::debug!("looking up base_snapshot@rev{rev_id}");
@@ -403,13 +399,13 @@ pub async fn apply_object_updates(
 
     // if there are any patches which the client doesn't know about we need
     // to let her know
-    // TODO cant we have patches that are not applied above but are now missing?
     let previous_patches = patches_after_revision(state, gym, &obj_id, rev_id).await?;
     let latest_snapshot = apply_patches(&base_snapshot, &previous_patches)?;
 
     let mut patches = Vec::<Patch>::new();
+    let mut final_snapshot = latest_snapshot.clone();
     for op in operations {
-        let patch = save_operation(
+        let saved = save_operation(
             state,
             gym,
             obj_id.clone(),
@@ -418,61 +414,37 @@ pub async fn apply_object_updates(
             &latest_snapshot,
             &previous_patches,
             op,
-            !skip_validation,
         )
-        .await; // TODO await all? does not matter that much probably?
+        .await;
 
-        match patch {
-            Ok(Some(val)) => patches.push(val),
-            Ok(None) => (), // TODO push nones?
+        match saved {
             Err(e) => return Err(e),
+            Ok(Some(saved)) => {
+                patches.push(saved.patch);
+                final_snapshot = saved.snapshot
+            }
+            Ok(None) => (), // skip
         }
     }
 
-    // TODO update boulder/account view here? to make queries possible?
-    // so in Avers we had generic Views that provided this interface
-    //
-    //      viewObjectTransformer :: obj -> Avers (Maybe a)
-    //      (here this would just be serde trying to parse the Json)
-    //
-    // and concrete types implemented this transform to store concrete queriable
-    // data in the database:
-    //
-    // FIXME why using validate here? validation and view update is the same?
-    // unless novalidate $ do
-    // FIXME this is the wrong snapshot - we dont return the one with the op applied
-    // update_boulder_view(state, gym, &latest_snapshot).await?;
+    update_view(
+        state,
+        gym,
+        &final_snapshot.object_id,
+        &final_snapshot.content,
+    )
+    .await?;
 
     Ok(Json(PatchObjectResponse::new(
         previous_patches,
         patches.len(),
         patches,
     )))
+}
 
-    // FIXME async in closure - can we separate this out? we only need async for actually storing
-    // the patch and snapshot in the database?
-    // let patches = operations.iter().map(|&op| {
-    //     save_operation(
-    //         &state,
-    //         &gym,
-    //         obj_id.clone(),
-    //         author.clone(),
-    //         (base_snapshot.content).clone(),
-    //         &latest_snapshot,
-    //         previous_patches.clone(),
-    //         op,
-    //         !skip_validation,
-    //     )
-    // });
-    //
-    // let concret_patches = patches.await?;
-    // let ps = concret_patches
-    //     .filter_map(|p| match p {
-    //         Ok(Some(val)) => Some(val),
-    //         Ok(None) => None,
-    //         Err(_e) => None, // Some(Err(e)), FIXME handle err?
-    //     })
-    //     .collect::<Vec<Patch>>();
+struct SaveOp {
+    patch: Patch,
+    snapshot: Snapshot,
 }
 
 /// try rebase and then apply the operation to get a new snapshot (or return the old)
@@ -486,9 +458,8 @@ async fn save_operation(
     snapshot: &Snapshot,
     previous_patches: &[Patch],
     op: Operation,
-    validate: bool,
-) -> Result<Option<Patch>, AppError> {
-    let new_op = match rebase(
+) -> Result<Option<SaveOp>, AppError> {
+    let rebased_op = match rebase(
         base_content,
         op,
         previous_patches.iter().map(|p| &p.operation),
@@ -504,15 +475,11 @@ async fn save_operation(
         }
     };
 
-    // tracing::debug!("save_operation: {snapshot}, op={new_op}");
-    // FIXME clone?
-    let new_content = new_op.apply_to(snapshot.content.to_owned())?;
+    // TODO clone?
+    let new_content = rebased_op.apply_to(snapshot.content.to_owned())?;
     if new_content == snapshot.content {
         tracing::debug!("skipping save operation: content did not change");
         return Ok(None);
-    }
-    if validate {
-        // TODO: validateWithType psObjectType newContent
     }
 
     let rev_id = snapshot.revision_id + 1;
@@ -523,21 +490,20 @@ async fn save_operation(
         content: new_content,
     };
     let s: Option<Snapshot> = store!(state, gym, &new_snapshot, SNAPSHOTS_COLLECTION);
-    s.ok_or(AppError::Query("storing snapshot failed".to_string()))?;
-
-    // FIXME moved to here but we should probably only do that for the final snapshot?
-    update_view(state, gym, &new_snapshot.object_id, &new_snapshot.content).await?;
+    let s = s.ok_or(AppError::Query("storing snapshot failed".to_string()))?;
 
     let patch = Patch {
         object_id,
         revision_id: rev_id,
         author_id,
         created_at: None,
-        operation: new_op.to_owned(),
+        operation: rebased_op.to_owned(),
     };
     let p: Option<Patch> = store!(state, gym, &patch, PATCHES_COLLECTION);
-    p.ok_or(AppError::Query("storing patch failed".to_string()))?;
+    let p = p.ok_or(AppError::Query("storing patch failed".to_string()))?;
 
-    // TODO maybe await here? or return futures?
-    Ok(Some(patch))
+    Ok(Some(SaveOp {
+        patch: p,
+        snapshot: s,
+    }))
 }

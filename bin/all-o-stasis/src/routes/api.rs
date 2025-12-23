@@ -354,7 +354,6 @@ async fn patch_object(
         payload.revision_id,
         created_by,
         payload.operations,
-        false,
     )
     .await?;
 

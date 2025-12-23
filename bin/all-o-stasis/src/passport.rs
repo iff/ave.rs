@@ -361,7 +361,6 @@ async fn confirm_passport(
             snapshot.revision_id,
             String::from(""), // TODO fine?
             [op].to_vec(),
-            false,
         )
         .await?;
 
@@ -426,7 +425,6 @@ async fn await_passport_confirmation(
         revision_id,
         String::from(""), // TODO fine?
         [op].to_vec(),
-        false,
     )
     .await?;
 
