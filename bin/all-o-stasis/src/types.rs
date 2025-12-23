@@ -5,6 +5,8 @@ use otp::{ObjectId, Operation, OtError, RevId};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+use crate::AppError;
+
 // TODO implement Arbitrary for types
 
 #[derive(Serialize, Deserialize, Clone, PartialEq)]
@@ -239,6 +241,24 @@ impl Snapshot {
             },
             patch,
         )))
+    }
+
+    fn apply_patch(&self, patch: &Patch) -> Result<Self, AppError> {
+        // tracing::debug!("applying patch={patch} to {snapshot} results in snapshot={s}");
+        Ok(Self {
+            object_id: self.object_id.to_owned(),
+            revision_id: patch.revision_id,
+            content: patch.operation.apply_to(self.content.clone())?,
+        })
+    }
+
+    pub fn apply_patches(&self, patches: &Vec<Patch>) -> Result<Self, AppError> {
+        let mut s = self.clone();
+        for patch in patches {
+            s = s.apply_patch(patch)?;
+        }
+
+        Ok(s)
     }
 }
 

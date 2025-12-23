@@ -251,7 +251,7 @@ pub(crate) async fn lookup_latest_snapshot(
     let patches = patches_after_revision(state, gym, obj_id, latest_snapshot.revision_id).await?;
 
     // apply those patches to the snapshot
-    apply_patches(&latest_snapshot, &patches)
+    latest_snapshot.apply_patches(&patches)
 }
 
 /// get or create a snapshot between low and high (inclusive)
@@ -322,7 +322,7 @@ async fn lookup_snapshot(
             .collect();
 
     // apply those patches to the snapshot
-    apply_patches(&latest_snapshot, &patches)
+    latest_snapshot.apply_patches(&patches)
 }
 
 async fn patches_after_revision(
@@ -361,33 +361,11 @@ async fn patches_after_revision(
     Ok(patches)
 }
 
-fn apply_patch_to_snapshot(snapshot: &Snapshot, patch: &Patch) -> Result<Snapshot, AppError> {
-    let s = Snapshot {
-        object_id: snapshot.object_id.to_owned(),
-        revision_id: patch.revision_id,
-        content: patch.operation.apply_to(snapshot.content.clone())?,
-    };
-    tracing::debug!("applying patch={patch} to {snapshot} results in snapshot={s}");
-    Ok(s)
-}
-
-fn apply_patches(snapshot: &Snapshot, patches: &Vec<Patch>) -> Result<Snapshot, AppError> {
-    let mut s = snapshot.clone();
-    for patch in patches {
-        s = apply_patch_to_snapshot(&s, patch)?;
-    }
-    // Ok(patches.iter().fold(snapshot.clone(), |snapshot, patch| {
-    //     apply_patch_to_snapshot(&snapshot, &patch)?
-    // }))
-
-    Ok(s)
-}
-
 pub async fn apply_object_updates(
     state: &AppState,
     gym: &String,
     obj_id: ObjectId,
-    rev_id: RevId, // TODO this is what? first is 0?
+    rev_id: RevId,
     author: ObjectId,
     operations: Vec<Operation>,
 ) -> Result<Json<PatchObjectResponse>, AppError> {
@@ -400,7 +378,7 @@ pub async fn apply_object_updates(
     // if there are any patches which the client doesn't know about we need
     // to let her know
     let previous_patches = patches_after_revision(state, gym, &obj_id, rev_id).await?;
-    let latest_snapshot = apply_patches(&base_snapshot, &previous_patches)?;
+    let latest_snapshot = base_snapshot.apply_patches(&previous_patches)?;
 
     let mut patches = Vec::<Patch>::new();
     let mut final_snapshot = latest_snapshot.clone();
