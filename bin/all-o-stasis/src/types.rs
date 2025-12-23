@@ -1,7 +1,7 @@
 use std::fmt;
 
 use chrono::{DateTime, Utc};
-use otp::{ObjectId, Operation, RevId};
+use otp::{ObjectId, Operation, OtError, RevId};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -180,6 +180,21 @@ impl Patch {
             operation: op,
         }
     }
+
+    pub fn new_revision(
+        revision_id: RevId,
+        object_id: ObjectId,
+        author_id: String,
+        operation: Operation,
+    ) -> Self {
+        Self {
+            object_id,
+            revision_id,
+            author_id,
+            created_at: None,
+            operation,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -198,6 +213,32 @@ impl Snapshot {
             revision_id: -1,
             content: json!({}),
         }
+    }
+
+    pub fn new_revision(
+        &self,
+        object_id: ObjectId,
+        author_id: ObjectId,
+        operation: Operation,
+    ) -> Result<Option<(Self, Patch)>, OtError> {
+        assert_eq!(object_id, self.object_id);
+
+        let content = operation.apply_to(self.content.to_owned())?;
+        if content == self.content {
+            tracing::debug!("skipping save operation: content did not change");
+            return Ok(None);
+        }
+
+        let revision_id = self.revision_id + 1;
+        let patch = Patch::new_revision(revision_id, object_id.clone(), author_id, operation);
+        Ok(Some((
+            Self {
+                object_id,
+                revision_id,
+                content,
+            },
+            patch,
+        )))
     }
 }
 

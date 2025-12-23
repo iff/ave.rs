@@ -447,7 +447,9 @@ struct SaveOp {
     snapshot: Snapshot,
 }
 
-/// try rebase and then apply the operation to get a new snapshot (or return the old)
+/// Rebase and then apply the operation to the snapshot to get a new snapshot
+/// Returns `None` if the rebasing fails or applying the (rebased) operation yields the same
+/// snapshot.
 #[allow(clippy::too_many_arguments)]
 async fn save_operation(
     state: &AppState,
@@ -464,9 +466,10 @@ async fn save_operation(
         op,
         previous_patches.iter().map(|p| &p.operation),
     ) {
-        Ok(Some(new_op)) => new_op,
+        Ok(Some(rebased_op)) => rebased_op,
         Ok(None) => {
-            tracing::warn!("rebase had a conflicting patch");
+            // TODO better error, log op, base_content
+            tracing::warn!("rebase failed due to a conflict");
             return Ok(None);
         }
         Err(e) => {
@@ -475,35 +478,17 @@ async fn save_operation(
         }
     };
 
-    // TODO clone?
-    let new_content = rebased_op.apply_to(snapshot.content.to_owned())?;
-    if new_content == snapshot.content {
-        tracing::debug!("skipping save operation: content did not change");
-        return Ok(None);
+    match snapshot.new_revision(object_id, author_id, rebased_op)? {
+        None => Ok(None),
+        Some((new_snapshot, patch)) => {
+            let s: Option<Snapshot> = store!(state, gym, &new_snapshot, SNAPSHOTS_COLLECTION);
+            let s = s.ok_or(AppError::Query("storing snapshot failed".to_string()))?;
+            let p: Option<Patch> = store!(state, gym, &patch, PATCHES_COLLECTION);
+            let p = p.ok_or(AppError::Query("storing patch failed".to_string()))?;
+            Ok(Some(SaveOp {
+                patch: p,
+                snapshot: s,
+            }))
+        }
     }
-
-    let rev_id = snapshot.revision_id + 1;
-    // now we know that the patch can be applied cleanly, so we can store both
-    let new_snapshot = Snapshot {
-        object_id: snapshot.object_id.to_owned(),
-        revision_id: rev_id,
-        content: new_content,
-    };
-    let s: Option<Snapshot> = store!(state, gym, &new_snapshot, SNAPSHOTS_COLLECTION);
-    let s = s.ok_or(AppError::Query("storing snapshot failed".to_string()))?;
-
-    let patch = Patch {
-        object_id,
-        revision_id: rev_id,
-        author_id,
-        created_at: None,
-        operation: rebased_op.to_owned(),
-    };
-    let p: Option<Patch> = store!(state, gym, &patch, PATCHES_COLLECTION);
-    let p = p.ok_or(AppError::Query("storing patch failed".to_string()))?;
-
-    Ok(Some(SaveOp {
-        patch: p,
-        snapshot: s,
-    }))
 }
