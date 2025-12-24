@@ -1,6 +1,5 @@
 use crate::{
     AppError, AppState,
-    passport::Session,
     routes::{LookupObjectResponse, PatchObjectResponse},
     types::{
         Account, AccountsView, Boulder, BouldersView, Object, ObjectDoc, ObjectType, Patch,
@@ -13,37 +12,6 @@ use futures::TryStreamExt;
 use futures::stream::BoxStream;
 use otp::{ObjectId, Operation, RevId, ZERO_REV_ID, rebase};
 use serde_json::{Value, from_value};
-
-// TODO only diff here is that we provide an id and update
-pub(crate) async fn save_session(
-    state: &AppState,
-    gym: &String,
-    session: &Session,
-    session_id: &str,
-) -> Result<Session, AppError> {
-    let parent_path = state.db.parent_path("gyms", gym)?;
-    let p: Option<Session> = state
-        .db
-        .fluent()
-        .update()
-        .in_col(Session::COLLECTION)
-        .document_id(session_id)
-        .parent(&parent_path)
-        .object(session)
-        .execute()
-        .await?;
-
-    match p {
-        Some(p) => {
-            tracing::debug!("storing session: {p}");
-            Ok(p)
-        }
-        None => {
-            tracing::warn!("failed to update session: {session} (no such object exists");
-            Err(AppError::NoSession())
-        }
-    }
-}
 
 pub(crate) async fn create_object(
     state: &AppState,

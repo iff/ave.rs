@@ -16,7 +16,10 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    storage::{apply_object_updates, create_object, lookup_latest_snapshot, save_session}, types::{Account, AccountRole, AccountsView, ObjectType}, word_list::make_security_code, AppError, AppState
+    AppError, AppState,
+    storage::{apply_object_updates, create_object, lookup_latest_snapshot},
+    types::{Account, AccountRole, AccountsView, ObjectType},
+    word_list::make_security_code,
 };
 
 mod maileroo {
@@ -139,6 +142,36 @@ impl fmt::Display for Session {
 
 impl Session {
     pub const COLLECTION: &str = "sessions";
+
+    pub async fn store(
+        &self,
+        state: &AppState,
+        gym: &String,
+        session_id: &str,
+    ) -> Result<Session, AppError> {
+        let parent_path = state.db.parent_path("gyms", gym)?;
+        let p: Option<Session> = state
+            .db
+            .fluent()
+            .update()
+            .in_col(Session::COLLECTION)
+            .document_id(session_id)
+            .parent(&parent_path)
+            .object(self)
+            .execute()
+            .await?;
+
+        match p {
+            Some(p) => {
+                tracing::debug!("storing session: {p}");
+                Ok(p)
+            }
+            None => {
+                tracing::warn!("failed to update session: {self} (no such object exists");
+                Err(AppError::NoSession())
+            }
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -334,17 +367,13 @@ async fn confirm_passport(
         Err(AppError::NotAuthorized())
     } else {
         // create a new session for the account in the Passport object
-        let session = save_session(
-            &state,
-            &gym,
-            &Session {
-                id: None,
-                obj_id: passport.account_id,
-                created_at: None,
-                last_accessed_at: chrono::offset::Utc::now(),
-            },
-            &new_id(80),
-        )
+        let session = Session {
+            id: None,
+            obj_id: passport.account_id,
+            created_at: None,
+            last_accessed_at: chrono::offset::Utc::now(),
+        }
+        .store(&state, &gym, &new_id(80))
         .await?;
 
         // mark as valid
