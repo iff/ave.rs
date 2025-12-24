@@ -1,17 +1,14 @@
 use crate::{
     AppError, AppState,
     routes::{LookupObjectResponse, PatchObjectResponse},
-    types::{
-        Account, AccountsView, Boulder, BouldersView, Object, ObjectDoc, ObjectType, Patch,
-        Snapshot,
-    },
+    types::{AccountsView, BouldersView, Object, ObjectDoc, ObjectType, Patch, Snapshot},
 };
 use axum::Json;
 use firestore::{FirestoreQueryDirection, FirestoreResult, path_camel_case};
 use futures::TryStreamExt;
 use futures::stream::BoxStream;
 use otp::{ObjectId, Operation, RevId, ZERO_REV_ID, rebase};
-use serde_json::{Value, from_value};
+use serde_json::Value;
 
 pub(crate) async fn create_object(
     state: &AppState,
@@ -60,36 +57,8 @@ pub(crate) async fn update_view(
         .map_err(|e| AppError::Query(format!("update_view: {e}")))?;
 
     match obj.object_type {
-        ObjectType::Account => {
-            let account = from_value::<Account>(content.clone())
-                .map_err(|e| AppError::ParseError(format!("{e} in: {content}")))?;
-
-            let _: Option<Account> = state
-                .db
-                .fluent()
-                .update()
-                .in_col(AccountsView::COLLECTION)
-                .document_id(object_id.clone())
-                .parent(&parent_path)
-                .object(&account)
-                .execute()
-                .await?;
-        }
-        ObjectType::Boulder => {
-            let boulder = from_value::<Boulder>(content.clone())
-                .map_err(|e| AppError::ParseError(format!("{e} in: {content}")))?;
-
-            let _: Option<Boulder> = state
-                .db
-                .fluent()
-                .update()
-                .in_col(BouldersView::COLLECTION)
-                .document_id(object_id.clone())
-                .parent(&parent_path)
-                .object(&boulder)
-                .execute()
-                .await?;
-        }
+        ObjectType::Account => AccountsView::store(state, gym, object_id, content).await?,
+        ObjectType::Boulder => BouldersView::store(state, gym, object_id, content).await?,
         ObjectType::Passport => {
             // no view table
         }

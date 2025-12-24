@@ -3,7 +3,7 @@ use std::fmt;
 use chrono::{DateTime, Utc};
 use otp::{ObjectId, Operation, OtError, RevId};
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{Value, from_value, json};
 
 use crate::{AppError, AppState};
 
@@ -345,10 +345,58 @@ pub struct AccountsView {}
 
 impl AccountsView {
     pub const COLLECTION: &str = "accounts_view";
+
+    pub async fn store(
+        state: &AppState,
+        gym: &String,
+        object_id: &ObjectId,
+        content: &Value,
+    ) -> Result<(), AppError> {
+        let parent_path = state.db.parent_path("gyms", gym)?;
+        let account = from_value::<Account>(content.clone())
+            .map_err(|e| AppError::ParseError(format!("{e} in: {content}")))?;
+
+        let _: Option<Boulder> = state
+            .db
+            .fluent()
+            .update()
+            .in_col(Self::COLLECTION)
+            .document_id(object_id.clone())
+            .parent(parent_path)
+            .object(&account)
+            .execute()
+            .await?;
+
+        Ok(())
+    }
 }
 
 pub struct BouldersView {}
 
 impl BouldersView {
     pub const COLLECTION: &str = "boulders_view";
+
+    pub async fn store(
+        state: &AppState,
+        gym: &String,
+        object_id: &ObjectId,
+        content: &Value,
+    ) -> Result<(), AppError> {
+        let parent_path = state.db.parent_path("gyms", gym)?;
+        let boulder = from_value::<Boulder>(content.clone())
+            .map_err(|e| AppError::ParseError(format!("{e} in: {content}")))?;
+
+        let _: Option<Boulder> = state
+            .db
+            .fluent()
+            .update()
+            .in_col(Self::COLLECTION)
+            .document_id(object_id.clone())
+            .parent(parent_path)
+            .object(&boulder)
+            .execute()
+            .await?;
+
+        Ok(())
+    }
 }
