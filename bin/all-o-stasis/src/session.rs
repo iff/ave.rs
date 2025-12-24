@@ -1,5 +1,5 @@
 use crate::passport::Session;
-use crate::storage::{ACCOUNTS_VIEW_COLLECTION, SESSIONS_COLLECTION};
+use crate::storage::ACCOUNTS_VIEW_COLLECTION;
 use crate::types::{Account, AccountRole};
 use crate::{AppError, AppState};
 use axum_extra::extract::cookie::Cookie;
@@ -54,7 +54,7 @@ pub(crate) async fn author_from_session(
         .db
         .fluent()
         .select()
-        .by_id_in(SESSIONS_COLLECTION)
+        .by_id_in(Session::COLLECTION)
         .parent(&parent_path)
         .obj()
         .one(&session_id)

@@ -105,6 +105,8 @@ pub struct ObjectDoc {
 }
 
 impl ObjectDoc {
+    pub const COLLECTION: &str = "objects";
+
     pub fn new(object_type: ObjectType) -> Self {
         Self {
             id: None,
@@ -113,6 +115,11 @@ impl ObjectDoc {
             created_by: otp::ROOT_OBJ_ID.to_owned(),
             deleted: None,
         }
+    }
+
+    pub async fn store(&self, state: &AppState, gym: &String) -> Result<Self, AppError> {
+        let s: Option<Self> = store!(state, gym, self, Self::COLLECTION);
+        s.ok_or(AppError::Query("storing object failed".to_string()))
     }
 }
 

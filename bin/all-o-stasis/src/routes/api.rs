@@ -3,8 +3,7 @@ use std::net::SocketAddr;
 use crate::passport::Session;
 use crate::session::{account_role, author_from_session};
 use crate::storage::{
-    BOULDERS_VIEW_COLLECTION, OBJECTS_COLLECTION, SESSIONS_COLLECTION, apply_object_updates,
-    create_object, lookup_object_,
+    BOULDERS_VIEW_COLLECTION, apply_object_updates, create_object, lookup_object_,
 };
 use crate::types::{AccountRole, Boulder, Object, ObjectDoc, ObjectType, Patch};
 use crate::ws::handle_socket;
@@ -103,7 +102,7 @@ async fn object_type(
         .db
         .fluent()
         .select()
-        .by_id_in(OBJECTS_COLLECTION)
+        .by_id_in(ObjectDoc::COLLECTION)
         .parent(&parent_path)
         .obj()
         .one(&object_id)
@@ -171,7 +170,7 @@ async fn delete_session(
         .db
         .fluent()
         .delete()
-        .from(SESSIONS_COLLECTION)
+        .from(Session::COLLECTION)
         .parent(&parent_path)
         .document_id(&session_id)
         .execute()
@@ -202,7 +201,7 @@ async fn lookup_session(
         .db
         .fluent()
         .select()
-        .by_id_in(SESSIONS_COLLECTION)
+        .by_id_in(Session::COLLECTION)
         .parent(&parent_path)
         .obj()
         .one(&session_id)

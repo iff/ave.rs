@@ -18,8 +18,8 @@ use serde::{Deserialize, Serialize};
 use crate::{
     AppError, AppState,
     storage::{
-        ACCOUNTS_VIEW_COLLECTION, SESSIONS_COLLECTION, apply_object_updates, create_object,
-        lookup_latest_snapshot, save_session,
+        ACCOUNTS_VIEW_COLLECTION, apply_object_updates, create_object, lookup_latest_snapshot,
+        save_session,
     },
     types::{Account, AccountRole, ObjectType},
     word_list::make_security_code,
@@ -141,6 +141,10 @@ impl fmt::Display for Session {
             self.obj_id
         )
     }
+}
+
+impl Session {
+    pub const COLLECTION: &str = "sessions";
 }
 
 #[derive(Serialize, Deserialize)]
@@ -434,7 +438,7 @@ async fn await_passport_confirmation(
         .db
         .fluent()
         .select()
-        .from(SESSIONS_COLLECTION)
+        .from(Session::COLLECTION)
         .parent(&parent_path)
         .filter(|q| {
             q.for_all([q

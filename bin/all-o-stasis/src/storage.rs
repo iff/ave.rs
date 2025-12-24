@@ -13,31 +13,6 @@ use serde_json::{Value, from_value};
 
 pub const ACCOUNTS_VIEW_COLLECTION: &str = "accounts_view";
 pub const BOULDERS_VIEW_COLLECTION: &str = "boulders_view";
-pub const OBJECTS_COLLECTION: &str = "objects";
-pub const SESSIONS_COLLECTION: &str = "sessions";
-
-macro_rules! store {
-    ($state:expr, $gym:expr, $entity:expr, $collection:expr) => {{
-        let parent_path = $state.db.parent_path("gyms", $gym)?;
-        let result = $state
-            .db
-            .fluent()
-            .insert()
-            .into($collection)
-            .generate_document_id()
-            .parent(&parent_path)
-            .object($entity)
-            .execute()
-            .await?;
-
-        match &result {
-            Some(r) => tracing::debug!("storing: {r}"),
-            None => tracing::warn!("failed to store: {}", $entity),
-        }
-
-        result
-    }};
-}
 
 // TODO only diff here is that we provide an id and update
 pub(crate) async fn save_session(
@@ -51,7 +26,7 @@ pub(crate) async fn save_session(
         .db
         .fluent()
         .update()
-        .in_col(SESSIONS_COLLECTION)
+        .in_col(Session::COLLECTION)
         .document_id(session_id)
         .parent(&parent_path)
         .object(session)
@@ -77,12 +52,7 @@ pub(crate) async fn create_object(
     object_type: ObjectType,
     value: &Value,
 ) -> Result<Object, AppError> {
-    let obj_doc = ObjectDoc::new(object_type);
-    let obj_doc: Option<ObjectDoc> = store!(state, gym, &obj_doc, OBJECTS_COLLECTION);
-    let obj_doc = obj_doc.ok_or(AppError::Query(
-        "create_object: failed to create object".to_string(),
-    ))?;
-
+    let obj_doc = ObjectDoc::new(object_type).store(state, gym).await?;
     let obj: Object = obj_doc
         .try_into()
         .map_err(|e| AppError::Query(format!("create_object: {e}")))?;
@@ -108,7 +78,7 @@ pub(crate) async fn update_view(
         .db
         .fluent()
         .select()
-        .by_id_in(OBJECTS_COLLECTION)
+        .by_id_in(ObjectDoc::COLLECTION)
         .parent(&parent_path)
         .obj()
         .one(&object_id)
@@ -171,7 +141,7 @@ pub(crate) async fn lookup_object_(
         .db
         .fluent()
         .select()
-        .by_id_in(OBJECTS_COLLECTION)
+        .by_id_in(ObjectDoc::COLLECTION)
         .parent(&parent_path)
         .obj()
         .one(&id)
