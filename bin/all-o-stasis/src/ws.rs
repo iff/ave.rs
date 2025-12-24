@@ -17,7 +17,6 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::{Mutex, mpsc, mpsc::Receiver, mpsc::Sender};
 
-use crate::storage::PATCHES_COLLECTION;
 use crate::{AppError, AppState};
 
 #[derive(Serialize)]
@@ -69,7 +68,7 @@ async fn patch_listener(
         .db
         .fluent()
         .select()
-        .from(PATCHES_COLLECTION)
+        .from(Patch::COLLECTION)
         .parent(parent_path)
         .listen()
         .add_target(listener_id, &mut listener);
@@ -175,7 +174,7 @@ async fn drain_channel(
                     }
                     Message::Ping(bytes) => Message::Ping(bytes),
                     t => {
-                        tracing::error!("received unexpected message from on ws_send: {t:?}");
+                        tracing::error!("received unexpected message on ws_send: {t:?}");
                         continue;
                     }
                 };

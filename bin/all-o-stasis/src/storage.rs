@@ -14,9 +14,7 @@ use serde_json::{Value, from_value};
 pub const ACCOUNTS_VIEW_COLLECTION: &str = "accounts_view";
 pub const BOULDERS_VIEW_COLLECTION: &str = "boulders_view";
 pub const OBJECTS_COLLECTION: &str = "objects";
-pub const PATCHES_COLLECTION: &str = "patches";
 pub const SESSIONS_COLLECTION: &str = "sessions";
-pub const SNAPSHOTS_COLLECTION: &str = "snapshots";
 
 macro_rules! store {
     ($state:expr, $gym:expr, $entity:expr, $collection:expr) => {{
@@ -89,12 +87,9 @@ pub(crate) async fn create_object(
         .try_into()
         .map_err(|e| AppError::Query(format!("create_object: {e}")))?;
 
-    let patch = Patch::new(obj.id.clone(), author_id, value);
-    let patch: Option<Patch> = store!(state, gym, &patch, PATCHES_COLLECTION);
-    let _ = patch.ok_or(AppError::Query(
-        "create_object: failed to store patch".to_string(),
-    ))?;
-
+    let _ = Patch::new(obj.id.clone(), author_id, value)
+        .store(state, gym)
+        .await?;
     update_view(state, gym, &obj.id, value).await?;
 
     Ok(obj)
@@ -213,7 +208,7 @@ pub(crate) async fn lookup_latest_snapshot(
         .db
         .fluent()
         .select()
-        .from(SNAPSHOTS_COLLECTION)
+        .from(Snapshot::COLLECTION)
         .parent(&parent_path)
         .filter(|q| {
             q.for_all([
@@ -240,9 +235,7 @@ pub(crate) async fn lookup_latest_snapshot(
         None => {
             tracing::debug!("no snapshot found");
             // XXX we could already create the first snapshot on object creation?
-            let snapshot = Snapshot::new(obj_id.clone());
-            let _: Option<Snapshot> = store!(state, gym, &snapshot, SNAPSHOTS_COLLECTION);
-            snapshot
+            Snapshot::new(obj_id.clone()).store(state, gym).await?
         }
     };
 
@@ -267,7 +260,7 @@ async fn lookup_snapshot_between(
         .db
         .fluent()
         .select()
-        .from(SNAPSHOTS_COLLECTION)
+        .from(Snapshot::COLLECTION)
         .parent(&parent_path)
         .filter(|q| {
             q.for_all([
@@ -297,9 +290,7 @@ async fn lookup_snapshot_between(
         None => {
             // TODO we could already create the first snapshot on object creation?
             // TODO why is initial snapshot rev = -1?
-            let snapshot = Snapshot::new(obj_id.clone());
-            let _: Option<Snapshot> = store!(state, gym, &snapshot, SNAPSHOTS_COLLECTION);
-            Ok(snapshot)
+            Ok(Snapshot::new(obj_id.clone()).store(state, gym).await?)
         }
     }
 }
@@ -336,7 +327,7 @@ async fn patches_after_revision(
         .db
         .fluent()
         .select()
-        .from(PATCHES_COLLECTION)
+        .from(Patch::COLLECTION)
         .parent(&parent_path)
         .filter(|q| {
             q.for_all([
@@ -459,10 +450,8 @@ async fn save_operation(
     match snapshot.new_revision(object_id, author_id, rebased_op)? {
         None => Ok(None),
         Some((new_snapshot, patch)) => {
-            let s: Option<Snapshot> = store!(state, gym, &new_snapshot, SNAPSHOTS_COLLECTION);
-            let s = s.ok_or(AppError::Query("storing snapshot failed".to_string()))?;
-            let p: Option<Patch> = store!(state, gym, &patch, PATCHES_COLLECTION);
-            let p = p.ok_or(AppError::Query("storing patch failed".to_string()))?;
+            let s = new_snapshot.store(state, gym).await?;
+            let p = patch.store(state, gym).await?;
             Ok(Some(SaveOp {
                 patch: p,
                 snapshot: s,

@@ -3,8 +3,8 @@ use std::net::SocketAddr;
 use crate::passport::Session;
 use crate::session::{account_role, author_from_session};
 use crate::storage::{
-    BOULDERS_VIEW_COLLECTION, OBJECTS_COLLECTION, PATCHES_COLLECTION, SESSIONS_COLLECTION,
-    apply_object_updates, create_object, lookup_object_,
+    BOULDERS_VIEW_COLLECTION, OBJECTS_COLLECTION, SESSIONS_COLLECTION, apply_object_updates,
+    create_object, lookup_object_,
 };
 use crate::types::{AccountRole, Boulder, Object, ObjectDoc, ObjectType, Patch};
 use crate::ws::handle_socket;
@@ -369,7 +369,7 @@ async fn lookup_patch(
         .db
         .fluent()
         .select()
-        .from(PATCHES_COLLECTION)
+        .from(Patch::COLLECTION)
         .parent(&parent_path)
         .filter(|q| {
             q.for_all([

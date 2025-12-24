@@ -5,7 +5,30 @@ use otp::{ObjectId, Operation, OtError, RevId};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use crate::AppError;
+use crate::{AppError, AppState};
+
+macro_rules! store {
+    ($state:expr, $gym:expr, $entity:expr, $collection:expr) => {{
+        let parent_path = $state.db.parent_path("gyms", $gym)?;
+        let result = $state
+            .db
+            .fluent()
+            .insert()
+            .into($collection)
+            .generate_document_id()
+            .parent(&parent_path)
+            .object($entity)
+            .execute()
+            .await?;
+
+        match &result {
+            Some(r) => tracing::debug!("storing: {r}"),
+            None => tracing::warn!("failed to store: {}", $entity),
+        }
+
+        result
+    }};
+}
 
 // TODO implement Arbitrary for types
 
@@ -172,6 +195,8 @@ impl fmt::Display for Patch {
 }
 
 impl Patch {
+    pub const COLLECTION: &str = "patches";
+
     pub fn new(object_id: ObjectId, author_id: String, value: &Value) -> Self {
         let op = Operation::new_set(otp::ROOT_PATH.to_owned(), value.to_owned());
         Self {
@@ -197,6 +222,11 @@ impl Patch {
             operation,
         }
     }
+
+    pub async fn store(&self, state: &AppState, gym: &String) -> Result<Self, AppError> {
+        let s: Option<Self> = store!(state, gym, self, Self::COLLECTION);
+        s.ok_or(AppError::Query("storing patch failed".to_string()))
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -208,6 +238,8 @@ pub struct Snapshot {
 }
 
 impl Snapshot {
+    pub const COLLECTION: &str = "snapshots";
+
     pub fn new(object_id: ObjectId) -> Self {
         Self {
             object_id,
@@ -259,6 +291,36 @@ impl Snapshot {
         }
 
         Ok(s)
+    }
+
+    pub async fn store(&self, state: &AppState, gym: &String) -> Result<Self, AppError> {
+        let s: Option<Snapshot> = store!(state, gym, self, Self::COLLECTION);
+        s.ok_or(AppError::Query("storing snapshot failed".to_string()))
+
+        // let parent_path = state.db.parent_path("gyms", gym)?;
+        // let result: Option<Self> = state
+        //     .db
+        //     .fluent()
+        //     .insert()
+        //     .into(Self::COLLECTION)
+        //     .generate_document_id()
+        //     .parent(&parent_path)
+        //     .object(self)
+        //     .execute()
+        //     .await?;
+        //
+        // // TODO logging?
+        // result.ok_or(AppError::Query("storing snapshot failed".to_string()))
+        // match &result {
+        //     Some(r) => {
+        //         tracing::debug!("storing: {r}");
+        //         Ok(r)
+        //     },
+        //     None => {
+        //         tracing::warn!("failed to store: {}", self);
+        //         Err(AppError
+        //     },
+        // }
     }
 }
 
