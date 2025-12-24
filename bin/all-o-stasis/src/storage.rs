@@ -1,8 +1,11 @@
 use crate::{
+    AppError, AppState,
     passport::Session,
     routes::{LookupObjectResponse, PatchObjectResponse},
-    types::{Account, Boulder, Object, ObjectDoc, ObjectType, Patch, Snapshot},
-    {AppError, AppState},
+    types::{
+        Account, AccountsView, Boulder, BouldersView, Object, ObjectDoc, ObjectType, Patch,
+        Snapshot,
+    },
 };
 use axum::Json;
 use firestore::{FirestoreQueryDirection, FirestoreResult, path_camel_case};
@@ -10,9 +13,6 @@ use futures::TryStreamExt;
 use futures::stream::BoxStream;
 use otp::{ObjectId, Operation, RevId, ZERO_REV_ID, rebase};
 use serde_json::{Value, from_value};
-
-pub const ACCOUNTS_VIEW_COLLECTION: &str = "accounts_view";
-pub const BOULDERS_VIEW_COLLECTION: &str = "boulders_view";
 
 // TODO only diff here is that we provide an id and update
 pub(crate) async fn save_session(
@@ -100,7 +100,7 @@ pub(crate) async fn update_view(
                 .db
                 .fluent()
                 .update()
-                .in_col(ACCOUNTS_VIEW_COLLECTION)
+                .in_col(AccountsView::COLLECTION)
                 .document_id(object_id.clone())
                 .parent(&parent_path)
                 .object(&account)
@@ -115,7 +115,7 @@ pub(crate) async fn update_view(
                 .db
                 .fluent()
                 .update()
-                .in_col(BOULDERS_VIEW_COLLECTION)
+                .in_col(BouldersView::COLLECTION)
                 .document_id(object_id.clone())
                 .parent(&parent_path)
                 .object(&boulder)

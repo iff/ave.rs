@@ -13,8 +13,8 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::session::author_from_session;
-use crate::storage::{ACCOUNTS_VIEW_COLLECTION, BOULDERS_VIEW_COLLECTION, lookup_latest_snapshot};
-use crate::types::{Account, AccountRole, Boulder};
+use crate::storage::lookup_latest_snapshot;
+use crate::types::{Account, AccountRole, AccountsView, Boulder, BouldersView};
 use crate::{AppError, AppState};
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -76,7 +76,7 @@ async fn active_boulders(
         .db
         .fluent()
         .select()
-        .from(BOULDERS_VIEW_COLLECTION)
+        .from(BouldersView::COLLECTION)
         .parent(&parent_path)
         .filter(|q| {
             q.for_all([
@@ -113,7 +113,7 @@ async fn draft_boulders(
         .db
         .fluent()
         .select()
-        .from(BOULDERS_VIEW_COLLECTION)
+        .from(BouldersView::COLLECTION)
         .parent(&parent_path)
         .filter(|q| {
             q.for_all([
@@ -151,7 +151,7 @@ async fn own_boulders(
         .db
         .fluent()
         .select()
-        .from(BOULDERS_VIEW_COLLECTION)
+        .from(BouldersView::COLLECTION)
         .parent(&parent_path)
         .filter(|q| q.for_all([q.field(path_camel_case!(Boulder::id)).eq(own.to_owned())]))
         .obj()
@@ -176,7 +176,7 @@ async fn accounts(
         .db
         .fluent()
         .select()
-        .from(ACCOUNTS_VIEW_COLLECTION)
+        .from(AccountsView::COLLECTION)
         .parent(&parent_path)
         .obj()
         .stream_query_with_errors()
@@ -200,7 +200,7 @@ async fn admin_accounts(
         .db
         .fluent()
         .select()
-        .from(ACCOUNTS_VIEW_COLLECTION)
+        .from(AccountsView::COLLECTION)
         .parent(&parent_path)
         .filter(|q| {
             q.for_all([q

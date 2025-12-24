@@ -2,10 +2,8 @@ use std::net::SocketAddr;
 
 use crate::passport::Session;
 use crate::session::{account_role, author_from_session};
-use crate::storage::{
-    BOULDERS_VIEW_COLLECTION, apply_object_updates, create_object, lookup_object_,
-};
-use crate::types::{AccountRole, Boulder, Object, ObjectDoc, ObjectType, Patch};
+use crate::storage::{apply_object_updates, create_object, lookup_object_};
+use crate::types::{AccountRole, Boulder, BouldersView, Object, ObjectDoc, ObjectType, Patch};
 use crate::ws::handle_socket;
 use crate::{AppError, AppState};
 use axum::{
@@ -128,7 +126,7 @@ async fn lookup_boulder(
         .db
         .fluent()
         .select()
-        .by_id_in(BOULDERS_VIEW_COLLECTION)
+        .by_id_in(BouldersView::COLLECTION)
         .parent(&parent_path)
         .obj()
         .one(&object_id)

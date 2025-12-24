@@ -8,8 +8,7 @@ use futures::TryStreamExt;
 use futures::stream::BoxStream;
 use serde::{Deserialize, Serialize};
 
-use crate::storage::BOULDERS_VIEW_COLLECTION;
-use crate::types::Boulder;
+use crate::types::{Boulder, BouldersView};
 use crate::{AppError, AppState};
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -41,7 +40,7 @@ async fn stats_boulders(
         .db
         .fluent()
         .select()
-        .from(BOULDERS_VIEW_COLLECTION)
+        .from(BouldersView::COLLECTION)
         .parent(&parent_path)
         .filter(|q| q.for_all([q.field(path_camel_case!(Boulder::is_draft)).eq(0)]))
         .obj()

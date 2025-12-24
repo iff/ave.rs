@@ -340,3 +340,15 @@ impl fmt::Display for Snapshot {
         )
     }
 }
+
+pub struct AccountsView {}
+
+impl AccountsView {
+    pub const COLLECTION: &str = "accounts_view";
+}
+
+pub struct BouldersView {}
+
+impl BouldersView {
+    pub const COLLECTION: &str = "boulders_view";
+}

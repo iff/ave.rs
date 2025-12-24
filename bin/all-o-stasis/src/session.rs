@@ -1,6 +1,5 @@
 use crate::passport::Session;
-use crate::storage::ACCOUNTS_VIEW_COLLECTION;
-use crate::types::{Account, AccountRole};
+use crate::types::{Account, AccountRole, AccountsView};
 use crate::{AppError, AppState};
 use axum_extra::extract::cookie::Cookie;
 use otp::ObjectId;
@@ -77,7 +76,7 @@ pub(crate) async fn account_role(
         .db
         .fluent()
         .select()
-        .by_id_in(ACCOUNTS_VIEW_COLLECTION)
+        .by_id_in(AccountsView::COLLECTION)
         .parent(&parent_path)
         .obj()
         .one(object_id)

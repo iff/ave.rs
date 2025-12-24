@@ -16,13 +16,7 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    AppError, AppState,
-    storage::{
-        ACCOUNTS_VIEW_COLLECTION, apply_object_updates, create_object, lookup_latest_snapshot,
-        save_session,
-    },
-    types::{Account, AccountRole, ObjectType},
-    word_list::make_security_code,
+    storage::{apply_object_updates, create_object, lookup_latest_snapshot, save_session}, types::{Account, AccountRole, AccountsView, ObjectType}, word_list::make_security_code, AppError, AppState
 };
 
 mod maileroo {
@@ -252,7 +246,7 @@ async fn create_passport(
         .db
         .fluent()
         .select()
-        .from(ACCOUNTS_VIEW_COLLECTION)
+        .from(AccountsView::COLLECTION)
         .parent(&parent_path)
         .filter(|q| {
             q.for_all([q
