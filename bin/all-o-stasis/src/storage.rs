@@ -18,9 +18,7 @@ pub(crate) async fn create_object(
     value: &Value,
 ) -> Result<Object, AppError> {
     let obj_doc = ObjectDoc::new(object_type).store(state, gym).await?;
-    let obj: Object = obj_doc
-        .try_into()
-        .map_err(|e| AppError::Query(format!("create_object: {e}")))?;
+    let obj: Object = obj_doc.try_into()?;
 
     let _ = Patch::new(obj.id.clone(), author_id, value)
         .store(state, gym)
@@ -52,9 +50,7 @@ pub(crate) async fn update_view(
             "update_view: failed to update view for {object_id}"
         )))?;
 
-    let obj: Object = obj
-        .try_into()
-        .map_err(|e| AppError::Query(format!("update_view: {e}")))?;
+    let obj: Object = obj.try_into()?;
 
     match obj.object_type {
         ObjectType::Account => AccountsView::store(state, gym, object_id, content).await?,
@@ -87,9 +83,7 @@ pub(crate) async fn lookup_object_(
             "lookup_object: failed to get object {id}"
         )))?;
 
-    let obj: Object = obj
-        .try_into()
-        .map_err(|e| AppError::Query(format!("lookup_object: {e}")))?;
+    let obj: Object = obj.try_into()?;
 
     tracing::debug!("looking up last snapshot for obj={id}");
     let snapshot = lookup_latest_snapshot(state, gym, &id.clone()).await?;

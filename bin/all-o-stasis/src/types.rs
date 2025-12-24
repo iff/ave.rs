@@ -142,12 +142,16 @@ pub struct Object {
 }
 
 impl TryFrom<ObjectDoc> for Object {
-    type Error = &'static str;
+    type Error = AppError;
 
     fn try_from(doc: ObjectDoc) -> Result<Self, Self::Error> {
         Ok(Object {
-            id: doc.id.ok_or("Object missing id")?,
-            created_at: doc.created_at.ok_or("Object missing created_at")?,
+            id: doc
+                .id
+                .ok_or(AppError::Query("object doc is missing an id".to_string()))?,
+            created_at: doc.created_at.ok_or(AppError::Query(
+                "object doc is missing created_at".to_string(),
+            ))?,
             object_type: doc.object_type,
             created_by: doc.created_by,
             deleted: doc.deleted.unwrap_or(false),

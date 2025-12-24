@@ -107,9 +107,7 @@ async fn object_type(
         .await?;
 
     if let Some(doc) = object_doc {
-        let object: Object = doc
-            .try_into()
-            .map_err(|e| AppError::Query(format!("lookup_object_type: {e}")))?;
+        let object: Object = doc.try_into()?;
         Ok(object.object_type)
     } else {
         Err(AppError::NotAuthorized())
