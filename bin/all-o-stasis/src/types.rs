@@ -96,18 +96,18 @@ impl Boulder {
 #[serde(rename_all = "camelCase")]
 pub struct ObjectDoc {
     #[serde(alias = "_firestore_id")]
-    pub id: Option<ObjectId>,
+    id: Option<ObjectId>,
     #[serde(alias = "_firestore_created")]
-    pub created_at: Option<DateTime<Utc>>,
-    pub object_type: ObjectType,
-    pub created_by: ObjectId,
-    pub deleted: Option<bool>,
+    created_at: Option<DateTime<Utc>>,
+    object_type: ObjectType,
+    created_by: ObjectId,
+    deleted: Option<bool>,
 }
 
 impl ObjectDoc {
     pub const COLLECTION: &str = "objects";
 
-    pub fn new(object_type: ObjectType) -> Self {
+    fn new(object_type: ObjectType) -> Self {
         Self {
             id: None,
             object_type,
@@ -156,6 +156,20 @@ impl TryFrom<ObjectDoc> for Object {
             created_by: doc.created_by,
             deleted: doc.deleted.unwrap_or(false),
         })
+    }
+}
+
+impl Object {
+    pub async fn new(
+        state: &AppState,
+        gym: &String,
+        object_type: &ObjectType,
+    ) -> Result<Self, AppError> {
+        let obj_doc = ObjectDoc::new(object_type.clone())
+            .store(state, gym)
+            .await?;
+        let obj: Object = obj_doc.try_into()?;
+        Ok(obj)
     }
 }
 

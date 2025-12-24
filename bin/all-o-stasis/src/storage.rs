@@ -17,13 +17,11 @@ pub(crate) async fn create_object(
     object_type: ObjectType,
     value: &Value,
 ) -> Result<Object, AppError> {
-    let obj_doc = ObjectDoc::new(object_type).store(state, gym).await?;
-    let obj: Object = obj_doc.try_into()?;
-
+    let obj = Object::new(state, gym, &object_type).await?;
     let _ = Patch::new(obj.id.clone(), author_id, value)
         .store(state, gym)
         .await?;
-    update_view(state, gym, &obj.id, value).await?;
+    update_view_typed(state, gym, &obj.id, &object_type, value).await?;
 
     Ok(obj)
 }
@@ -51,8 +49,17 @@ pub(crate) async fn update_view(
         )))?;
 
     let obj: Object = obj.try_into()?;
+    update_view_typed(state, gym, object_id, &obj.object_type, content).await
+}
 
-    match obj.object_type {
+pub(crate) async fn update_view_typed(
+    state: &AppState,
+    gym: &String,
+    object_id: &ObjectId,
+    object_type: &ObjectType,
+    content: &Value,
+) -> Result<(), AppError> {
+    match object_type {
         ObjectType::Account => AccountsView::store(state, gym, object_id, content).await?,
         ObjectType::Boulder => BouldersView::store(state, gym, object_id, content).await?,
         ObjectType::Passport => {
