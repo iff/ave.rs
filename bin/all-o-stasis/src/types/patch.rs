@@ -1,6 +1,13 @@
+use std::collections::hash_map::DefaultHasher;
 use std::fmt;
+use std::hash::{Hash, Hasher};
+use std::net::SocketAddr;
 
 use chrono::{DateTime, Utc};
+use firestore::{
+    FirestoreDb, FirestoreListener, FirestoreListenerTarget, FirestoreMemListenStateStorage,
+    ParentPathBuilder,
+};
 use firestore::{FirestoreQueryDirection, FirestoreResult, path_camel_case};
 use futures::{TryStreamExt, stream::BoxStream};
 use otp::{ObjectId, Operation, RevId};
@@ -32,6 +39,24 @@ macro_rules! store {
     }};
 }
 
+fn hash_addr(addr: &SocketAddr) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    // TODO hash addr.ip()?
+
+    match addr {
+        SocketAddr::V4(v4) => {
+            v4.ip().octets().hash(&mut hasher);
+            v4.port().hash(&mut hasher);
+        }
+        SocketAddr::V6(v6) => {
+            v6.ip().octets().hash(&mut hasher);
+            v6.port().hash(&mut hasher);
+        }
+    }
+
+    hasher.finish()
+}
+
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Patch {
@@ -54,7 +79,7 @@ impl fmt::Display for Patch {
 }
 
 impl Patch {
-    pub const COLLECTION: &str = "patches";
+    const COLLECTION: &str = "patches";
 
     pub fn new(object_id: ObjectId, author_id: String, value: &Value) -> Self {
         let op = Operation::new_set(otp::ROOT_PATH.to_owned(), value.to_owned());
@@ -158,5 +183,36 @@ impl Patch {
             patches.len()
         );
         Ok(patches)
+    }
+
+    pub async fn listener(
+        state: &AppState,
+        parent_path: &ParentPathBuilder,
+        who: SocketAddr,
+    ) -> Option<FirestoreListener<FirestoreDb, FirestoreMemListenStateStorage>> {
+        let client_id = hash_addr(&who) as u32;
+        let listener_id: FirestoreListenerTarget = FirestoreListenerTarget::new(client_id);
+        tracing::debug!("connection {who} gets firestore listener id: {client_id:?}");
+
+        // now start streaming patches using firestore listeners: https://github.com/abdolence/firestore-rs/blob/master/examples/listen-changes.rs
+        let mut listener = match state
+            .db
+            .create_listener(FirestoreMemListenStateStorage::new())
+            .await
+        {
+            Ok(l) => l,
+            Err(..) => return None,
+        };
+
+        let _ = state
+            .db
+            .fluent()
+            .select()
+            .from(Patch::COLLECTION)
+            .parent(parent_path)
+            .listen()
+            .add_target(listener_id, &mut listener);
+
+        Some(listener)
     }
 }
