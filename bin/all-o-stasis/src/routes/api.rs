@@ -4,7 +4,7 @@ use crate::passport::Session;
 use crate::session::{account_role, author_from_session};
 use crate::storage::{apply_object_updates, create_object};
 use crate::types::{
-    AccountRole, Boulder, BouldersView, Object, ObjectDoc, ObjectType, Patch, Snapshot,
+    AccountRole, Boulder, BouldersView, Object, ObjectType, Patch, Snapshot,
 };
 use crate::ws::handle_socket;
 use crate::{AppError, AppState};
@@ -103,30 +103,6 @@ impl PatchObjectResponse {
 struct LookupSessionResponse {
     id: String,
     obj_id: ObjectId,
-}
-
-async fn object_type(
-    state: &AppState,
-    gym: &String,
-    object_id: ObjectId,
-) -> Result<ObjectType, AppError> {
-    let parent_path = state.db.parent_path("gyms", gym)?;
-    let object_doc: Option<ObjectDoc> = state
-        .db
-        .fluent()
-        .select()
-        .by_id_in(ObjectDoc::COLLECTION)
-        .parent(&parent_path)
-        .obj()
-        .one(&object_id)
-        .await?;
-
-    if let Some(doc) = object_doc {
-        let object: Object = doc.try_into()?;
-        Ok(object.object_type)
-    } else {
-        Err(AppError::NotAuthorized())
-    }
 }
 
 async fn lookup_boulder(
@@ -314,8 +290,8 @@ async fn patch_object(
         return Err(AppError::NotAuthorized());
     }
 
-    let ot_type = object_type(&state, &gym, id.clone()).await?;
-    match ot_type {
+    let object = Object::lookup(&state, &gym, &id).await?;
+    match object.object_type {
         ObjectType::Account => {
             if role == AccountRole::Setter {
                 // only admins can change the role of an Account

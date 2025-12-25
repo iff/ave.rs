@@ -43,7 +43,7 @@ pub struct ObjectDoc {
 }
 
 impl ObjectDoc {
-    pub const COLLECTION: &str = "objects";
+    const COLLECTION: &str = "objects";
 
     fn new(object_type: ObjectType) -> Self {
         Self {

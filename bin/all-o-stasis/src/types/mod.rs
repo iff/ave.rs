@@ -10,7 +10,7 @@ pub mod object;
 pub mod patch;
 pub mod snapshot;
 
-pub use object::{Object, ObjectDoc};
+pub use object::Object;
 pub use patch::Patch;
 pub use snapshot::Snapshot;
 

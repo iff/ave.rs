@@ -1,7 +1,7 @@
 use crate::{
     AppError, AppState,
     routes::PatchObjectResponse,
-    types::{AccountsView, BouldersView, Object, ObjectDoc, ObjectType, Patch, Snapshot},
+    types::{AccountsView, BouldersView, Object, ObjectType, Patch, Snapshot},
 };
 use axum::Json;
 use otp::{ObjectId, Operation, RevId, rebase};
@@ -29,23 +29,7 @@ pub(crate) async fn update_view(
     object_id: &ObjectId,
     content: &Value,
 ) -> Result<(), AppError> {
-    let parent_path = state.db.parent_path("gyms", gym)?;
-
-    // lookup object to find out what type it is
-    let obj: ObjectDoc = state
-        .db
-        .fluent()
-        .select()
-        .by_id_in(ObjectDoc::COLLECTION)
-        .parent(&parent_path)
-        .obj()
-        .one(&object_id)
-        .await?
-        .ok_or(AppError::Query(format!(
-            "update_view: failed to update view for {object_id}"
-        )))?;
-
-    let obj: Object = obj.try_into()?;
+    let obj = Object::lookup(state, gym, object_id).await?;
     update_view_typed(state, gym, object_id, &obj.object_type, content).await
 }
 
