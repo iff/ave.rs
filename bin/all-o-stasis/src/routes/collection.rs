@@ -13,8 +13,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::session::author_from_session;
-use crate::storage::lookup_latest_snapshot;
-use crate::types::{Account, AccountRole, AccountsView, Boulder, BouldersView};
+use crate::types::{Account, AccountRole, AccountsView, Boulder, BouldersView, Snapshot};
 use crate::{AppError, AppState};
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -46,7 +45,7 @@ async fn public_profile(
     State(state): State<AppState>,
     Path((gym, id)): Path<(String, String)>,
 ) -> Result<Json<PublicProfile>, AppError> {
-    let snapshot = lookup_latest_snapshot(&state, &gym, &id).await?;
+    let snapshot = Snapshot::lookup_latest(&state, &gym, &id).await?;
     let account: Account = serde_json::from_value(snapshot.content).or(Err(
         AppError::ParseError("failed to parse object".to_string()),
     ))?;

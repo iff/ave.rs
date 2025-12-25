@@ -7,7 +7,7 @@ mod api;
 mod collection;
 mod stats;
 
-pub use api::{LookupObjectResponse, PatchObjectResponse};
+pub use api::PatchObjectResponse;
 
 mod built_info {
     include!(concat!(env!("OUT_DIR"), "/built.rs"));

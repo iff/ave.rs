@@ -2,8 +2,10 @@ use std::net::SocketAddr;
 
 use crate::passport::Session;
 use crate::session::{account_role, author_from_session};
-use crate::storage::{apply_object_updates, create_object, lookup_object_};
-use crate::types::{AccountRole, Boulder, BouldersView, Object, ObjectDoc, ObjectType, Patch};
+use crate::storage::{apply_object_updates, create_object};
+use crate::types::{
+    AccountRole, Boulder, BouldersView, Object, ObjectDoc, ObjectType, Patch, Snapshot,
+};
 use crate::ws::handle_socket;
 use crate::{AppError, AppState};
 use axum::{
@@ -18,9 +20,6 @@ use axum_extra::extract::{CookieJar, cookie::Cookie};
 use axum_extra::headers::UserAgent;
 use chrono::{DateTime, Utc};
 use cookie::time::Duration;
-use firestore::{FirestoreResult, path_camel_case};
-use futures::TryStreamExt;
-use futures::stream::BoxStream;
 use otp::{ObjectId, Operation, RevId};
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
@@ -52,6 +51,22 @@ pub struct LookupObjectResponse {
     pub created_by: ObjectId,
     pub revision_id: RevId,
     pub content: Value,
+}
+
+impl LookupObjectResponse {
+    pub async fn build(state: &AppState, gym: &String, id: ObjectId) -> Result<Self, AppError> {
+        let obj = Object::lookup(state, gym, &id).await?;
+        let snapshot = Snapshot::lookup_latest(state, gym, &id.clone()).await?;
+
+        Ok(LookupObjectResponse {
+            id,
+            ot_type: obj.object_type,
+            created_at: obj.created_at,
+            created_by: obj.created_by,
+            revision_id: snapshot.revision_id,
+            content: snapshot.content,
+        })
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -150,6 +165,7 @@ pub fn routes() -> Router<AppState> {
         .route("/{gym}/feed", any(feed))
 }
 
+// TODO maybe impl FromRequestParts into a state/path context
 async fn delete_session(
     State(state): State<AppState>,
     Path(gym): Path<String>,
@@ -258,7 +274,7 @@ async fn lookup_object(
     Path((gym, id)): Path<(String, String)>,
     jar: CookieJar,
 ) -> Result<Json<LookupObjectResponse>, AppError> {
-    let response = lookup_object_(&state, &gym, id).await?;
+    let response = Json(LookupObjectResponse::build(&state, &gym, id).await?);
 
     // anyone can lookup boulders
     if response.ot_type == ObjectType::Boulder {
@@ -359,32 +375,7 @@ async fn lookup_patch(
     State(state): State<AppState>,
     Path((gym, id, rev_id)): Path<(String, String, i64)>,
 ) -> Result<Json<Patch>, AppError> {
-    let parent_path = state.db.parent_path("gyms", gym)?;
-    let patch_stream: BoxStream<FirestoreResult<Patch>> = state
-        .db
-        .fluent()
-        .select()
-        .from(Patch::COLLECTION)
-        .parent(&parent_path)
-        .filter(|q| {
-            q.for_all([
-                q.field(path_camel_case!(Patch::object_id)).eq(id.clone()),
-                q.field(path_camel_case!(Patch::revision_id)).eq(rev_id),
-            ])
-        })
-        .limit(1)
-        .obj()
-        .stream_query_with_errors()
-        .await?;
-
-    let mut patches: Vec<Patch> = patch_stream.try_collect().await?;
-    if patches.len() != 1 {
-        return Err(AppError::Query(format!(
-            "lookup_patch found {} patches, expecting only 1",
-            patches.len()
-        )));
-    }
-    let patch = patches.pop().unwrap();
+    let patch = Patch::lookup(&state, &gym, &id, rev_id).await?;
     Ok(Json(patch))
 }
 

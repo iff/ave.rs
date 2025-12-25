@@ -17,8 +17,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     AppError, AppState,
-    storage::{apply_object_updates, create_object, lookup_latest_snapshot},
-    types::{Account, AccountRole, AccountsView, ObjectType},
+    storage::{apply_object_updates, create_object},
+    types::{Account, AccountRole, AccountsView, ObjectType, Snapshot},
     word_list::make_security_code,
 };
 
@@ -358,7 +358,7 @@ async fn confirm_passport(
     Query(pport): Query<ConfirmPassport>,
     jar: CookieJar,
 ) -> Result<impl IntoResponse, AppError> {
-    let snapshot = lookup_latest_snapshot(&state, &gym, &pport.passport_id.clone()).await?;
+    let snapshot = Snapshot::lookup_latest(&state, &gym, &pport.passport_id.clone()).await?;
     let passport: Passport = serde_json::from_value(snapshot.content).or(Err(
         AppError::ParseError("failed to parse object into Passport".to_string()),
     ))?;
@@ -422,7 +422,7 @@ async fn await_passport_confirmation(
     jar: CookieJar,
 ) -> Result<impl IntoResponse, AppError> {
     let (account_id, revision_id) = loop {
-        let snapshot = lookup_latest_snapshot(&state, &gym, &pport.passport_id.clone()).await?;
+        let snapshot = Snapshot::lookup_latest(&state, &gym, &pport.passport_id.clone()).await?;
         let passport: Passport = serde_json::from_value(snapshot.content).or(Err(
             AppError::ParseError("failed to parse object into Passport".to_string()),
         ))?;

@@ -1,7 +1,9 @@
 use std::fmt;
 
 use chrono::{DateTime, Utc};
-use otp::{ObjectId, Operation, OtError, RevId};
+use firestore::{FirestoreQueryDirection, FirestoreResult, path_camel_case};
+use futures::{TryStreamExt, stream::BoxStream};
+use otp::{ObjectId, Operation, OtError, RevId, ZERO_REV_ID};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, from_value, json};
 
@@ -117,6 +119,22 @@ impl ObjectDoc {
         }
     }
 
+    async fn lookup(state: &AppState, gym: &String, object_id: ObjectId) -> Result<Self, AppError> {
+        let parent_path = state.db.parent_path("gyms", gym)?;
+        state
+            .db
+            .fluent()
+            .select()
+            .by_id_in(ObjectDoc::COLLECTION)
+            .parent(&parent_path)
+            .obj()
+            .one(&object_id)
+            .await?
+            .ok_or(AppError::Query(format!(
+                "lookup_object: failed to get object {object_id}"
+            )))
+    }
+
     pub async fn store(&self, state: &AppState, gym: &String) -> Result<Self, AppError> {
         let s: Option<Self> = store!(state, gym, self, Self::COLLECTION);
         s.ok_or(AppError::Query("storing object failed".to_string()))
@@ -168,6 +186,16 @@ impl Object {
         let obj_doc = ObjectDoc::new(object_type.clone())
             .store(state, gym)
             .await?;
+        let obj: Object = obj_doc.try_into()?;
+        Ok(obj)
+    }
+
+    pub async fn lookup(
+        state: &AppState,
+        gym: &String,
+        object_id: &ObjectId,
+    ) -> Result<Self, AppError> {
+        let obj_doc = ObjectDoc::lookup(state, gym, object_id.clone()).await?;
         let obj: Object = obj_doc.try_into()?;
         Ok(obj)
     }
@@ -252,6 +280,79 @@ impl Patch {
         let s: Option<Self> = store!(state, gym, self, Self::COLLECTION);
         s.ok_or(AppError::Query("storing patch failed".to_string()))
     }
+
+    /// lookup a patch with rev_id
+    pub async fn lookup(
+        state: &AppState,
+        gym: &String,
+        object_id: &ObjectId,
+        rev_id: RevId, // inclusive
+    ) -> Result<Self, AppError> {
+        let parent_path = state.db.parent_path("gyms", gym)?;
+        let patch_stream: BoxStream<FirestoreResult<Patch>> = state
+            .db
+            .fluent()
+            .select()
+            .from(Self::COLLECTION)
+            .parent(&parent_path)
+            .filter(|q| {
+                q.for_all([
+                    q.field(path_camel_case!(Patch::object_id))
+                        .eq(object_id.clone()),
+                    q.field(path_camel_case!(Patch::revision_id)).eq(rev_id),
+                ])
+            })
+            .limit(1)
+            .obj()
+            .stream_query_with_errors()
+            .await?;
+
+        let mut patches: Vec<Patch> = patch_stream.try_collect().await?;
+        if patches.len() != 1 {
+            return Err(AppError::Query(format!(
+                "lookup_patch found {} patches, expecting only 1",
+                patches.len()
+            )));
+        }
+        let patch = patches.pop().unwrap();
+        Ok(patch)
+    }
+
+    pub async fn after_revision(
+        state: &AppState,
+        gym: &String,
+        obj_id: &ObjectId,
+        rev_id: RevId,
+    ) -> Result<Vec<Patch>, AppError> {
+        let parent_path = state.db.parent_path("gyms", gym)?;
+        let object_stream: BoxStream<FirestoreResult<Patch>> = state
+            .db
+            .fluent()
+            .select()
+            .from(Patch::COLLECTION)
+            .parent(&parent_path)
+            .filter(|q| {
+                q.for_all([
+                    q.field(path_camel_case!(Patch::object_id)).eq(obj_id),
+                    q.field(path_camel_case!(Patch::revision_id))
+                        .greater_than(rev_id),
+                ])
+            })
+            .order_by([(
+                path_camel_case!(Snapshot::revision_id),
+                FirestoreQueryDirection::Ascending,
+            )])
+            .obj()
+            .stream_query_with_errors()
+            .await?;
+
+        let patches: Vec<Patch> = object_stream.try_collect().await?;
+        tracing::debug!(
+            "patches after rev ({rev_id}): {}, obj = {obj_id}",
+            patches.len()
+        );
+        Ok(patches)
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -263,7 +364,7 @@ pub struct Snapshot {
 }
 
 impl Snapshot {
-    pub const COLLECTION: &str = "snapshots";
+    const COLLECTION: &str = "snapshots";
 
     pub fn new(object_id: ObjectId) -> Self {
         Self {
@@ -346,6 +447,127 @@ impl Snapshot {
         //         Err(AppError
         //     },
         // }
+    }
+
+    /// lookup a snapshot with rev_id or lower and apply patches if necessary
+    pub async fn lookup(
+        state: &AppState,
+        gym: &String,
+        obj_id: &ObjectId,
+        rev_id: RevId, // inclusive
+    ) -> Result<Snapshot, AppError> {
+        let latest_snapshot = Self::lookup_between(state, gym, obj_id, ZERO_REV_ID, rev_id).await?;
+
+        // get all patches which we need to apply on top of the snapshot to
+        // arrive at the desired revision
+        let patches: Vec<Patch> =
+            Patch::after_revision(state, gym, obj_id, latest_snapshot.revision_id)
+                .await?
+                .into_iter()
+                .filter(|p| p.revision_id <= rev_id)
+                .collect();
+
+        // apply those patches to the snapshot
+        latest_snapshot.apply_patches(&patches)
+    }
+
+    /// get or create a latest snapshot between low and high (inclusive)
+    async fn lookup_between(
+        state: &AppState,
+        gym: &String,
+        obj_id: &ObjectId,
+        low: RevId,
+        high: RevId,
+    ) -> Result<Snapshot, AppError> {
+        let parent_path = state.db.parent_path("gyms", gym)?;
+        let object_stream: BoxStream<FirestoreResult<Snapshot>> = state
+            .db
+            .fluent()
+            .select()
+            .from(Snapshot::COLLECTION)
+            .parent(&parent_path)
+            .filter(|q| {
+                q.for_all([
+                    q.field(path_camel_case!(Snapshot::object_id)).eq(obj_id),
+                    q.field(path_camel_case!(Snapshot::revision_id))
+                        .greater_than_or_equal(low),
+                    q.field(path_camel_case!(Snapshot::revision_id))
+                        .less_than_or_equal(high),
+                ])
+            })
+            .limit(1)
+            .order_by([(
+                path_camel_case!(Snapshot::revision_id),
+                FirestoreQueryDirection::Descending,
+            )])
+            .obj()
+            .stream_query_with_errors()
+            .await?;
+
+        let snapshots: Vec<Snapshot> = object_stream.try_collect().await?;
+        tracing::debug!(
+            "snapshots ({low} <= s <= {high}): {} snapshots, obj={obj_id}",
+            snapshots.len(),
+        );
+        match snapshots.first() {
+            Some(snapshot) => Ok(snapshot.clone()),
+            None => {
+                // TODO we could already create the first snapshot on object creation?
+                Ok(Snapshot::new(obj_id.clone()).store(state, gym).await?)
+            }
+        }
+    }
+
+    /// get latest available snapshot with object_id or create a new snapshot. apply unapplied
+    /// patches to get to the latest revision.
+    pub async fn lookup_latest(
+        state: &AppState,
+        gym: &String,
+        object_id: &ObjectId,
+    ) -> Result<Self, AppError> {
+        let parent_path = state.db.parent_path("gyms", gym)?;
+        let object_stream: BoxStream<FirestoreResult<Snapshot>> = state
+            .db
+            .fluent()
+            .select()
+            .from(Snapshot::COLLECTION)
+            .parent(&parent_path)
+            .filter(|q| {
+                q.for_all([
+                    q.field(path_camel_case!(Snapshot::object_id)).eq(object_id),
+                    q.field(path_camel_case!(Snapshot::revision_id))
+                        .greater_than_or_equal(ZERO_REV_ID),
+                ])
+            })
+            .limit(1)
+            .order_by([(
+                path_camel_case!(Snapshot::revision_id),
+                FirestoreQueryDirection::Descending,
+            )])
+            .obj()
+            .stream_query_with_errors()
+            .await?;
+
+        let snapshots: Vec<Snapshot> = object_stream.try_collect().await?;
+        let latest_snapshot: Snapshot = match snapshots.first() {
+            Some(snapshot) => {
+                tracing::debug!("found {snapshot}");
+                snapshot.clone()
+            }
+            None => {
+                tracing::debug!("no snapshot found");
+                // XXX we could already create the first snapshot on object creation?
+                Snapshot::new(object_id.clone()).store(state, gym).await?
+            }
+        };
+
+        // get all patches which we need to apply on top of the snapshot to
+        // arrive at the desired revision
+        let patches =
+            Patch::after_revision(state, gym, object_id, latest_snapshot.revision_id).await?;
+
+        // apply those patches to the snapshot
+        latest_snapshot.apply_patches(&patches)
     }
 }
 
