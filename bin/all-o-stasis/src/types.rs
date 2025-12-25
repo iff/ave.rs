@@ -449,7 +449,7 @@ impl Snapshot {
         // }
     }
 
-    /// lookup a snapshot with rev_id or lower and apply patches if necessary
+    /// lookup a snapshot with rev_id or lower and apply patches with revision <= rev_id if necessary
     pub async fn lookup(
         state: &AppState,
         gym: &String,
@@ -457,7 +457,7 @@ impl Snapshot {
         rev_id: RevId, // inclusive
     ) -> Result<Snapshot, AppError> {
         let latest_snapshot =
-            Self::lookup_between(state, gym, obj_id, ZERO_REV_ID, Some(rev_id)).await?;
+            Self::lookup_between(state, gym, obj_id, (ZERO_REV_ID, Some(rev_id))).await?;
 
         // get all patches which we need to apply on top of the snapshot to
         // arrive at the desired revision
@@ -473,14 +473,14 @@ impl Snapshot {
     }
 
     /// get latest available snapshot with object_id or create a new snapshot. apply unapplied
-    /// patches to get to the latest revision.
+    /// patches to get to the latest possible revision.
     pub async fn lookup_latest(
         state: &AppState,
         gym: &String,
         object_id: &ObjectId,
     ) -> Result<Self, AppError> {
         let latest_snapshot =
-            Snapshot::lookup_between(state, gym, object_id, ZERO_REV_ID, None).await?;
+            Snapshot::lookup_between(state, gym, object_id, (ZERO_REV_ID, None)).await?;
 
         // get all patches which we need to apply on top of the snapshot to
         // arrive at the desired revision
@@ -496,8 +496,7 @@ impl Snapshot {
         state: &AppState,
         gym: &String,
         object_id: &ObjectId,
-        low: RevId,
-        high: Option<RevId>,
+        range: (RevId, Option<RevId>),
     ) -> Result<Snapshot, AppError> {
         let parent_path = state.db.parent_path("gyms", gym)?;
         let object_stream: BoxStream<FirestoreResult<Snapshot>> = state
@@ -512,9 +511,9 @@ impl Snapshot {
                         Some(q.field(path_camel_case!(Snapshot::object_id)).eq(object_id)),
                         Some(
                             q.field(path_camel_case!(Snapshot::revision_id))
-                                .greater_than_or_equal(low),
+                                .greater_than_or_equal(range.0),
                         ),
-                        high.map(|h| {
+                        range.1.map(|h| {
                             q.field(path_camel_case!(Snapshot::revision_id))
                                 .less_than_or_equal(h)
                         }),
@@ -534,7 +533,9 @@ impl Snapshot {
 
         let snapshots: Vec<Snapshot> = object_stream.try_collect().await?;
         tracing::debug!(
-            "snapshots ({low} <= s <= {high:?}): {} snapshots, obj={object_id}",
+            "snapshots ({} <= s <= {:?}): {} snapshots, obj={object_id}",
+            range.0,
+            range.1,
             snapshots.len(),
         );
         match snapshots.first() {
