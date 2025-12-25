@@ -456,7 +456,8 @@ impl Snapshot {
         obj_id: &ObjectId,
         rev_id: RevId, // inclusive
     ) -> Result<Snapshot, AppError> {
-        let latest_snapshot = Self::lookup_between(state, gym, obj_id, ZERO_REV_ID, rev_id).await?;
+        let latest_snapshot =
+            Self::lookup_between(state, gym, obj_id, ZERO_REV_ID, Some(rev_id)).await?;
 
         // get all patches which we need to apply on top of the snapshot to
         // arrive at the desired revision
@@ -471,29 +472,56 @@ impl Snapshot {
         latest_snapshot.apply_patches(&patches)
     }
 
+    /// get latest available snapshot with object_id or create a new snapshot. apply unapplied
+    /// patches to get to the latest revision.
+    pub async fn lookup_latest(
+        state: &AppState,
+        gym: &String,
+        object_id: &ObjectId,
+    ) -> Result<Self, AppError> {
+        let latest_snapshot =
+            Snapshot::lookup_between(state, gym, object_id, ZERO_REV_ID, None).await?;
+
+        // get all patches which we need to apply on top of the snapshot to
+        // arrive at the desired revision
+        let patches =
+            Patch::after_revision(state, gym, object_id, latest_snapshot.revision_id).await?;
+
+        // apply those patches to the snapshot
+        latest_snapshot.apply_patches(&patches)
+    }
+
     /// get or create a latest snapshot between low and high (inclusive)
     async fn lookup_between(
         state: &AppState,
         gym: &String,
-        obj_id: &ObjectId,
+        object_id: &ObjectId,
         low: RevId,
-        high: RevId,
+        high: Option<RevId>,
     ) -> Result<Snapshot, AppError> {
         let parent_path = state.db.parent_path("gyms", gym)?;
         let object_stream: BoxStream<FirestoreResult<Snapshot>> = state
             .db
             .fluent()
             .select()
-            .from(Snapshot::COLLECTION)
+            .from(Self::COLLECTION)
             .parent(&parent_path)
             .filter(|q| {
-                q.for_all([
-                    q.field(path_camel_case!(Snapshot::object_id)).eq(obj_id),
-                    q.field(path_camel_case!(Snapshot::revision_id))
-                        .greater_than_or_equal(low),
-                    q.field(path_camel_case!(Snapshot::revision_id))
-                        .less_than_or_equal(high),
-                ])
+                q.for_all(
+                    [
+                        Some(q.field(path_camel_case!(Snapshot::object_id)).eq(object_id)),
+                        Some(
+                            q.field(path_camel_case!(Snapshot::revision_id))
+                                .greater_than_or_equal(low),
+                        ),
+                        high.map(|h| {
+                            q.field(path_camel_case!(Snapshot::revision_id))
+                                .less_than_or_equal(h)
+                        }),
+                    ]
+                    .into_iter()
+                    .flatten(),
+                )
             })
             .limit(1)
             .order_by([(
@@ -506,68 +534,16 @@ impl Snapshot {
 
         let snapshots: Vec<Snapshot> = object_stream.try_collect().await?;
         tracing::debug!(
-            "snapshots ({low} <= s <= {high}): {} snapshots, obj={obj_id}",
+            "snapshots ({low} <= s <= {high:?}): {} snapshots, obj={object_id}",
             snapshots.len(),
         );
         match snapshots.first() {
             Some(snapshot) => Ok(snapshot.clone()),
             None => {
                 // TODO we could already create the first snapshot on object creation?
-                Ok(Snapshot::new(obj_id.clone()).store(state, gym).await?)
+                Ok(Snapshot::new(object_id.clone()).store(state, gym).await?)
             }
         }
-    }
-
-    /// get latest available snapshot with object_id or create a new snapshot. apply unapplied
-    /// patches to get to the latest revision.
-    pub async fn lookup_latest(
-        state: &AppState,
-        gym: &String,
-        object_id: &ObjectId,
-    ) -> Result<Self, AppError> {
-        let parent_path = state.db.parent_path("gyms", gym)?;
-        let object_stream: BoxStream<FirestoreResult<Snapshot>> = state
-            .db
-            .fluent()
-            .select()
-            .from(Snapshot::COLLECTION)
-            .parent(&parent_path)
-            .filter(|q| {
-                q.for_all([
-                    q.field(path_camel_case!(Snapshot::object_id)).eq(object_id),
-                    q.field(path_camel_case!(Snapshot::revision_id))
-                        .greater_than_or_equal(ZERO_REV_ID),
-                ])
-            })
-            .limit(1)
-            .order_by([(
-                path_camel_case!(Snapshot::revision_id),
-                FirestoreQueryDirection::Descending,
-            )])
-            .obj()
-            .stream_query_with_errors()
-            .await?;
-
-        let snapshots: Vec<Snapshot> = object_stream.try_collect().await?;
-        let latest_snapshot: Snapshot = match snapshots.first() {
-            Some(snapshot) => {
-                tracing::debug!("found {snapshot}");
-                snapshot.clone()
-            }
-            None => {
-                tracing::debug!("no snapshot found");
-                // XXX we could already create the first snapshot on object creation?
-                Snapshot::new(object_id.clone()).store(state, gym).await?
-            }
-        };
-
-        // get all patches which we need to apply on top of the snapshot to
-        // arrive at the desired revision
-        let patches =
-            Patch::after_revision(state, gym, object_id, latest_snapshot.revision_id).await?;
-
-        // apply those patches to the snapshot
-        latest_snapshot.apply_patches(&patches)
     }
 }
 
