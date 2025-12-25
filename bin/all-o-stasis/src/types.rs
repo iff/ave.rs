@@ -422,31 +422,6 @@ impl Snapshot {
     pub async fn store(&self, state: &AppState, gym: &String) -> Result<Self, AppError> {
         let s: Option<Snapshot> = store!(state, gym, self, Self::COLLECTION);
         s.ok_or(AppError::Query("storing snapshot failed".to_string()))
-
-        // let parent_path = state.db.parent_path("gyms", gym)?;
-        // let result: Option<Self> = state
-        //     .db
-        //     .fluent()
-        //     .insert()
-        //     .into(Self::COLLECTION)
-        //     .generate_document_id()
-        //     .parent(&parent_path)
-        //     .object(self)
-        //     .execute()
-        //     .await?;
-        //
-        // // TODO logging?
-        // result.ok_or(AppError::Query("storing snapshot failed".to_string()))
-        // match &result {
-        //     Some(r) => {
-        //         tracing::debug!("storing: {r}");
-        //         Ok(r)
-        //     },
-        //     None => {
-        //         tracing::warn!("failed to store: {}", self);
-        //         Err(AppError
-        //     },
-        // }
     }
 
     /// lookup a snapshot with rev_id or lower and apply patches with revision <= rev_id if necessary
