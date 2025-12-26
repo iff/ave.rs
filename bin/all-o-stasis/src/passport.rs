@@ -141,7 +141,25 @@ impl fmt::Display for Session {
 }
 
 impl Session {
-    pub const COLLECTION: &str = "sessions";
+    const COLLECTION: &str = "sessions";
+
+    pub async fn lookup(
+        state: &AppState,
+        gym: &String,
+        object_id: ObjectId,
+    ) -> Result<Self, AppError> {
+        let parent_path = state.db.parent_path("gyms", gym)?;
+        state
+            .db
+            .fluent()
+            .select()
+            .by_id_in(Self::COLLECTION)
+            .parent(&parent_path)
+            .obj()
+            .one(&object_id)
+            .await?
+            .ok_or(AppError::NoSession())
+    }
 
     pub async fn store(
         &self,
@@ -171,6 +189,20 @@ impl Session {
                 Err(AppError::NoSession())
             }
         }
+    }
+
+    pub async fn delete(state: &AppState, gym: &String, session_id: &str) -> Result<(), AppError> {
+        let parent_path = state.db.parent_path("gyms", gym)?;
+        state
+            .db
+            .fluent()
+            .delete()
+            .from(Self::COLLECTION)
+            .parent(&parent_path)
+            .document_id(session_id)
+            .execute()
+            .await?;
+        Ok(())
     }
 }
 

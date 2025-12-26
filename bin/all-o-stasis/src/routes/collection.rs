@@ -94,7 +94,7 @@ async fn own_boulders(
     Path(gym): Path<String>,
     jar: CookieJar,
 ) -> Result<Json<Vec<ObjectId>>, AppError> {
-    let session_id = jar.get("session");
+    let session_id = jar.get("session").ok_or(AppError::NoSession())?;
     let own = author_from_session(&state, &gym, session_id).await?;
     // TODO not sure if it is okay to return NotAuthorized
     // if own == ROOT_OBJ_ID {

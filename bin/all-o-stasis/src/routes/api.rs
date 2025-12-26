@@ -122,24 +122,14 @@ async fn delete_session(
     Path(gym): Path<String>,
     jar: CookieJar,
 ) -> Result<impl IntoResponse, AppError> {
-    let parent_path = state.db.parent_path("gyms", gym)?;
     let session_id = jar
         .get("session")
         .ok_or(AppError::NoSession())?
         .value()
         .to_owned();
+    Session::delete(&state, &gym, &session_id).await?;
 
-    state
-        .db
-        .fluent()
-        .delete()
-        .from(Session::COLLECTION)
-        .parent(&parent_path)
-        .document_id(&session_id)
-        .execute()
-        .await?;
-
-    let cookie = Cookie::build(("session", session_id.clone()))
+    let cookie = Cookie::build(("session", session_id))
         .path("/")
         .max_age(Duration::seconds(0))
         .secure(true)
@@ -153,23 +143,13 @@ async fn lookup_session(
     Path(gym): Path<String>,
     jar: CookieJar,
 ) -> Result<impl IntoResponse, AppError> {
-    let parent_path = state.db.parent_path("gyms", gym)?;
     // TODO NoSession correct here?
     let session_id = jar
         .get("session")
         .ok_or(AppError::NoSession())?
         .value()
         .to_owned();
-    let session: Session = state
-        .db
-        .fluent()
-        .select()
-        .by_id_in(Session::COLLECTION)
-        .parent(&parent_path)
-        .obj()
-        .one(&session_id)
-        .await?
-        .ok_or(AppError::NoSession())?;
+    let session = Session::lookup(&state, &gym, session_id.clone()).await?;
 
     let cookie = Cookie::build(("session", session_id.clone()))
         .path("/")
@@ -192,7 +172,7 @@ async fn new_object(
     jar: CookieJar,
     Json(payload): axum::extract::Json<CreateObjectBody>,
 ) -> Result<Json<CreateObjectResponse>, AppError> {
-    let session_id = jar.get("session");
+    let session_id = jar.get("session").ok_or(AppError::NoSession())?;
     let created_by = author_from_session(&state, &gym, session_id).await?;
 
     // unauthorized users should be able to create accounts
@@ -232,7 +212,7 @@ async fn lookup_object(
         return Ok(response);
     }
 
-    let session_id = jar.get("session");
+    let session_id = jar.get("session").ok_or(AppError::NoSession())?;
     let created_by = author_from_session(&state, &gym, session_id).await?;
 
     // otherwise just object the owner owns
@@ -255,7 +235,7 @@ async fn patch_object(
     jar: CookieJar,
     Json(payload): axum::extract::Json<PatchObjectBody>,
 ) -> Result<Json<PatchObjectResponse>, AppError> {
-    let session_id = jar.get("session");
+    let session_id = jar.get("session").ok_or(AppError::NoSession())?;
     let created_by = author_from_session(&state, &gym, session_id).await?;
 
     // users cant patch atm
