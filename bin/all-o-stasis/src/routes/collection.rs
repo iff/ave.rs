@@ -5,15 +5,12 @@ use axum::{
     extract::{Path, State},
 };
 use axum_extra::extract::CookieJar;
-use firestore::{FirestoreResult, path_camel_case};
-use futures::TryStreamExt;
-use futures::stream::BoxStream;
 use otp::ObjectId;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::session::author_from_session;
-use crate::types::{Account, AccountRole, AccountsView, BouldersView, Snapshot};
+use crate::types::{Account, AccountsView, BouldersView, Snapshot};
 use crate::{AppError, AppState};
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -117,18 +114,7 @@ async fn accounts(
     State(state): State<AppState>,
     Path(gym): Path<String>,
 ) -> Result<Json<Vec<ObjectId>>, AppError> {
-    let parent_path = state.db.parent_path("gyms", gym)?;
-    let object_stream: BoxStream<FirestoreResult<Account>> = state
-        .db
-        .fluent()
-        .select()
-        .from(AccountsView::COLLECTION)
-        .parent(&parent_path)
-        .obj()
-        .stream_query_with_errors()
-        .await?;
-
-    let as_vec: Vec<Account> = object_stream.try_collect().await?;
+    let as_vec = AccountsView::all(&state, &gym).await?;
     Ok(Json(
         as_vec
             .into_iter()
@@ -141,23 +127,7 @@ async fn admin_accounts(
     State(state): State<AppState>,
     Path(gym): Path<String>,
 ) -> Result<Json<Vec<ObjectId>>, AppError> {
-    let parent_path = state.db.parent_path("gyms", gym)?;
-    let object_stream: BoxStream<FirestoreResult<Account>> = state
-        .db
-        .fluent()
-        .select()
-        .from(AccountsView::COLLECTION)
-        .parent(&parent_path)
-        .filter(|q| {
-            q.for_all([q
-                .field(path_camel_case!(Account::role))
-                .neq(AccountRole::User)])
-        })
-        .obj()
-        .stream_query_with_errors()
-        .await?;
-
-    let as_vec: Vec<Account> = object_stream.try_collect().await?;
+    let as_vec = AccountsView::admins(&state, &gym).await?;
     Ok(Json(
         as_vec
             .into_iter()

@@ -1,5 +1,5 @@
 use crate::passport::Session;
-use crate::types::{Account, AccountRole, AccountsView};
+use crate::types::{AccountRole, AccountsView};
 use crate::{AppError, AppState};
 use axum_extra::extract::cookie::Cookie;
 use otp::ObjectId;
@@ -71,47 +71,6 @@ pub(crate) async fn account_role(
     gym: &String,
     object_id: &ObjectId,
 ) -> Result<AccountRole, AppError> {
-    let parent_path = state.db.parent_path("gyms", gym)?;
-    let account: Option<Account> = state
-        .db
-        .fluent()
-        .select()
-        .by_id_in(AccountsView::COLLECTION)
-        .parent(&parent_path)
-        .obj()
-        .one(object_id)
-        .await?;
-
-    if let Some(account) = account {
-        Ok(account.role)
-    } else {
-        Err(AppError::NotAuthorized())
-    }
+    let account = AccountsView::with_id(state, gym, object_id.clone()).await?;
+    Ok(account.role)
 }
-
-// pub(crate) async fn account_role(
-//     state: &AppState,
-//     gym: &String,
-//     object_id: ObjectId,
-// ) -> Result<AccountRole, AppError> {
-//     let parent_path = state.db.parent_path("gyms", gym)?;
-//     if let Some(object_id) = object_id {
-//         let account: Option<Account> = state
-//             .db
-//             .fluent()
-//             .select()
-//             .by_id_in(ACCOUNTS_VIEW_COLLECTION)
-//             .parent(&parent_path)
-//             .obj()
-//             .one(object_id)
-//             .await?;
-//
-//         if let Some(account) = account {
-//             Ok(account.role)
-//         } else {
-//             Err(AppError::NotAuthorized())
-//         }
-//     } else {
-//         return Ok(AccountRole::User);
-//     }
-// }

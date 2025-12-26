@@ -141,7 +141,7 @@ impl Boulder {
 pub struct AccountsView {}
 
 impl AccountsView {
-    pub const COLLECTION: &str = "accounts_view";
+    const COLLECTION: &str = "accounts_view";
 
     pub async fn store(
         state: &AppState,
@@ -165,6 +165,84 @@ impl AccountsView {
             .await?;
 
         Ok(())
+    }
+
+    pub async fn all(state: &AppState, gym: &String) -> Result<Vec<Account>, AppError> {
+        let parent_path = state.db.parent_path("gyms", gym)?;
+        let object_stream: BoxStream<FirestoreResult<Account>> = state
+            .db
+            .fluent()
+            .select()
+            .from(Self::COLLECTION)
+            .parent(&parent_path)
+            .obj()
+            .stream_query_with_errors()
+            .await?;
+        let as_vec = object_stream.try_collect().await?;
+        Ok(as_vec)
+    }
+
+    pub async fn admins(state: &AppState, gym: &String) -> Result<Vec<Account>, AppError> {
+        let parent_path = state.db.parent_path("gyms", gym)?;
+        let object_stream: BoxStream<FirestoreResult<Account>> = state
+            .db
+            .fluent()
+            .select()
+            .from(AccountsView::COLLECTION)
+            .parent(&parent_path)
+            .filter(|q| {
+                q.for_all([q
+                    .field(path_camel_case!(Account::role))
+                    .neq(AccountRole::User)])
+            })
+            .obj()
+            .stream_query_with_errors()
+            .await?;
+        let as_vec = object_stream.try_collect().await?;
+        Ok(as_vec)
+    }
+
+    pub async fn with_email(
+        state: &AppState,
+        gym: String,
+        email: String,
+    ) -> Result<Option<Account>, AppError> {
+        let parent_path = state.db.parent_path("gyms", gym.clone())?;
+
+        let account_stream: BoxStream<FirestoreResult<Account>> = state
+            .db
+            .fluent()
+            .select()
+            .from(Self::COLLECTION)
+            .parent(&parent_path)
+            .filter(|q| q.for_all([q.field(path_camel_case!(Account::email)).eq(email.clone())]))
+            .limit(1)
+            .obj()
+            .stream_query_with_errors()
+            .await?;
+
+        let mut accounts: Vec<Account> = account_stream.try_collect().await?;
+        Ok(accounts.pop())
+    }
+
+    pub async fn with_id(
+        state: &AppState,
+        gym: &String,
+        object_id: ObjectId,
+    ) -> Result<Account, AppError> {
+        let parent_path = state.db.parent_path("gyms", gym)?;
+        state
+            .db
+            .fluent()
+            .select()
+            .by_id_in(Self::COLLECTION)
+            .parent(&parent_path)
+            .obj()
+            .one(object_id.clone())
+            .await?
+            .ok_or(AppError::Query(format!(
+                "lookup accounts view: failed to get object {object_id}"
+            )))
     }
 }
 
@@ -280,7 +358,7 @@ impl BouldersView {
             .db
             .fluent()
             .select()
-            .from(BouldersView::COLLECTION)
+            .from(Self::COLLECTION)
             .parent(&parent_path)
             .filter(|q| q.for_all([q.field(path_camel_case!(Boulder::is_draft)).eq(0)]))
             .obj()
@@ -290,4 +368,35 @@ impl BouldersView {
         let as_vec: Vec<Boulder> = object_stream.try_collect().await?;
         Ok(as_vec)
     }
+
+    // pub async fn collect(
+    //     state: &AppState,
+    //     gym: &String,
+    //     removed: Option<Bool>,
+    //     is_draft: Option<Bool>,
+    // ) -> Result<Vec<Boulder>, AppError> {
+    //     let parent_path = state.db.parent_path("gyms", gym)?;
+    //     let object_stream: BoxStream<FirestoreResult<Boulder>> = state
+    //         .db
+    //         .fluent()
+    //         .select()
+    //         .from(Self::COLLECTION)
+    //         .parent(&parent_path)
+    //         .filter(|q| {
+    //             q.for_all(
+    //                 [
+    //                     removed.map(|r| q.field(path_camel_case!(Boulder::removed)).eq(r)),
+    //                     is_draft.map(|d| q.field(path_camel_case!(Boulder::is_draft)).eq(d)),
+    //                 ]
+    //                 .into_iter()
+    //                 .flatten(),
+    //             )
+    //         })
+    //         .obj()
+    //         .stream_query_with_errors()
+    //         .await?;
+    //
+    //     let as_vec: Vec<Boulder> = object_stream.try_collect().await?;
+    //     Ok(as_vec)
+    // }
 }

@@ -272,27 +272,9 @@ async fn create_passport(
     Path(gym): Path<String>,
     Json(payload): axum::extract::Json<CreatePassportBody>,
 ) -> Result<Json<CreatePassportResponse>, AppError> {
-    let parent_path = state.db.parent_path("gyms", gym.clone())?;
-
     // 1. Lookup account by email. If no such account exists, create a new one
-    let account_stream: BoxStream<FirestoreResult<Account>> = state
-        .db
-        .fluent()
-        .select()
-        .from(AccountsView::COLLECTION)
-        .parent(&parent_path)
-        .filter(|q| {
-            q.for_all([q
-                .field(path_camel_case!(Account::email))
-                .eq(payload.email.clone())])
-        })
-        .limit(1)
-        .obj()
-        .stream_query_with_errors()
-        .await?;
-
-    let accounts: Vec<Account> = account_stream.try_collect().await?;
-    let maybe_account_id: Result<ObjectId, AppError> = match accounts.first() {
+    let account = AccountsView::with_email(&state, gym.clone(), payload.email.clone()).await?;
+    let maybe_account_id: Result<ObjectId, AppError> = match account {
         Some(account) => Ok(account.id.clone().expect("object has no id")),
         None => {
             let account = Account {
