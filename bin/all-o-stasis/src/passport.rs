@@ -317,7 +317,7 @@ async fn create_passport(
     // 1. Lookup account by email. If no such account exists, create a new one
     let account = AccountsView::with_email(&state, gym.clone(), payload.email.clone()).await?;
     let maybe_account_id: Result<ObjectId, AppError> = match account {
-        Some(account) => Ok(account.id.clone().expect("object has no id")),
+        Some(account) => Ok(account.id.clone().expect("existing accounts have an id")),
         None => {
             let account = Account {
                 id: None,
@@ -327,15 +327,9 @@ async fn create_passport(
                 name: None,
             };
             let value = serde_json::to_value(account).expect("serialising account");
-            let obj = create_object(
-                &state,
-                &gym,
-                String::from(""), // TODO fine?
-                ObjectType::Account,
-                &value,
-            )
-            .await?;
-
+            // TODO: author? root?
+            let obj =
+                create_object(&state, &gym, String::from(""), ObjectType::Account, &value).await?;
             Ok(obj.id.clone())
         }
     };

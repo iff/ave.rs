@@ -198,7 +198,7 @@ async fn new_object(
     let obj = create_object(&state, &gym, created_by, ot_type.clone(), &content).await?;
 
     Ok(Json(CreateObjectResponse {
-        id: obj.id.clone(),
+        id: obj.id,
         ot_type,
         content,
     }))
