@@ -1,9 +1,8 @@
 use std::net::SocketAddr;
 
-use crate::passport::Session;
-use crate::session::{account_role, author_from_session};
+use crate::passport::{Session, author_from_session};
 use crate::storage::{apply_object_updates, create_object};
-use crate::types::{AccountRole, Boulder, Object, ObjectType, Patch, Snapshot};
+use crate::types::{AccountRole, AccountsView, Boulder, Object, ObjectType, Patch, Snapshot};
 use crate::ws::handle_socket;
 use crate::{AppError, AppState};
 use axum::{
@@ -97,6 +96,15 @@ impl PatchObjectResponse {
 struct LookupSessionResponse {
     id: String,
     obj_id: ObjectId,
+}
+
+async fn account_role(
+    state: &AppState,
+    gym: &String,
+    object_id: &ObjectId,
+) -> Result<AccountRole, AppError> {
+    let account = AccountsView::with_id(state, gym, object_id.clone()).await?;
+    Ok(account.role)
 }
 
 pub fn routes() -> Router<AppState> {

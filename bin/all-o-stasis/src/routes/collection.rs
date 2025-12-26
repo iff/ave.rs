@@ -9,7 +9,7 @@ use otp::ObjectId;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::session::author_from_session;
+use crate::passport::author_from_session;
 use crate::types::{Account, AccountsView, BouldersView, Snapshot};
 use crate::{AppError, AppState};
 

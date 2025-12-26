@@ -118,6 +118,16 @@ mod maileroo {
 
 pub type SessionId = String;
 
+pub(crate) async fn author_from_session(
+    state: &AppState,
+    gym: &String,
+    session_id: &Cookie<'static>,
+) -> Result<String, AppError> {
+    let session_id = session_id.value().to_owned();
+    let session = Session::lookup(state, gym, session_id).await?;
+    Ok(session.obj_id)
+}
+
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Session {

@@ -12,7 +12,6 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod passport;
 mod routes;
-mod session;
 mod storage;
 mod types;
 mod word_list;
