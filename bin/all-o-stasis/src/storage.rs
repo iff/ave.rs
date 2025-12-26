@@ -103,11 +103,7 @@ pub async fn apply_object_updates(
     )
     .await?;
 
-    Ok(Json(PatchObjectResponse::new(
-        previous_patches,
-        patches.len(),
-        patches,
-    )))
+    Ok(Json(PatchObjectResponse::new(previous_patches, patches)))
 }
 
 struct SaveOp {

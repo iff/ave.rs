@@ -83,14 +83,10 @@ pub struct PatchObjectResponse {
 }
 
 impl PatchObjectResponse {
-    pub fn new(
-        previous_patches: Vec<Patch>,
-        num_processed_operations: usize,
-        resulting_patches: Vec<Patch>,
-    ) -> Self {
+    pub fn new(previous_patches: Vec<Patch>, resulting_patches: Vec<Patch>) -> Self {
         Self {
             previous_patches,
-            num_processed_operations,
+            num_processed_operations: resulting_patches.len(),
             resulting_patches,
         }
     }
