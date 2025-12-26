@@ -3,9 +3,7 @@ use std::net::SocketAddr;
 use crate::passport::Session;
 use crate::session::{account_role, author_from_session};
 use crate::storage::{apply_object_updates, create_object};
-use crate::types::{
-    AccountRole, Boulder, BouldersView, Object, ObjectType, Patch, Snapshot,
-};
+use crate::types::{AccountRole, Boulder, Object, ObjectType, Patch, Snapshot};
 use crate::ws::handle_socket;
 use crate::{AppError, AppState};
 use axum::{
@@ -103,29 +101,6 @@ impl PatchObjectResponse {
 struct LookupSessionResponse {
     id: String,
     obj_id: ObjectId,
-}
-
-async fn lookup_boulder(
-    state: &AppState,
-    gym: &String,
-    object_id: &ObjectId,
-) -> Result<Boulder, AppError> {
-    let parent_path = state.db.parent_path("gyms", gym)?;
-    let boulder: Option<Boulder> = state
-        .db
-        .fluent()
-        .select()
-        .by_id_in(BouldersView::COLLECTION)
-        .parent(&parent_path)
-        .obj()
-        .one(&object_id)
-        .await?;
-
-    if let Some(boulder) = boulder {
-        Ok(boulder)
-    } else {
-        Err(AppError::NotAuthorized())
-    }
 }
 
 pub fn routes() -> Router<AppState> {
@@ -311,7 +286,7 @@ async fn patch_object(
             }
         }
         ObjectType::Boulder => {
-            let boulder = lookup_boulder(&state, &gym, &id).await?;
+            let boulder = Boulder::lookup(&state, &gym, &id).await?;
             if boulder.is_draft > 0 {
                 // drafts can be edited by any admin/setter
             } else {

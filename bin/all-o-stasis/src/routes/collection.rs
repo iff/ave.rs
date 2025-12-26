@@ -5,7 +5,7 @@ use axum::{
     extract::{Path, State},
 };
 use axum_extra::extract::CookieJar;
-use firestore::{FirestoreQueryDirection, FirestoreResult, path_camel_case};
+use firestore::{FirestoreResult, path_camel_case};
 use futures::TryStreamExt;
 use futures::stream::BoxStream;
 use otp::ObjectId;
@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::session::author_from_session;
-use crate::types::{Account, AccountRole, AccountsView, Boulder, BouldersView, Snapshot};
+use crate::types::{Account, AccountRole, AccountsView, BouldersView, Snapshot};
 use crate::{AppError, AppState};
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -70,30 +70,9 @@ async fn active_boulders(
     State(state): State<AppState>,
     Path(gym): Path<String>,
 ) -> Result<Json<Vec<String>>, AppError> {
-    let parent_path = state.db.parent_path("gyms", gym)?;
-    let object_stream: BoxStream<FirestoreResult<Boulder>> = state
-        .db
-        .fluent()
-        .select()
-        .from(BouldersView::COLLECTION)
-        .parent(&parent_path)
-        .filter(|q| {
-            q.for_all([
-                q.field(path_camel_case!(Boulder::removed)).eq(0),
-                q.field(path_camel_case!(Boulder::is_draft)).eq(0),
-            ])
-        })
-        .order_by([(
-            path_camel_case!(Boulder::set_date),
-            FirestoreQueryDirection::Descending,
-        )])
-        .obj()
-        .stream_query_with_errors()
-        .await?;
-
-    let as_vec: Vec<Boulder> = object_stream.try_collect().await?;
+    let boulders = BouldersView::active(&state, &gym).await?;
     Ok(Json(
-        as_vec
+        boulders
             .into_iter()
             .map(|b| b.id.expect("object in view has no id")) // TODO no panic
             .collect(),
@@ -104,27 +83,7 @@ async fn draft_boulders(
     State(state): State<AppState>,
     Path(gym): Path<String>,
 ) -> Result<Json<Vec<ObjectId>>, AppError> {
-    let parent_path = state.db.parent_path("gyms", gym)?;
-    // XXX we used to have a separate collection for draft boulders but never used it in the (old)
-    // code. Here we choose to follow the old implementation and do not add a collection for draft
-    // boulders.
-    let object_stream: BoxStream<FirestoreResult<Boulder>> = state
-        .db
-        .fluent()
-        .select()
-        .from(BouldersView::COLLECTION)
-        .parent(&parent_path)
-        .filter(|q| {
-            q.for_all([
-                q.field(path_camel_case!(Boulder::removed)).eq(0),
-                q.field(path_camel_case!(Boulder::is_draft)).neq(0),
-            ])
-        })
-        .obj()
-        .stream_query_with_errors()
-        .await?;
-
-    let as_vec: Vec<Boulder> = object_stream.try_collect().await?;
+    let as_vec = BouldersView::drafts(&state, &gym).await?;
     Ok(Json(
         as_vec
             .into_iter()
@@ -145,19 +104,7 @@ async fn own_boulders(
     //     return Ok(Json(Vec::new()));
     // }
 
-    let parent_path = state.db.parent_path("gyms", gym)?;
-    let object_stream: BoxStream<FirestoreResult<Boulder>> = state
-        .db
-        .fluent()
-        .select()
-        .from(BouldersView::COLLECTION)
-        .parent(&parent_path)
-        .filter(|q| q.for_all([q.field(path_camel_case!(Boulder::id)).eq(own.to_owned())]))
-        .obj()
-        .stream_query_with_errors()
-        .await?;
-
-    let as_vec: Vec<Boulder> = object_stream.try_collect().await?;
+    let as_vec = BouldersView::with_id(&state, &gym, own).await?;
     Ok(Json(
         as_vec
             .into_iter()
