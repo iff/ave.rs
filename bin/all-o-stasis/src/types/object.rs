@@ -3,31 +3,11 @@ use std::fmt;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::{AppError, AppState, types::ObjectType};
+use crate::{
+    AppError, AppState,
+    types::{ObjectType, store},
+};
 use otp::ObjectId;
-
-macro_rules! store {
-    ($state:expr, $gym:expr, $entity:expr, $collection:expr) => {{
-        let parent_path = $state.db.parent_path("gyms", $gym)?;
-        let result = $state
-            .db
-            .fluent()
-            .insert()
-            .into($collection)
-            .generate_document_id()
-            .parent(&parent_path)
-            .object($entity)
-            .execute()
-            .await?;
-
-        match &result {
-            Some(r) => tracing::debug!("storing: {r}"),
-            None => tracing::warn!("failed to store: {}", $entity),
-        }
-
-        result
-    }};
-}
 
 // Object storage representation - used for Firestore serialization
 #[derive(Serialize, Deserialize, Debug)]

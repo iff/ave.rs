@@ -14,6 +14,30 @@ pub use object::Object;
 pub use patch::Patch;
 pub use snapshot::Snapshot;
 
+macro_rules! store {
+    ($state:expr, $gym:expr, $entity:expr, $collection:expr) => {{
+        let parent_path = $state.db.parent_path("gyms", $gym)?;
+        let result = $state
+            .db
+            .fluent()
+            .insert()
+            .into($collection)
+            .generate_document_id()
+            .parent(&parent_path)
+            .object($entity)
+            .execute()
+            .await?;
+
+        match &result {
+            Some(r) => tracing::debug!("storing: {r}"),
+            None => tracing::warn!("failed to store: {}", $entity),
+        }
+
+        result
+    }};
+}
+pub(crate) use store;
+
 #[derive(Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub enum AccountRole {
@@ -88,6 +112,26 @@ impl fmt::Display for Boulder {
 impl Boulder {
     pub fn in_setter(&self, setter: &ObjectId) -> bool {
         self.setter.contains(setter)
+    }
+
+    pub async fn lookup(
+        state: &AppState,
+        gym: &String,
+        object_id: &ObjectId,
+    ) -> Result<Boulder, AppError> {
+        let parent_path = state.db.parent_path("gyms", gym)?;
+        state
+            .db
+            .fluent()
+            .select()
+            .by_id_in(BouldersView::COLLECTION)
+            .parent(&parent_path)
+            .obj()
+            .one(&object_id)
+            .await?
+            .ok_or(AppError::Query(format!(
+                "lookup_boulder: failed to get boulder {object_id}"
+            )))
     }
 }
 

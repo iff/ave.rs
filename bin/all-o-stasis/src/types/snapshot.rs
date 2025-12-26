@@ -6,30 +6,10 @@ use otp::{ObjectId, Operation, OtError, RevId, ZERO_REV_ID};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use crate::{AppError, AppState, types::patch::Patch};
-
-macro_rules! store {
-    ($state:expr, $gym:expr, $entity:expr, $collection:expr) => {{
-        let parent_path = $state.db.parent_path("gyms", $gym)?;
-        let result = $state
-            .db
-            .fluent()
-            .insert()
-            .into($collection)
-            .generate_document_id()
-            .parent(&parent_path)
-            .object($entity)
-            .execute()
-            .await?;
-
-        match &result {
-            Some(r) => tracing::debug!("storing: {r}"),
-            None => tracing::warn!("failed to store: {}", $entity),
-        }
-
-        result
-    }};
-}
+use crate::{
+    AppError, AppState,
+    types::{patch::Patch, store},
+};
 
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]

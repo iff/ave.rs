@@ -14,30 +14,8 @@ use otp::{ObjectId, Operation, RevId};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::types::store;
 use crate::{AppError, AppState, types::Snapshot};
-
-macro_rules! store {
-    ($state:expr, $gym:expr, $entity:expr, $collection:expr) => {{
-        let parent_path = $state.db.parent_path("gyms", $gym)?;
-        let result = $state
-            .db
-            .fluent()
-            .insert()
-            .into($collection)
-            .generate_document_id()
-            .parent(&parent_path)
-            .object($entity)
-            .execute()
-            .await?;
-
-        match &result {
-            Some(r) => tracing::debug!("storing: {r}"),
-            None => tracing::warn!("failed to store: {}", $entity),
-        }
-
-        result
-    }};
-}
 
 fn hash_addr(addr: &SocketAddr) -> u64 {
     let mut hasher = DefaultHasher::new();
