@@ -17,8 +17,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     AppError, AppState,
-    storage::{apply_object_updates, create_object},
-    types::{Account, AccountRole, AccountsView, ObjectType, Snapshot},
+    storage::apply_object_updates,
+    types::{Account, AccountRole, AccountsView, Object, ObjectType, Snapshot},
     word_list::make_security_code,
 };
 
@@ -329,7 +329,8 @@ async fn create_passport(
             let value = serde_json::to_value(account).expect("serialising account");
             // TODO: author? root?
             let obj =
-                create_object(&state, &gym, String::from(""), ObjectType::Account, &value).await?;
+                Object::from_value(&state, &gym, String::from(""), ObjectType::Account, &value)
+                    .await?;
             Ok(obj.id.clone())
         }
     };
@@ -348,7 +349,7 @@ async fn create_passport(
         validity: PassportValidity::Unconfirmed,
     };
     let value = serde_json::to_value(passport).expect("serialising passport");
-    let obj = create_object(&state, &gym, account_id, ObjectType::Passport, &value).await?;
+    let obj = Object::from_value(&state, &gym, account_id, ObjectType::Passport, &value).await?;
 
     let passport_id = obj.id.clone();
 

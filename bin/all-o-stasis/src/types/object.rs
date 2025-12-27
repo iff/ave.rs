@@ -2,10 +2,12 @@ use std::fmt;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use crate::{
     AppError, AppState,
-    types::{ObjectType, store},
+    storage::update_view_typed,
+    types::{ObjectType, Patch, store},
 };
 use otp::ObjectId;
 
@@ -113,6 +115,22 @@ impl Object {
     ) -> Result<Self, AppError> {
         let obj_doc = ObjectDoc::lookup(state, gym, object_id.clone()).await?;
         let obj: Object = obj_doc.try_into()?;
+        Ok(obj)
+    }
+
+    pub async fn from_value(
+        state: &AppState,
+        gym: &String,
+        author_id: String,
+        object_type: ObjectType,
+        value: &Value,
+    ) -> Result<Self, AppError> {
+        let obj = Object::new(state, gym, &object_type).await?;
+        let _ = Patch::new(obj.id.clone(), author_id.clone(), value)
+            .store(state, gym)
+            .await?;
+        update_view_typed(state, gym, &obj.id, &object_type, value).await?;
+
         Ok(obj)
     }
 }

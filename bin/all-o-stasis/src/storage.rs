@@ -7,22 +7,6 @@ use axum::Json;
 use otp::{ObjectId, Operation, RevId, rebase};
 use serde_json::Value;
 
-pub(crate) async fn create_object(
-    state: &AppState,
-    gym: &String,
-    author_id: ObjectId,
-    object_type: ObjectType,
-    value: &Value,
-) -> Result<Object, AppError> {
-    let obj = Object::new(state, gym, &object_type).await?;
-    let _ = Patch::new(obj.id.clone(), author_id, value)
-        .store(state, gym)
-        .await?;
-    update_view_typed(state, gym, &obj.id, &object_type, value).await?;
-
-    Ok(obj)
-}
-
 pub(crate) async fn update_view(
     state: &AppState,
     gym: &String,

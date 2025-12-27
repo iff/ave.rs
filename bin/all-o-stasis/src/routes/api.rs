@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 
 use crate::passport::{Session, author_from_session};
-use crate::storage::{apply_object_updates, create_object};
+use crate::storage::apply_object_updates;
 use crate::types::{AccountRole, AccountsView, Boulder, Object, ObjectType, Patch, Snapshot};
 use crate::ws::handle_socket;
 use crate::{AppError, AppState};
@@ -195,7 +195,7 @@ async fn new_object(
     let ot_type = payload.ot_type;
     let content = payload.content;
     // changing this to also add the object to the view
-    let obj = create_object(&state, &gym, created_by, ot_type.clone(), &content).await?;
+    let obj = Object::from_value(&state, &gym, created_by, ot_type.clone(), &content).await?;
 
     Ok(Json(CreateObjectResponse {
         id: obj.id,
