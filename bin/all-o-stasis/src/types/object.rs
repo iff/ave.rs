@@ -126,7 +126,7 @@ impl Object {
         value: &Value,
     ) -> Result<Self, AppError> {
         let obj = Object::new(state, gym, &object_type).await?;
-        let _ = Patch::new(obj.id.clone(), author_id.clone(), value)
+        let _ = Patch::new(obj.id.clone(), author_id, value)
             .store(state, gym)
             .await?;
         update_view_typed(state, gym, &obj.id, &object_type, value).await?;

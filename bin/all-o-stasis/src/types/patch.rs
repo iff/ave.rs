@@ -127,6 +127,7 @@ impl Patch {
         Ok(patch)
     }
 
+    /// get all patches for an object with revision id > rev_id
     pub async fn after_revision(
         state: &AppState,
         gym: &String,

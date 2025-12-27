@@ -19,26 +19,36 @@ pub struct Snapshot {
     pub content: Value,
 }
 
+impl fmt::Display for Snapshot {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Snapshot: {}@{} content={}",
+            self.object_id, self.revision_id, self.content
+        )
+    }
+}
+
 impl Snapshot {
     const COLLECTION: &str = "snapshots";
 
+    // TODO why is this not ZERO_REV_ID?
+    /// create a new empty snapshot with revision id -1
     pub fn new(object_id: ObjectId) -> Self {
         Self {
             object_id,
-            // FIXME why is this not ZERO_REV_ID?
             revision_id: -1,
             content: json!({}),
         }
     }
 
+    /// apply the operation to the snapshot and create a new revision returning the new snapshot
+    /// and the patch
     pub fn new_revision(
         &self,
-        object_id: ObjectId,
         author_id: ObjectId,
         operation: Operation,
     ) -> Result<Option<(Self, Patch)>, OtError> {
-        assert_eq!(object_id, self.object_id);
-
         let content = operation.apply_to(self.content.to_owned())?;
         if content == self.content {
             tracing::debug!("skipping save operation: content did not change");
@@ -46,10 +56,10 @@ impl Snapshot {
         }
 
         let revision_id = self.revision_id + 1;
-        let patch = Patch::new_revision(revision_id, object_id.clone(), author_id, operation);
+        let patch = Patch::new_revision(revision_id, self.object_id.clone(), author_id, operation);
         Ok(Some((
             Self {
-                object_id,
+                object_id: self.object_id.clone(),
                 revision_id,
                 content,
             },
@@ -58,7 +68,6 @@ impl Snapshot {
     }
 
     fn apply_patch(&self, patch: &Patch) -> Result<Self, AppError> {
-        // tracing::debug!("applying patch={patch} to {snapshot} results in snapshot={s}");
         Ok(Self {
             object_id: self.object_id.to_owned(),
             revision_id: patch.revision_id,
@@ -66,6 +75,7 @@ impl Snapshot {
         })
     }
 
+    /// return a new snapshot with all patches applied
     pub fn apply_patches(&self, patches: &Vec<Patch>) -> Result<Self, AppError> {
         let mut s = self.clone();
         for patch in patches {
@@ -176,15 +186,5 @@ impl Snapshot {
                 Ok(Snapshot::new(object_id.clone()).store(state, gym).await?)
             }
         }
-    }
-}
-
-impl fmt::Display for Snapshot {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "Snapshot: {}@{} content={}",
-            self.object_id, self.revision_id, self.content
-        )
     }
 }

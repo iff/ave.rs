@@ -7,6 +7,11 @@ use axum::Json;
 use otp::{ObjectId, Operation, RevId, rebase};
 use serde_json::Value;
 
+struct SaveOp {
+    patch: Patch,
+    snapshot: Snapshot,
+}
+
 pub(crate) async fn update_view(
     state: &AppState,
     gym: &String,
@@ -60,7 +65,6 @@ pub async fn apply_object_updates(
         let saved = save_operation(
             state,
             gym,
-            obj_id.clone(),
             author.clone(),
             (base_snapshot.content).clone(),
             &latest_snapshot,
@@ -90,19 +94,12 @@ pub async fn apply_object_updates(
     Ok(Json(PatchObjectResponse::new(previous_patches, patches)))
 }
 
-struct SaveOp {
-    patch: Patch,
-    snapshot: Snapshot,
-}
-
 /// Rebase and then apply the operation to the snapshot to get a new snapshot
 /// Returns `None` if the rebasing fails or applying the (rebased) operation yields the same
 /// snapshot.
-#[allow(clippy::too_many_arguments)]
 async fn save_operation(
     state: &AppState,
     gym: &String,
-    object_id: ObjectId,
     author_id: ObjectId,
     base_content: Value,
     snapshot: &Snapshot,
@@ -122,11 +119,12 @@ async fn save_operation(
         }
         Err(e) => {
             tracing::error!("rebase failed with error: {e}");
+            // TODO error? or skip?
             return Ok(None);
         }
     };
 
-    match snapshot.new_revision(object_id, author_id, rebased_op)? {
+    match snapshot.new_revision(author_id, rebased_op)? {
         None => Ok(None),
         Some((new_snapshot, patch)) => {
             let s = new_snapshot.store(state, gym).await?;
