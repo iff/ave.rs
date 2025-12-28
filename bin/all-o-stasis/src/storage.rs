@@ -67,7 +67,7 @@ pub async fn apply_object_updates(
             gym,
             author.clone(),
             (base_snapshot.content).clone(),
-            &latest_snapshot,
+            &final_snapshot,
             &previous_patches,
             op,
         )
