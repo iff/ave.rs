@@ -57,8 +57,9 @@ pub async fn apply_object_updates(
     let previous_patches = Patch::after_revision(state, gym, &obj_id, rev_id).await?;
     let latest_snapshot = base_snapshot.apply_patches(&previous_patches)?;
 
-    let (patches, snapshot) = {
+    let (patches, num_processed, snapshot) = {
         let mut patches = Vec::<Patch>::new();
+        let mut num_processed = 0;
         let mut snapshot = latest_snapshot;
         for op in operations {
             match save_operation(
@@ -67,25 +68,31 @@ pub async fn apply_object_updates(
                 author.clone(),
                 (base_snapshot.content).clone(),
                 &snapshot,
-                &previous_patches,
+                previous_patches.iter().chain(patches.iter()),
                 op,
             )
             .await
             {
                 Err(e) => return Err(e),
-                Ok(None) => (), // skip
-                Ok(Some(saved)) => {
-                    patches.push(saved.patch);
-                    snapshot = saved.snapshot
+                Ok(saved) => {
+                    num_processed += 1;
+                    if let Some(saved) = saved {
+                        patches.push(saved.patch);
+                        snapshot = saved.snapshot;
+                    }
                 }
             }
         }
-        (patches, snapshot)
+        (patches, num_processed, snapshot)
     };
 
     update_view(state, gym, &snapshot.object_id, &snapshot.content).await?;
 
-    Ok(Json(PatchObjectResponse::new(previous_patches, patches)))
+    Ok(Json(PatchObjectResponse::new(
+        previous_patches,
+        num_processed,
+        patches,
+    )))
 }
 
 /// Rebase and then apply the operation to the snapshot to get a new snapshot
@@ -97,14 +104,10 @@ async fn save_operation(
     author_id: ObjectId,
     base_content: Value,
     snapshot: &Snapshot,
-    previous_patches: &[Patch],
+    previous_patches: impl Iterator<Item = &Patch>,
     op: Operation,
 ) -> Result<Option<SaveOp>, AppError> {
-    let rebased_op = match rebase(
-        base_content,
-        op,
-        previous_patches.iter().map(|p| &p.operation),
-    ) {
+    let rebased_op = match rebase(base_content, op, previous_patches.map(|p| &p.operation)) {
         Ok(Some(rebased_op)) => rebased_op,
         Ok(None) => {
             // TODO better error, log op, base_content
