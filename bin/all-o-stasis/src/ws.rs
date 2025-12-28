@@ -2,22 +2,16 @@ use crate::types::Patch;
 use axum::body::Bytes;
 use axum::extract::ws::{Message, Utf8Bytes, WebSocket};
 use chrono::{DateTime, Utc};
-use firestore::{
-    FirestoreDb, FirestoreListenEvent, FirestoreListener, FirestoreListenerTarget,
-    FirestoreMemListenStateStorage, ParentPathBuilder,
-};
+use firestore::{FirestoreDb, FirestoreListenEvent, ParentPathBuilder};
 use futures::stream::{SplitSink, SplitStream};
 use futures::{SinkExt, StreamExt, TryStreamExt};
 use otp::ObjectId;
 use serde::Serialize;
-use std::collections::hash_map::DefaultHasher;
 use std::error::Error;
-use std::hash::{Hash, Hasher};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::{Mutex, mpsc, mpsc::Receiver, mpsc::Sender};
 
-use crate::storage::PATCHES_COLLECTION;
 use crate::{AppError, AppState};
 
 #[derive(Serialize)]
@@ -26,55 +20,6 @@ struct WsPatchResponse {
     content: Patch,
     #[serde(rename = "type")]
     ot_type: String,
-}
-
-fn hash_addr(addr: &SocketAddr) -> u64 {
-    let mut hasher = DefaultHasher::new();
-
-    match addr {
-        SocketAddr::V4(v4) => {
-            v4.ip().octets().hash(&mut hasher);
-            v4.port().hash(&mut hasher);
-        }
-        SocketAddr::V6(v6) => {
-            v6.ip().octets().hash(&mut hasher);
-            v6.port().hash(&mut hasher);
-        }
-    }
-
-    hasher.finish()
-}
-
-async fn patch_listener(
-    state: AppState,
-    parent_path: ParentPathBuilder,
-    who: SocketAddr,
-) -> Option<FirestoreListener<FirestoreDb, FirestoreMemListenStateStorage>> {
-    let client_id = hash_addr(&who) as u32;
-    let listener_id: FirestoreListenerTarget = FirestoreListenerTarget::new(client_id);
-    tracing::debug!("connection {who} gets firestore listener id: {client_id:?}");
-
-    // now start streaming patches using firestore listeners: https://github.com/abdolence/firestore-rs/blob/master/examples/listen-changes.rs
-    // do we have enough mem?
-    let mut listener = match state
-        .db
-        .create_listener(FirestoreMemListenStateStorage::new())
-        .await
-    {
-        Ok(l) => l,
-        Err(..) => return None,
-    };
-
-    let _ = state
-        .db
-        .fluent()
-        .select()
-        .from(PATCHES_COLLECTION)
-        .parent(parent_path)
-        .listen()
-        .add_target(listener_id, &mut listener);
-
-    Some(listener)
 }
 
 async fn handle_listener_event(
@@ -175,7 +120,7 @@ async fn drain_channel(
                     }
                     Message::Ping(bytes) => Message::Ping(bytes),
                     t => {
-                        tracing::error!("received unexpected message from on ws_send: {t:?}");
+                        tracing::error!("received unexpected message on ws_send: {t:?}");
                         continue;
                     }
                 };
@@ -260,7 +205,7 @@ pub(crate) async fn handle_socket(
     // collect all objects ids the client wants to get notified about changes
     let subscriptions: Arc<Mutex<Vec<ObjectId>>> = Arc::new(Mutex::new(Vec::new()));
 
-    let mut listener = match patch_listener(state, parent_path, who).await {
+    let mut listener = match Patch::listener(&state, &parent_path, who).await {
         Some(listener) => listener,
         None => return,
     };

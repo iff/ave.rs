@@ -3,13 +3,9 @@ use axum::extract::{Path, State};
 use axum::response::Json;
 use axum::routing::get;
 use chrono::DateTime;
-use firestore::{FirestoreResult, path_camel_case};
-use futures::TryStreamExt;
-use futures::stream::BoxStream;
 use serde::{Deserialize, Serialize};
 
-use crate::storage::BOULDERS_VIEW_COLLECTION;
-use crate::types::Boulder;
+use crate::types::BouldersView;
 use crate::{AppError, AppState};
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -35,20 +31,7 @@ async fn stats_boulders(
     State(state): State<AppState>,
     Path(gym): Path<String>,
 ) -> Result<Json<Vec<BoulderStat>>, AppError> {
-    let parent_path = state.db.parent_path("gyms", gym)?;
-    // TODO this is too expensive: we read all records to compute the stats
-    let object_stream: BoxStream<FirestoreResult<Boulder>> = state
-        .db
-        .fluent()
-        .select()
-        .from(BOULDERS_VIEW_COLLECTION)
-        .parent(&parent_path)
-        .filter(|q| q.for_all([q.field(path_camel_case!(Boulder::is_draft)).eq(0)]))
-        .obj()
-        .stream_query_with_errors()
-        .await?;
-
-    let as_vec: Vec<Boulder> = object_stream.try_collect().await?;
+    let as_vec = BouldersView::stats(&state, &gym).await?;
     let stats: Vec<BoulderStat> = as_vec
         .into_iter()
         .map(|b| BoulderStat {

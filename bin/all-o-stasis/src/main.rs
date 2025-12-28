@@ -12,7 +12,6 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod passport;
 mod routes;
-mod session;
 mod storage;
 mod types;
 mod word_list;
@@ -31,13 +30,13 @@ struct AppState {
 
 // The kinds of errors we can hit in our application.
 #[derive(Debug)]
-enum AppError {
+pub enum AppError {
     // Ot operations fail
     Ot(OtError),
     // firestore db errors
     Firestore(FirestoreError),
     // query error
-    Query(String),
+    Query(String), // TODO split and more meaningful name
     // unable to parse json content into type
     ParseError(String),
     // No session found

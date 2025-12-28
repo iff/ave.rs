@@ -17,11 +17,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     AppError, AppState,
-    storage::{
-        ACCOUNTS_VIEW_COLLECTION, SESSIONS_COLLECTION, apply_object_updates, create_object,
-        lookup_latest_snapshot, save_session,
-    },
-    types::{Account, AccountRole, ObjectType},
+    storage::apply_object_updates,
+    types::{Account, AccountRole, AccountsView, Object, ObjectType, Snapshot},
     word_list::make_security_code,
 };
 
@@ -121,6 +118,16 @@ mod maileroo {
 
 pub type SessionId = String;
 
+pub(crate) async fn author_from_session(
+    state: &AppState,
+    gym: &String,
+    session_id: &Cookie<'static>,
+) -> Result<String, AppError> {
+    let session_id = session_id.value().to_owned();
+    let session = Session::lookup(state, gym, session_id).await?;
+    Ok(session.obj_id)
+}
+
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Session {
@@ -140,6 +147,72 @@ impl fmt::Display for Session {
             self.id.clone().expect("id cant be missing"),
             self.obj_id
         )
+    }
+}
+
+impl Session {
+    const COLLECTION: &str = "sessions";
+
+    pub async fn lookup(
+        state: &AppState,
+        gym: &String,
+        object_id: ObjectId,
+    ) -> Result<Self, AppError> {
+        let parent_path = state.db.parent_path("gyms", gym)?;
+        state
+            .db
+            .fluent()
+            .select()
+            .by_id_in(Self::COLLECTION)
+            .parent(&parent_path)
+            .obj()
+            .one(&object_id)
+            .await?
+            .ok_or(AppError::NoSession())
+    }
+
+    pub async fn store(
+        &self,
+        state: &AppState,
+        gym: &String,
+        session_id: &str,
+    ) -> Result<Session, AppError> {
+        let parent_path = state.db.parent_path("gyms", gym)?;
+        let p: Option<Session> = state
+            .db
+            .fluent()
+            .update()
+            .in_col(Session::COLLECTION)
+            .document_id(session_id)
+            .parent(&parent_path)
+            .object(self)
+            .execute()
+            .await?;
+
+        match p {
+            Some(p) => {
+                tracing::debug!("storing session: {p}");
+                Ok(p)
+            }
+            None => {
+                tracing::warn!("failed to update session: {self} (no such object exists");
+                Err(AppError::NoSession())
+            }
+        }
+    }
+
+    pub async fn delete(state: &AppState, gym: &String, session_id: &str) -> Result<(), AppError> {
+        let parent_path = state.db.parent_path("gyms", gym)?;
+        state
+            .db
+            .fluent()
+            .delete()
+            .from(Self::COLLECTION)
+            .parent(&parent_path)
+            .document_id(session_id)
+            .execute()
+            .await?;
+        Ok(())
     }
 }
 
@@ -241,28 +314,10 @@ async fn create_passport(
     Path(gym): Path<String>,
     Json(payload): axum::extract::Json<CreatePassportBody>,
 ) -> Result<Json<CreatePassportResponse>, AppError> {
-    let parent_path = state.db.parent_path("gyms", gym.clone())?;
-
     // 1. Lookup account by email. If no such account exists, create a new one
-    let account_stream: BoxStream<FirestoreResult<Account>> = state
-        .db
-        .fluent()
-        .select()
-        .from(ACCOUNTS_VIEW_COLLECTION)
-        .parent(&parent_path)
-        .filter(|q| {
-            q.for_all([q
-                .field(path_camel_case!(Account::email))
-                .eq(payload.email.clone())])
-        })
-        .limit(1)
-        .obj()
-        .stream_query_with_errors()
-        .await?;
-
-    let accounts: Vec<Account> = account_stream.try_collect().await?;
-    let maybe_account_id: Result<ObjectId, AppError> = match accounts.first() {
-        Some(account) => Ok(account.id.clone().expect("object has no id")),
+    let account = AccountsView::with_email(&state, gym.clone(), payload.email.clone()).await?;
+    let maybe_account_id: Result<ObjectId, AppError> = match account {
+        Some(account) => Ok(account.id.clone().expect("existing accounts have an id")),
         None => {
             let account = Account {
                 id: None,
@@ -272,15 +327,10 @@ async fn create_passport(
                 name: None,
             };
             let value = serde_json::to_value(account).expect("serialising account");
-            let obj = create_object(
-                &state,
-                &gym,
-                String::from(""), // TODO fine?
-                ObjectType::Account,
-                &value,
-            )
-            .await?;
-
+            // TODO: author? root?
+            let obj =
+                Object::from_value(&state, &gym, String::from(""), ObjectType::Account, &value)
+                    .await?;
             Ok(obj.id.clone())
         }
     };
@@ -299,7 +349,7 @@ async fn create_passport(
         validity: PassportValidity::Unconfirmed,
     };
     let value = serde_json::to_value(passport).expect("serialising passport");
-    let obj = create_object(&state, &gym, account_id, ObjectType::Passport, &value).await?;
+    let obj = Object::from_value(&state, &gym, account_id, ObjectType::Passport, &value).await?;
 
     let passport_id = obj.id.clone();
 
@@ -327,7 +377,7 @@ async fn confirm_passport(
     Query(pport): Query<ConfirmPassport>,
     jar: CookieJar,
 ) -> Result<impl IntoResponse, AppError> {
-    let snapshot = lookup_latest_snapshot(&state, &gym, &pport.passport_id.clone()).await?;
+    let snapshot = Snapshot::lookup_latest(&state, &gym, &pport.passport_id.clone()).await?;
     let passport: Passport = serde_json::from_value(snapshot.content).or(Err(
         AppError::ParseError("failed to parse object into Passport".to_string()),
     ))?;
@@ -336,17 +386,13 @@ async fn confirm_passport(
         Err(AppError::NotAuthorized())
     } else {
         // create a new session for the account in the Passport object
-        let session = save_session(
-            &state,
-            &gym,
-            &Session {
-                id: None,
-                obj_id: passport.account_id,
-                created_at: None,
-                last_accessed_at: chrono::offset::Utc::now(),
-            },
-            &new_id(80),
-        )
+        let session = Session {
+            id: None,
+            obj_id: passport.account_id,
+            created_at: None,
+            last_accessed_at: chrono::offset::Utc::now(),
+        }
+        .store(&state, &gym, &new_id(80))
         .await?;
 
         // mark as valid
@@ -361,7 +407,6 @@ async fn confirm_passport(
             snapshot.revision_id,
             String::from(""), // TODO fine?
             [op].to_vec(),
-            false,
         )
         .await?;
 
@@ -396,7 +441,7 @@ async fn await_passport_confirmation(
     jar: CookieJar,
 ) -> Result<impl IntoResponse, AppError> {
     let (account_id, revision_id) = loop {
-        let snapshot = lookup_latest_snapshot(&state, &gym, &pport.passport_id.clone()).await?;
+        let snapshot = Snapshot::lookup_latest(&state, &gym, &pport.passport_id.clone()).await?;
         let passport: Passport = serde_json::from_value(snapshot.content).or(Err(
             AppError::ParseError("failed to parse object into Passport".to_string()),
         ))?;
@@ -426,7 +471,6 @@ async fn await_passport_confirmation(
         revision_id,
         String::from(""), // TODO fine?
         [op].to_vec(),
-        false,
     )
     .await?;
 
@@ -436,7 +480,7 @@ async fn await_passport_confirmation(
         .db
         .fluent()
         .select()
-        .from(SESSIONS_COLLECTION)
+        .from(Session::COLLECTION)
         .parent(&parent_path)
         .filter(|q| {
             q.for_all([q
