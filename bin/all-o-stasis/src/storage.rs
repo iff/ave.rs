@@ -50,46 +50,40 @@ pub async fn apply_object_updates(
 ) -> Result<Json<PatchObjectResponse>, AppError> {
     // the 'Snapshot' against which the submitted operations were created
     // this only contains patches until base_snapshot.revision_id
-    tracing::debug!("looking up base_snapshot@rev{rev_id}");
     let base_snapshot = Snapshot::lookup(state, gym, &obj_id, rev_id).await?;
-    tracing::debug!("base_snapshot={base_snapshot}");
 
     // if there are any patches which the client doesn't know about we need
     // to let her know
     let previous_patches = Patch::after_revision(state, gym, &obj_id, rev_id).await?;
     let latest_snapshot = base_snapshot.apply_patches(&previous_patches)?;
 
-    let mut patches = Vec::<Patch>::new();
-    let mut final_snapshot = latest_snapshot.clone();
-    for op in operations {
-        let saved = save_operation(
-            state,
-            gym,
-            author.clone(),
-            (base_snapshot.content).clone(),
-            &final_snapshot,
-            &previous_patches,
-            op,
-        )
-        .await;
-
-        match saved {
-            Err(e) => return Err(e),
-            Ok(Some(saved)) => {
-                patches.push(saved.patch);
-                final_snapshot = saved.snapshot
+    let (patches, snapshot) = {
+        let mut patches = Vec::<Patch>::new();
+        let mut snapshot = latest_snapshot;
+        for op in operations {
+            match save_operation(
+                state,
+                gym,
+                author.clone(),
+                (base_snapshot.content).clone(),
+                &snapshot,
+                &previous_patches,
+                op,
+            )
+            .await
+            {
+                Err(e) => return Err(e),
+                Ok(None) => (), // skip
+                Ok(Some(saved)) => {
+                    patches.push(saved.patch);
+                    snapshot = saved.snapshot
+                }
             }
-            Ok(None) => (), // skip
         }
-    }
+        (patches, snapshot)
+    };
 
-    update_view(
-        state,
-        gym,
-        &final_snapshot.object_id,
-        &final_snapshot.content,
-    )
-    .await?;
+    update_view(state, gym, &snapshot.object_id, &snapshot.content).await?;
 
     Ok(Json(PatchObjectResponse::new(previous_patches, patches)))
 }
