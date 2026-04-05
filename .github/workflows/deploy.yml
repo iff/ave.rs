@@ -8,12 +8,14 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - ".github/**"
 
 env:
   CARGO_TERM_COLOR: always
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
