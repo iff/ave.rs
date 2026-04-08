@@ -1634,7 +1634,7 @@ pub(crate) fn make_security_code() -> Option<String> {
     let num = v.into_iter().choose(&mut rand::rng())?;
     let words: Vec<&str> = WORDLIST
         .into_iter()
-        .choose_multiple(&mut rand::rng(), num)
+        .sample(&mut rand::rng(), num)
         .into_iter()
         .collect::<Vec<_>>();
 
