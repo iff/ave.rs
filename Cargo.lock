@@ -28,6 +28,7 @@ dependencies = [
  "cookie",
  "firestore",
  "futures",
+ "hex",
  "otp",
  "rand 0.10.0",
  "reqwest",
