@@ -12,7 +12,7 @@ use cookie::{Cookie, SameSite, time::Duration};
 use firestore::{FirestoreResult, path_camel_case};
 use futures::{TryStreamExt, stream::BoxStream};
 use otp::{ObjectId, Operation};
-use rand::Rng;
+use rand::RngExt;
 use serde::{Deserialize, Serialize};
 
 use crate::{
