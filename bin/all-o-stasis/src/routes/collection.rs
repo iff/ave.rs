@@ -55,7 +55,8 @@ async fn public_profile(
 
     let mut hashed_email = Sha256::new();
     hashed_email.update(account.email.trim());
-    let avatar = format!("https://gravatar.com/avatar/{:x}", hashed_email.finalize());
+    let sha = hashed_email.finalize();
+    let avatar = format!("https://gravatar.com/avatar/{}", hex::encode(sha));
 
     Ok(Json(PublicProfile {
         name,
