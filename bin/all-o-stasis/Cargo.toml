@@ -10,7 +10,7 @@ axum = { version = "0.8.1", features = ["ws"] }
 axum-extra = { version = "0.12.5", features = ["cookie", "typed-header"] }
 chrono = "0.4.38"
 cookie = "0.18"
-firestore = "0.44"
+firestore = "0.48"
 futures = "0.3"
 rand = "0.10.1"
 reqwest = { version = "0.12", features = ["blocking", "json"] }
