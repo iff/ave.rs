@@ -12,6 +12,15 @@ use serde_json::Value;
 /// Returns the resulting Operation if rebase was successful, `None` if operations have
 /// conflicts and [`OtError::Rebase`] if rebase operation fails.
 ///
+/// ## Architecture note
+///
+/// This function is designed for a client-server architecture where the server
+/// serializes all operations and is the single source of truth. Concurrent
+/// same-path conflicts (e.g. two clients setting the same field) are resolved
+/// by the server: it accepts one op and the losing client reloads. `rebase`
+/// does not need to guarantee convergence for same-path concurrent ops - that
+/// is handled by the server's serialization.
+///
 /// ## Example
 ///
 /// ```rust
