@@ -1,3 +1,9 @@
+//! Operational transform primitives for a client-server architecture.
+//!
+//! Clients apply [`Operation`]s optimistically and use [`rebase`] to adjust
+//! any pending local ops around server patches that arrive concurrently.
+//! The server serializes all ops and is the single source of truth.
+
 use std::error::Error;
 use std::fmt;
 
