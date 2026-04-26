@@ -6,7 +6,7 @@ edition = "2024"
 [dependencies]
 otp = { path = "../../crates/otp", version = "0.1.0" }
 built = { version = "0.8", features = ["git2"] }
-axum = { version = "0.8.1", features = ["ws"] }
+axum = { version = "0.8.9", features = ["ws"] }
 axum-extra = { version = "0.12.5", features = ["cookie", "typed-header"] }
 chrono = "0.4.38"
 cookie = "0.18"
