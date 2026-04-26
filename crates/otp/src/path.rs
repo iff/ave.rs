@@ -1,5 +1,6 @@
-use crate::Path;
 use serde_json::Value;
+
+use crate::Path;
 
 /// Check if path is reachable starting from value
 pub(crate) fn is_reachable(path: impl Into<Path>, value: &Value) -> bool {
@@ -18,8 +19,11 @@ pub(crate) fn is_reachable(path: impl Into<Path>, value: &Value) -> bool {
                 None => return false,
             },
             Value::Array(a) => match a.iter().find(|element| match element {
-                // only can reach objects in list and objects need matching "id"s
-                Value::Object(o) => Some(&Value::String(p.to_string())) == o.get("id"),
+                // only can reach objects in list and objects need matching
+                // "id"s
+                Value::Object(o) => {
+                    Some(&Value::String(p.to_string())) == o.get("id")
+                }
                 // other types in lists are not reachable (primitive types)
                 _ => false,
             }) {
@@ -35,8 +39,9 @@ pub(crate) fn is_reachable(path: impl Into<Path>, value: &Value) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use serde_json::json;
+
+    use super::*;
 
     #[test]
     fn is_reachable_empty_path() {

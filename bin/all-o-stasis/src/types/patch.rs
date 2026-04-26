@@ -1,21 +1,25 @@
-use std::collections::hash_map::DefaultHasher;
-use std::fmt;
-use std::hash::{Hash, Hasher};
-use std::net::SocketAddr;
+use std::{
+    collections::hash_map::DefaultHasher,
+    fmt,
+    hash::{Hash, Hasher},
+    net::SocketAddr,
+};
 
 use chrono::{DateTime, Utc};
 use firestore::{
-    FirestoreDb, FirestoreListener, FirestoreListenerTarget, FirestoreMemListenStateStorage,
-    ParentPathBuilder,
+    FirestoreDb, FirestoreListener, FirestoreListenerTarget,
+    FirestoreMemListenStateStorage, FirestoreQueryDirection, FirestoreResult,
+    ParentPathBuilder, path_camel_case,
 };
-use firestore::{FirestoreQueryDirection, FirestoreResult, path_camel_case};
 use futures::{TryStreamExt, stream::BoxStream};
 use otp::{ObjectId, Operation, RevId};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::types::store;
-use crate::{AppError, AppState, types::Snapshot};
+use crate::{
+    AppError, AppState,
+    types::{Snapshot, store},
+};
 
 fn hash_addr(addr: &SocketAddr) -> u64 {
     let mut hasher = DefaultHasher::new();
@@ -60,7 +64,8 @@ impl Patch {
     const COLLECTION: &str = "patches";
 
     pub fn new(object_id: ObjectId, author_id: String, value: &Value) -> Self {
-        let op = Operation::new_set(otp::ROOT_PATH.to_owned(), value.to_owned());
+        let op =
+            Operation::new_set(otp::ROOT_PATH.to_owned(), value.to_owned());
         Self {
             object_id,
             revision_id: otp::ZERO_REV_ID,
@@ -85,7 +90,11 @@ impl Patch {
         }
     }
 
-    pub async fn store(&self, state: &AppState, gym: &String) -> Result<Self, AppError> {
+    pub async fn store(
+        &self,
+        state: &AppState,
+        gym: &String,
+    ) -> Result<Self, AppError> {
         let s: Option<Self> = store!(state, gym, self, Self::COLLECTION);
         s.ok_or(AppError::Internal("storing patch failed".to_string()))
     }
@@ -170,10 +179,14 @@ impl Patch {
         state: &AppState,
         parent_path: &ParentPathBuilder,
         who: SocketAddr,
-    ) -> Option<FirestoreListener<FirestoreDb, FirestoreMemListenStateStorage>> {
+    ) -> Option<FirestoreListener<FirestoreDb, FirestoreMemListenStateStorage>>
+    {
         let client_id = hash_addr(&who) as u32;
-        let listener_id: FirestoreListenerTarget = FirestoreListenerTarget::new(client_id);
-        tracing::debug!("connection {who} gets firestore listener id: {client_id:?}");
+        let listener_id: FirestoreListenerTarget =
+            FirestoreListenerTarget::new(client_id);
+        tracing::debug!(
+            "connection {who} gets firestore listener id: {client_id:?}"
+        );
 
         // now start streaming patches using firestore listeners: https://github.com/abdolence/firestore-rs/blob/master/examples/listen-changes.rs
         let mut listener = match state

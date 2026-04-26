@@ -1,17 +1,19 @@
-use axum::response::Json;
-use axum::routing::get;
 use axum::{
     Router,
     extract::{Path, State},
+    response::Json,
+    routing::get,
 };
 use axum_extra::extract::CookieJar;
 use otp::ObjectId;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::passport::author_from_session;
-use crate::types::{Account, AccountsView, BouldersView, Snapshot};
-use crate::{AppError, AppState};
+use crate::{
+    AppError, AppState,
+    passport::author_from_session,
+    types::{Account, AccountsView, BouldersView, Snapshot},
+};
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -73,7 +75,9 @@ async fn active_boulders(
         boulders
             .into_iter()
             .map(|b| {
-                b.id.ok_or(AppError::Internal("object in view has no id".to_string()))
+                b.id.ok_or(AppError::Internal(
+                    "object in view has no id".to_string(),
+                ))
             })
             .collect::<Result<Vec<_>, _>>()?,
     ))
@@ -88,7 +92,9 @@ async fn draft_boulders(
         as_vec
             .into_iter()
             .map(|b| {
-                b.id.ok_or(AppError::Internal("object in view has no id".to_string()))
+                b.id.ok_or(AppError::Internal(
+                    "object in view has no id".to_string(),
+                ))
             })
             .collect::<Result<Vec<_>, _>>()?,
     ))
@@ -111,7 +117,9 @@ async fn own_boulders(
         as_vec
             .into_iter()
             .map(|b| {
-                b.id.ok_or(AppError::Internal("object in view has no id".to_string()))
+                b.id.ok_or(AppError::Internal(
+                    "object in view has no id".to_string(),
+                ))
             })
             .collect::<Result<Vec<_>, _>>()?,
     ))
@@ -126,7 +134,9 @@ async fn accounts(
         as_vec
             .into_iter()
             .map(|b| {
-                b.id.ok_or(AppError::Internal("object in view has no id".to_string()))
+                b.id.ok_or(AppError::Internal(
+                    "object in view has no id".to_string(),
+                ))
             })
             .collect::<Result<Vec<_>, _>>()?,
     ))
@@ -141,7 +151,9 @@ async fn admin_accounts(
         as_vec
             .into_iter()
             .map(|b| {
-                b.id.ok_or(AppError::Internal("object in view has no id".to_string()))
+                b.id.ok_or(AppError::Internal(
+                    "object in view has no id".to_string(),
+                ))
             })
             .collect::<Result<Vec<_>, _>>()?,
     ))

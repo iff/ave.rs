@@ -42,8 +42,8 @@ impl Snapshot {
         }
     }
 
-    /// apply the operation to the snapshot and create a new revision returning the new snapshot
-    /// and the patch
+    /// apply the operation to the snapshot and create a new revision returning
+    /// the new snapshot and the patch
     pub fn new_revision(
         &self,
         author_id: ObjectId,
@@ -56,7 +56,12 @@ impl Snapshot {
         }
 
         let revision_id = self.revision_id + 1;
-        let patch = Patch::new_revision(revision_id, self.object_id.clone(), author_id, operation);
+        let patch = Patch::new_revision(
+            revision_id,
+            self.object_id.clone(),
+            author_id,
+            operation,
+        );
         Ok(Some((
             Self {
                 object_id: self.object_id.clone(),
@@ -76,7 +81,10 @@ impl Snapshot {
     }
 
     /// return a new snapshot with all patches applied
-    pub fn apply_patches(&self, patches: &Vec<Patch>) -> Result<Self, AppError> {
+    pub fn apply_patches(
+        &self,
+        patches: &Vec<Patch>,
+    ) -> Result<Self, AppError> {
         let mut s = self.clone();
         for patch in patches {
             s = s.apply_patch(patch)?;
@@ -85,48 +93,72 @@ impl Snapshot {
         Ok(s)
     }
 
-    pub async fn store(&self, state: &AppState, gym: &String) -> Result<Self, AppError> {
+    pub async fn store(
+        &self,
+        state: &AppState,
+        gym: &String,
+    ) -> Result<Self, AppError> {
         let s: Option<Snapshot> = store!(state, gym, self, Self::COLLECTION);
         s.ok_or(AppError::Internal("storing snapshot failed".to_string()))
     }
 
-    /// lookup a snapshot with rev_id or lower and apply patches with revision <= rev_id if necessary
+    /// lookup a snapshot with rev_id or lower and apply patches with revision
+    /// <= rev_id if necessary
     pub async fn lookup(
         state: &AppState,
         gym: &String,
         obj_id: &ObjectId,
         rev_id: RevId, // inclusive
     ) -> Result<Snapshot, AppError> {
-        let latest_snapshot =
-            Self::lookup_between(state, gym, obj_id, (ZERO_REV_ID, Some(rev_id))).await?;
+        let latest_snapshot = Self::lookup_between(
+            state,
+            gym,
+            obj_id,
+            (ZERO_REV_ID, Some(rev_id)),
+        )
+        .await?;
 
         // get all patches which we need to apply on top of the snapshot to
         // arrive at the desired revision
-        let patches: Vec<Patch> =
-            Patch::after_revision(state, gym, obj_id, latest_snapshot.revision_id)
-                .await?
-                .into_iter()
-                .filter(|p| p.revision_id <= rev_id)
-                .collect();
+        let patches: Vec<Patch> = Patch::after_revision(
+            state,
+            gym,
+            obj_id,
+            latest_snapshot.revision_id,
+        )
+        .await?
+        .into_iter()
+        .filter(|p| p.revision_id <= rev_id)
+        .collect();
 
         // apply those patches to the snapshot
         latest_snapshot.apply_patches(&patches)
     }
 
-    /// get latest available snapshot with object_id or create a new snapshot. apply unapplied
-    /// patches to get to the latest possible revision.
+    /// get latest available snapshot with object_id or create a new snapshot.
+    /// apply unapplied patches to get to the latest possible revision.
     pub async fn lookup_latest(
         state: &AppState,
         gym: &String,
         object_id: &ObjectId,
     ) -> Result<Self, AppError> {
-        let latest_snapshot =
-            Snapshot::lookup_between(state, gym, object_id, (ZERO_REV_ID, None)).await?;
+        let latest_snapshot = Snapshot::lookup_between(
+            state,
+            gym,
+            object_id,
+            (ZERO_REV_ID, None),
+        )
+        .await?;
 
         // get all patches which we need to apply on top of the snapshot to
         // arrive at the desired revision
-        let patches =
-            Patch::after_revision(state, gym, object_id, latest_snapshot.revision_id).await?;
+        let patches = Patch::after_revision(
+            state,
+            gym,
+            object_id,
+            latest_snapshot.revision_id,
+        )
+        .await?;
 
         // apply those patches to the snapshot
         latest_snapshot.apply_patches(&patches)
@@ -149,7 +181,10 @@ impl Snapshot {
             .filter(|q| {
                 q.for_all(
                     [
-                        Some(q.field(path_camel_case!(Snapshot::object_id)).eq(object_id)),
+                        Some(
+                            q.field(path_camel_case!(Snapshot::object_id))
+                                .eq(object_id),
+                        ),
                         Some(
                             q.field(path_camel_case!(Snapshot::revision_id))
                                 .greater_than_or_equal(range.0),
@@ -182,7 +217,8 @@ impl Snapshot {
         match snapshots.first() {
             Some(snapshot) => Ok(snapshot.clone()),
             None => {
-                // TODO we could already create the first snapshot on object creation?
+                // TODO we could already create the first snapshot on object
+                // creation?
                 Ok(Snapshot::new(object_id.clone()).store(state, gym).await?)
             }
         }

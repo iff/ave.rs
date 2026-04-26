@@ -1,7 +1,9 @@
-use crate::{OtError, Path};
+use std::fmt;
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::fmt;
+
+use crate::{OtError, Path};
 
 type SerdeObject = serde_json::Map<String, Value>;
 
@@ -11,16 +13,18 @@ type SerdeObject = serde_json::Map<String, Value>;
 #[serde(tag = "type")]
 #[serde(rename_all = "camelCase")]
 pub enum Operation {
-    /// applied to Value::Object for adding, updating and inserting multiple elements in a single op
+    /// applied to Value::Object for adding, updating and inserting multiple
+    /// elements in a single op
     Set { path: Path, value: Option<Value> },
 
-    /// manipulate Value::Array (remove, insert multiple elements in a single op) mimicing js/rust splice
-    /// implementation
+    /// manipulate Value::Array (remove, insert multiple elements in a single
+    /// op) mimicing js/rust splice implementation
     Splice {
         path: Path,
         index: usize,
         remove: usize,
-        /// this is actually a Value::Array, everything else will result in an error
+        /// this is actually a Value::Array, everything else will result in an
+        /// error
         insert: Value,
     },
 }
@@ -28,7 +32,9 @@ pub enum Operation {
 impl fmt::Display for Operation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Operation::Set { path, value } => write!(f, "Set: {path}, value={value:?}"),
+            Operation::Set { path, value } => {
+                write!(f, "Set: {path}, value={value:?}")
+            }
             Operation::Splice {
                 path,
                 index,
@@ -50,7 +56,10 @@ impl Operation {
         }
     }
 
-    pub fn try_new_set(path: impl Into<Path>, value: Option<Value>) -> Result<Self, OtError> {
+    pub fn try_new_set(
+        path: impl Into<Path>,
+        value: Option<Value>,
+    ) -> Result<Self, OtError> {
         let path = path.into();
         if path.is_empty() && value.is_none() {
             Err(OtError::InvalidSetOp())
@@ -94,25 +103,28 @@ impl Operation {
     ///
     /// Support Operations are [`Operation::Set`] and [`Operation::Splice`].
     ///
-    /// Returns the [`Value`] after applying the [`Operation`] if the operation is successful.
-    /// Otherwise
+    /// Returns the [`Value`] after applying the [`Operation`] if the operation
+    /// is successful. Otherwise
     /// - [`OtError::Index`] if bound checks for splice fail
     /// - [`OtError::Operation`] if applying the operation fails
-    /// - [`OtError::ValueIsNotArray`] if splice insert opertion does not contain arrays
+    /// - [`OtError::ValueIsNotArray`] if splice insert opertion does not
+    ///   contain arrays
     ///
     /// ## Set
     ///
-    /// Applied to [`serde_json::Value::Object`] for adding, updating and inserting multiple
-    /// elements in a single op.
+    /// Applied to [`serde_json::Value::Object`] for adding, updating and
+    /// inserting multiple elements in a single op.
     ///
-    /// A set operation with empty path and no value is undefined and will return an error.
+    /// A set operation with empty path and no value is undefined and will
+    /// return an error.
     ///
     /// ## Splice
     ///
-    /// Manipulate [`serde_json::Value::Array`] (remove, insert multiple elements in a single op)
-    /// mimicing js/rust splice implementation.
+    /// Manipulate [`serde_json::Value::Array`] (remove, insert multiple
+    /// elements in a single op) mimicing js/rust splice implementation.
     /// - elements of arrays to be changed must have the same type
-    /// - if the array consists of objects, each object is required to have an "id" field
+    /// - if the array consists of objects, each object is required to have an
+    ///   "id" field
     ///
     /// ## Example
     ///
@@ -134,7 +146,8 @@ impl Operation {
                 path,
                 value: op_value,
             } => {
-                // the combination of root path and an operation with no value is invalid
+                // the combination of root path and an operation with no value
+                // is invalid
                 if path.is_empty() {
                     return op_value.to_owned().ok_or(OtError::Operation(String::from(
                         "set operation with an empty path and no value is undefined",
@@ -142,10 +155,11 @@ impl Operation {
                 }
 
                 // delete key (path) if op_Value is empty else insert key (path)
-                let ins_or_del = |key: String, map: &mut SerdeObject| match op_value {
-                    Some(v) => map.insert(key, v.to_owned()),
-                    None => map.remove(&key),
-                };
+                let ins_or_del =
+                    |key: String, map: &mut SerdeObject| match op_value {
+                        Some(v) => map.insert(key, v.to_owned()),
+                        None => map.remove(&key),
+                    };
                 change_object(value, path, ins_or_del)
             }
             Operation::Splice {
@@ -170,7 +184,10 @@ impl Operation {
                     };
 
                     check_type_consistency(&a, op_insert)?;
-                    let _ = a.splice(op_index..&(op_index + op_remove), op_insert.iter().cloned());
+                    let _ = a.splice(
+                        op_index..&(op_index + op_remove),
+                        op_insert.iter().cloned(),
+                    );
                     Ok(a)
                 };
 
@@ -181,7 +198,8 @@ impl Operation {
 }
 
 /// Elements of arrays we want to merge/change must have the same type.
-/// Furthermore, if the array consists of objects, each object is required to have an "id" field.
+/// Furthermore, if the array consists of objects, each object is required to
+/// have an "id" field.
 fn check_type_consistency(a: &[Value], b: &[Value]) -> Result<(), OtError> {
     match (a.first(), b.first()) {
         (Some(_), None) => {
@@ -189,7 +207,9 @@ fn check_type_consistency(a: &[Value], b: &[Value]) -> Result<(), OtError> {
             Ok(())
         }
         (Some(Value::Number(_)), Some(Value::Number(_))) => {
-            if a.iter().all(|a| a.is_number()) && b.iter().all(|a| a.is_number()) {
+            if a.iter().all(|a| a.is_number())
+                && b.iter().all(|a| a.is_number())
+            {
                 Ok(())
             } else {
                 Err(OtError::Type(String::from(
@@ -198,7 +218,9 @@ fn check_type_consistency(a: &[Value], b: &[Value]) -> Result<(), OtError> {
             }
         }
         (Some(Value::Bool(_)), Some(Value::Bool(_))) => {
-            if a.iter().all(|a| a.is_boolean()) && b.iter().all(|a| a.is_boolean()) {
+            if a.iter().all(|a| a.is_boolean())
+                && b.iter().all(|a| a.is_boolean())
+            {
                 Ok(())
             } else {
                 Err(OtError::Type(String::from(
@@ -207,7 +229,9 @@ fn check_type_consistency(a: &[Value], b: &[Value]) -> Result<(), OtError> {
             }
         }
         (Some(Value::String(_)), Some(Value::String(_))) => {
-            if a.iter().all(|a| a.is_string()) && b.iter().all(|a| a.is_string()) {
+            if a.iter().all(|a| a.is_string())
+                && b.iter().all(|a| a.is_string())
+            {
                 Ok(())
             } else {
                 Err(OtError::Type(String::from(
@@ -216,14 +240,18 @@ fn check_type_consistency(a: &[Value], b: &[Value]) -> Result<(), OtError> {
             }
         }
         (Some(Value::Object(_)), Some(Value::Object(_))) => {
-            if !(a.iter().all(|a| a.is_object()) && b.iter().all(|a| a.is_object())) {
+            if !(a.iter().all(|a| a.is_object())
+                && b.iter().all(|a| a.is_object()))
+            {
                 return Err(OtError::Type(String::from(
                     "not all array elements of type Object",
                 )));
             }
 
             // all elements are objects - do they have all have an id?
-            if a.iter().all(|a| a.get("id").is_some()) && b.iter().all(|a| a.get("id").is_some()) {
+            if a.iter().all(|a| a.get("id").is_some())
+                && b.iter().all(|a| a.get("id").is_some())
+            {
                 Ok(())
             } else {
                 Err(OtError::NoId())
@@ -233,7 +261,10 @@ fn check_type_consistency(a: &[Value], b: &[Value]) -> Result<(), OtError> {
     }
 }
 
-fn follow_path(value: &mut Value, path: impl Into<Path>) -> Result<(&mut Value, String), OtError> {
+fn follow_path(
+    value: &mut Value,
+    path: impl Into<Path>,
+) -> Result<(&mut Value, String), OtError> {
     let path = path.into();
     if path.is_empty() {
         return Err(OtError::Path(format!(
@@ -253,12 +284,17 @@ fn follow_path(value: &mut Value, path: impl Into<Path>) -> Result<(&mut Value, 
         }
     }
 
-    #[allow(clippy::indexing_slicing)] // we return an error if the string is empty
+    #[allow(clippy::indexing_slicing)]
+    // we return an error if the string is empty
     Ok((content, String::from(key_to_change[0])))
 }
 
 /// Travers the path and then either insert or delete at the very end
-fn change_object<F>(mut value: Value, path: impl Into<Path>, f: F) -> Result<Value, OtError>
+fn change_object<F>(
+    mut value: Value,
+    path: impl Into<Path>,
+    f: F,
+) -> Result<Value, OtError>
 where
     F: FnOnce(String, &mut SerdeObject) -> Option<Value>,
 {
@@ -272,11 +308,16 @@ where
     Ok(value)
 }
 
-fn change_array<F>(mut value: Value, path: impl Into<Path>, f: F) -> Result<Value, OtError>
+fn change_array<F>(
+    mut value: Value,
+    path: impl Into<Path>,
+    f: F,
+) -> Result<Value, OtError>
 where
     F: FnOnce(Vec<Value>) -> Result<Vec<Value>, OtError>,
 {
-    // resolving path and then depending on the Value::Array | Object do something different
+    // resolving path and then depending on the Value::Array | Object do
+    // something different
     let (content, key_to_change) = follow_path(&mut value, path)?;
     let new_array = match content.get_mut(&key_to_change) {
         Some(value) => match value {
@@ -300,8 +341,8 @@ where
 //     where
 //         D: Deserializer<'de>,
 //     {
-//         // deserialize using the derived implementation into a temporary structure
-//         #[derive(Deserialize)]
+//         // deserialize using the derived implementation into a temporary
+// structure         #[derive(Deserialize)]
 //         #[serde(tag = "type")]
 //         #[serde(rename_all = "camelCase")]
 //         enum TempOperation {
@@ -335,8 +376,8 @@ where
 //                 insert,
 //             } => {
 //                 if !insert.is_array() {
-//                     return Err(de::Error::custom("Insert value must be an array"));
-//                 }
+//                     return Err(de::Error::custom("Insert value must be an
+// array"));                 }
 //                 Ok(Operation::Splice {
 //                     path,
 //                     index,
@@ -350,12 +391,13 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::ROOT_PATH;
     use quickcheck::{Arbitrary, Gen};
     use quickcheck_macros::quickcheck;
     use serde::{Deserialize, Serialize};
     use serde_json::json;
+
+    use super::*;
+    use crate::ROOT_PATH;
 
     #[derive(Serialize, Deserialize, Debug, Clone)]
     pub struct TestObject {
@@ -405,9 +447,13 @@ mod tests {
     }
 
     #[quickcheck]
-    fn apply_set_full_overwrite(base: TestObject, overwrite: TestObject) -> bool {
+    fn apply_set_full_overwrite(
+        base: TestObject,
+        overwrite: TestObject,
+    ) -> bool {
         let base = serde_json::to_value(&base).expect("serialise value");
-        let overwrite = serde_json::to_value(&overwrite).expect("serialise value");
+        let overwrite =
+            serde_json::to_value(&overwrite).expect("serialise value");
         let op = Operation::Set {
             path: ROOT_PATH.into(),
             value: Some(overwrite.clone()),
@@ -417,7 +463,10 @@ mod tests {
     }
 
     #[quickcheck]
-    fn apply_set_partial_overwrite(base: TestObject, overwrite: TestObject) -> bool {
+    fn apply_set_partial_overwrite(
+        base: TestObject,
+        overwrite: TestObject,
+    ) -> bool {
         let expected = TestObject {
             name: base.name.clone(),
             num: overwrite.num,
@@ -429,7 +478,8 @@ mod tests {
             value: Some(json!(overwrite.num)),
         };
 
-        let expected = serde_json::to_value(&expected).expect("serialise value");
+        let expected =
+            serde_json::to_value(&expected).expect("serialise value");
         Some(expected) == op.apply_to(base).ok()
     }
 

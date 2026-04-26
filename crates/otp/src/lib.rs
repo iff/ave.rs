@@ -4,15 +4,13 @@
 //! any pending local ops around server patches that arrive concurrently.
 //! The server serializes all ops and is the single source of truth.
 
-use std::error::Error;
-use std::fmt;
+use std::{error::Error, fmt};
 
 mod operation;
 mod path;
 mod rebase;
 
-pub use crate::operation::Operation;
-pub use crate::rebase::rebase;
+pub use crate::{operation::Operation, rebase::rebase};
 
 pub type Path = String;
 

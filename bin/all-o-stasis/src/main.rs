@@ -1,14 +1,14 @@
-use crate::routes::app;
-use axum::http::StatusCode;
-use axum::response::IntoResponse;
-use axum::response::Json;
-use axum::response::Response;
-use firestore::errors::FirestoreError;
-use firestore::{FirestoreDb, FirestoreDbOptions};
+use std::{net::SocketAddr, sync::Arc};
+
+use axum::{
+    http::StatusCode,
+    response::{IntoResponse, Json, Response},
+};
+use firestore::{FirestoreDb, FirestoreDbOptions, errors::FirestoreError};
 use serde_json::json;
-use std::net::SocketAddr;
-use std::sync::Arc;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
+use crate::routes::app;
 
 mod passport;
 mod routes;
@@ -100,19 +100,29 @@ impl IntoResponse for AppError {
             AppError::Firestore(FirestoreError::CacheError(_)) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, "cache error".to_string())
             }
-            AppError::Ot(e) => (StatusCode::NOT_FOUND, format!("OT failure: {e}")),
-            AppError::Query(e) => (StatusCode::BAD_REQUEST, format!("Query issue: {e}")),
+            AppError::Ot(e) => {
+                (StatusCode::NOT_FOUND, format!("OT failure: {e}"))
+            }
+            AppError::Query(e) => {
+                (StatusCode::BAD_REQUEST, format!("Query issue: {e}"))
+            }
             AppError::ParseError(err) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("parse error: {err}"),
             ),
-            AppError::NoSession() => (StatusCode::NOT_FOUND, "session not found".to_string()),
-            AppError::NotAuthorized() => (StatusCode::BAD_REQUEST, "not authorized".to_string()),
+            AppError::NoSession() => {
+                (StatusCode::NOT_FOUND, "session not found".to_string())
+            }
+            AppError::NotAuthorized() => {
+                (StatusCode::BAD_REQUEST, "not authorized".to_string())
+            }
             AppError::Internal(e) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("internal error: {e}"),
             ),
-            AppError::Passport(e) => (StatusCode::BAD_REQUEST, format!("passport failure: {e}")),
+            AppError::Passport(e) => {
+                (StatusCode::BAD_REQUEST, format!("passport failure: {e}"))
+            }
         };
 
         let body = Json(json!({
@@ -127,14 +137,15 @@ impl IntoResponse for AppError {
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     tracing_subscriber::registry()
         .with(
-            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-                format!(
-                    // "{}=debug,tower_http=info,firestore=debug",
-                    "{}=info,tower_http=info,firestore=info",
-                    env!("CARGO_CRATE_NAME")
-                )
-                .into()
-            }),
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| {
+                    format!(
+                        // "{}=debug,tower_http=info,firestore=debug",
+                        "{}=info,tower_http=info,firestore=info",
+                        env!("CARGO_CRATE_NAME")
+                    )
+                    .into()
+                }),
         )
         .with(tracing_subscriber::fmt::layer())
         .init();

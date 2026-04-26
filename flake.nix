@@ -8,34 +8,38 @@
   };
 
   outputs =
-    { self
-    , flake-utils
-    , nixpkgs
-    , rust-overlay
+    {
+      self,
+      flake-utils,
+      nixpkgs,
+      rust-overlay,
     }:
 
-    flake-utils.lib.eachDefaultSystem (system:
-    let
-      overlays = [
-        (import rust-overlay)
-        (self: super: {
-          rustToolchain =
-            let
-              rust = super.rust-bin;
-            in
-            if builtins.pathExists ./rust-toolchain.toml then
-              rust.fromRustupToolchainFile ./rust-toolchain.toml
-            else if builtins.pathExists ./rust-toolchain then
-              rust.fromRustupToolchainFile ./rust-toolchain
-            else
-              rust.stable.latest.default;
-        })
-      ];
+    flake-utils.lib.eachDefaultSystem (
+      system:
+      let
+        overlays = [
+          (import rust-overlay)
+          (self: super: {
+            rustToolchain = pkgs.symlinkJoin {
+              name = "rust-toolchain";
+              paths = [
+                (super.rust-bin.stable.latest.minimal.override {
+                  extensions = [
+                    "clippy"
+                    "rust-docs"
+                    # "rust-src"
+                  ];
+                })
+                (super.rust-bin.selectLatestNightlyWith (toolchain: toolchain.rustfmt))
+              ];
+            };
+          })
+        ];
 
-      pkgs = import nixpkgs { inherit system overlays; };
+        pkgs = import nixpkgs { inherit system overlays; };
 
-      deploy = pkgs.writeScriptBin "deploy"
-        ''
+        deploy = pkgs.writeScriptBin "deploy" ''
           #!/usr/bin/env zsh
           set -eux -o pipefail
 
@@ -54,56 +58,60 @@
             --set-env-vars MAILEROO_API_KEY=$MAILEROO_API_KEY,FIRESTORE_DATABASE_ID=dev-db
         '';
 
-      app = pkgs.rustPlatform.buildRustPackage {
-        pname = "all-o-stasis";
-        version = "0.0.1";
-        src = ./.;
+        app = pkgs.rustPlatform.buildRustPackage {
+          pname = "all-o-stasis";
+          version = "0.0.1";
+          src = ./.;
 
-        cargoLock = {
-          lockFile = ./Cargo.lock;
+          cargoLock = {
+            lockFile = ./Cargo.lock;
+          };
+
+          nativeBuildInputs = [ pkgs.pkg-config ];
+          # TODO needed here?
+          PKG_CONFIG_PATH = "${pkgs.openssl.dev}/lib/pkgconfig";
         };
 
-        nativeBuildInputs = [ pkgs.pkg-config ];
-        # TODO needed here?
-        PKG_CONFIG_PATH = "${pkgs.openssl.dev}/lib/pkgconfig";
-      };
+        container = pkgs.dockerTools.buildLayeredImage {
+          name = "api";
 
-      container = pkgs.dockerTools.buildLayeredImage {
-        name = "api";
-
-        config = {
-          Env = [
-            "PROJECT_ID=all-o-stasis"
-            "SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt" # for firestore
-          ];
-          Cmd = [ "${app}/bin/all-o-stasis" ];
-          ExposedPorts = {
-            "8080/tcp" = { };
+          config = {
+            Env = [
+              "PROJECT_ID=all-o-stasis"
+              "SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt" # for firestore
+            ];
+            Cmd = [ "${app}/bin/all-o-stasis" ];
+            ExposedPorts = {
+              "8080/tcp" = { };
+            };
           };
         };
-      };
-    in
-    {
-      # TODO expose container.imageId
-      defaultPackage = container;
+      in
+      {
+        # TODO expose container.imageId
+        defaultPackage = container;
 
-      devShells.default = pkgs.mkShell {
-        nativeBuildInputs = with pkgs; [
-          deploy
-          rustToolchain
-          openssl
-          pkg-config
-          cargo-deny
-          cargo-edit
-          cargo-watch
-          rust-analyzer
-          (google-cloud-sdk.withExtraComponents [ google-cloud-sdk.components.gke-gcloud-auth-plugin google-cloud-sdk.components.log-streaming ])
-          pinact
-        ];
+        devShells.default = pkgs.mkShell {
+          nativeBuildInputs = with pkgs; [
+            deploy
+            rustToolchain
+            openssl
+            pkg-config
+            cargo-deny
+            cargo-edit
+            cargo-watch
+            rust-analyzer
+            (google-cloud-sdk.withExtraComponents [
+              google-cloud-sdk.components.gke-gcloud-auth-plugin
+              google-cloud-sdk.components.log-streaming
+            ])
+            pinact
+          ];
 
-        shellHook = ''
-          ${pkgs.rustToolchain}/bin/cargo --version
-        '';
-      };
-    });
+          shellHook = ''
+            ${pkgs.rustToolchain}/bin/cargo --version
+          '';
+        };
+      }
+    );
 }

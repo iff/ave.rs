@@ -1,6 +1,7 @@
 use std::fmt;
 
 use chrono::{DateTime, Utc};
+use otp::ObjectId;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -9,7 +10,6 @@ use crate::{
     storage::update_view_typed,
     types::{ObjectType, Patch, store},
 };
-use otp::ObjectId;
 
 // Object storage representation - used for Firestore serialization
 #[derive(Serialize, Deserialize, Debug)]
@@ -37,7 +37,11 @@ impl ObjectDoc {
         }
     }
 
-    async fn lookup(state: &AppState, gym: &String, object_id: ObjectId) -> Result<Self, AppError> {
+    async fn lookup(
+        state: &AppState,
+        gym: &String,
+        object_id: ObjectId,
+    ) -> Result<Self, AppError> {
         let parent_path = state.db.parent_path("gyms", gym)?;
         state
             .db
@@ -53,7 +57,11 @@ impl ObjectDoc {
             )))
     }
 
-    pub async fn store(&self, state: &AppState, gym: &String) -> Result<Self, AppError> {
+    pub async fn store(
+        &self,
+        state: &AppState,
+        gym: &String,
+    ) -> Result<Self, AppError> {
         let s: Option<Self> = store!(state, gym, self, Self::COLLECTION);
         s.ok_or(AppError::Internal("storing object failed".to_string()))
     }

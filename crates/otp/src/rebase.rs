@@ -1,16 +1,15 @@
-use crate::OtError;
-use crate::operation::Operation;
-use crate::path::is_reachable;
 use serde_json::Value;
 
-/// Given an `op` which was created against a particular `content`, rebase it on top
-/// of patches which were created against the very same content in parallel.
+use crate::{OtError, operation::Operation, path::is_reachable};
+
+/// Given an `op` which was created against a particular `content`, rebase it on
+/// top of patches which were created against the very same content in parallel.
 ///
-/// This function assumes that the patches apply cleanly to the content. Otherwise
-/// the function returns None.
+/// This function assumes that the patches apply cleanly to the content.
+/// Otherwise the function returns None.
 ///
-/// Returns the resulting Operation if rebase was successful, `None` if operations have
-/// conflicts and [`OtError::Rebase`] if rebase operation fails.
+/// Returns the resulting Operation if rebase was successful, `None` if
+/// operations have conflicts and [`OtError::Rebase`] if rebase operation fails.
 ///
 /// ## Architecture note
 ///
@@ -52,7 +51,9 @@ pub fn rebase<'a>(
                 if let Some(next_op) = op {
                     op = op_ot(&content, operation, next_op);
                 } else {
-                    return Err(OtError::Rebase(String::from("op_ot: rejecting patch")));
+                    return Err(OtError::Rebase(String::from(
+                        "op_ot: rejecting patch",
+                    )));
                 }
             }
             Err(e) => {
@@ -89,7 +90,11 @@ pub fn rebase<'a>(
 /// Splice (foo.bar) -> Splice (foo)     = ok
 /// Splice (foo)     -> Splice (bar)     = ok
 /// ```
-fn op_ot(content: &Value, base: &Operation, op: Operation) -> Option<Operation> {
+fn op_ot(
+    content: &Value,
+    base: &Operation,
+    op: Operation,
+) -> Option<Operation> {
     // drop duplicates
     if *base == op {
         return None;
@@ -175,12 +180,13 @@ fn op_ot(content: &Value, base: &Operation, op: Operation) -> Option<Operation> 
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::{Operation, ROOT_PATH};
     use quickcheck::{Arbitrary, Gen};
     use quickcheck_macros::quickcheck;
     use serde::{Deserialize, Serialize};
     use serde_json::json;
+
+    use super::*;
+    use crate::{Operation, ROOT_PATH};
 
     #[derive(Serialize, Deserialize, Debug, Clone)]
     pub struct TestObject {
@@ -211,7 +217,8 @@ mod tests {
 
     #[quickcheck]
     fn rebase_identity_op_through_none(input: TestObject) -> bool {
-        // An operation rebased through an empty list of patches should be unchanged
+        // An operation rebased through an empty list of patches should be
+        // unchanged
         let value = serde_json::to_value(&input).expect("serialise value");
         let op = Operation::Set {
             path: ROOT_PATH.into(),
@@ -223,8 +230,13 @@ mod tests {
     }
 
     #[quickcheck]
-    fn rebase_set_through_unrelated_set(base: TestObject, a: String, b: String) -> bool {
-        // A set operation rebased through an unrelated set operation should be unchanged
+    fn rebase_set_through_unrelated_set(
+        base: TestObject,
+        a: String,
+        b: String,
+    ) -> bool {
+        // A set operation rebased through an unrelated set operation should be
+        // unchanged
         let base_val = serde_json::to_value(&base).expect("serialise value");
 
         // First operation sets property "a"
@@ -239,12 +251,17 @@ mod tests {
             value: Some(json!(b)),
         };
 
-        // The rebased operation should be unchanged since they affect different properties
+        // The rebased operation should be unchanged since they affect different
+        // properties
         Some(op2.clone()) == rebase(base_val, op2, [op1].iter()).unwrap()
     }
 
     #[quickcheck]
-    fn rebase_set_through_same_path_set(base: TestObject, a1: String, a2: String) -> bool {
+    fn rebase_set_through_same_path_set(
+        base: TestObject,
+        a1: String,
+        a2: String,
+    ) -> bool {
         let base_val = serde_json::to_value(&base).expect("serialise value");
 
         // First operation sets property "a"
@@ -264,7 +281,8 @@ mod tests {
 
     #[quickcheck]
     fn rebase_set_through_delete(base: TestObject) -> bool {
-        // A set operation rebased through a delete operation of the same property
+        // A set operation rebased through a delete operation of the same
+        // property
         let base_val = serde_json::to_value(&base).expect("serialise value");
 
         // First operation deletes "name"
@@ -283,7 +301,10 @@ mod tests {
     }
 
     #[quickcheck]
-    fn rebase_splice_through_unrelated_set(input: TestObject, name: String) -> bool {
+    fn rebase_splice_through_unrelated_set(
+        input: TestObject,
+        name: String,
+    ) -> bool {
         // A splice operation rebased through an unrelated set operation
         let base_val = serde_json::to_value(&input).expect("serialise value");
 
@@ -306,7 +327,8 @@ mod tests {
 
     #[test]
     fn rebase_splice_through_same_path_splice() {
-        // Test rebasing a splice operation through another splice at the same path
+        // Test rebasing a splice operation through another splice at the same
+        // path
         let base_val = json!({"array": [1, 2, 3, 4, 5]});
 
         // First operation removes elements 1-2 and inserts [10, 20]
@@ -319,7 +341,8 @@ mod tests {
 
         // After op1, array is [1, 10, 20, 4, 5]
 
-        // Second operation (to be rebased) removes element at index 3 and inserts [30, 40]
+        // Second operation (to be rebased) removes element at index 3 and
+        // inserts [30, 40]
         let op2 = Operation::Splice {
             path: "array".into(),
             index: 3,
@@ -327,9 +350,10 @@ mod tests {
             insert: json!([30, 40]),
         };
 
-        // The rebased operation should be adjusted to account for the changed indices
-        // After op1, the element at index 3 in the original array has moved to index 4
-        // The rebased operation should still remove the same logical element
+        // The rebased operation should be adjusted to account for the changed
+        // indices After op1, the element at index 3 in the original
+        // array has moved to index 4 The rebased operation should still
+        // remove the same logical element
         let rebased = rebase(base_val, op2, [op1].iter());
 
         // The expected rebased operation
@@ -400,14 +424,18 @@ mod tests {
             insert: op3_insert,
         };
 
-        // The rebased operation should have its index adjusted to account for the removed elements
-        // Let's manually compute what happens:
-        // 1. After op1: No change to array indices, since it only changes "name"
-        // 2. After op2: The array is [3, 4, 5], elements at indices 0 and 1 are removed
-        // 3. For op3 (original: insert at index 3), it should be adjusted to index 1
+        // The rebased operation should have its index adjusted to account for
+        // the removed elements Let's manually compute what happens:
+        // 1. After op1: No change to array indices, since it only changes
+        //    "name"
+        // 2. After op2: The array is [3, 4, 5], elements at indices 0 and 1 are
+        //    removed
+        // 3. For op3 (original: insert at index 3), it should be adjusted to
+        //    index 1
         let op3_after_rebase = Operation::Splice {
             path: "array".into(),
-            index: 1, // Index decreased by 2 because two elements were removed before it
+            index: 1, /* Index decreased by 2 because two elements were
+                       * removed before it */
             remove: 0,
             insert: json!([10, 20]),
         };
@@ -433,7 +461,11 @@ mod tests {
     }
 
     #[quickcheck]
-    fn op_ot_disjoint_paths(obj: TestObject, new_name: String, new_num: u32) -> bool {
+    fn op_ot_disjoint_paths(
+        obj: TestObject,
+        new_name: String,
+        new_num: u32,
+    ) -> bool {
         // Rule: if neither is a prefix of the other, it's safe to accept the op
         let content = serde_json::to_value(&obj).expect("serialise value");
 
@@ -447,12 +479,17 @@ mod tests {
             value: Some(json!(new_num)),
         };
 
-        // Operations affect different paths, so op2 should be returned unchanged
+        // Operations affect different paths, so op2 should be returned
+        // unchanged
         Some(op2.clone()) == op_ot(&content, &op1, op2)
     }
 
     #[quickcheck]
-    fn op_ot_set_set_same_path(obj: TestObject, val1: String, val2: String) -> bool {
+    fn op_ot_set_set_same_path(
+        obj: TestObject,
+        val1: String,
+        val2: String,
+    ) -> bool {
         // Rule: Set/Set with same path
         let content = serde_json::to_value(&obj).expect("serialise value");
 
@@ -585,7 +622,8 @@ mod tests {
     #[test]
     fn op_ot_splice_splice_non_overlapping() {
         // Rule: Splice/Splice with same path but non-overlapping ranges
-        // Using a fixed test because QuickCheck would make it hard to ensure valid non-overlapping ranges
+        // Using a fixed test because QuickCheck would make it hard to ensure
+        // valid non-overlapping ranges
         let content = json!({"array": [1, 2, 3, 4, 5]});
 
         // op1 splices at beginning
@@ -604,15 +642,17 @@ mod tests {
             insert: json!([20]),
         };
 
-        // When splice ranges don't overlap and op2's index is after op1's range,
-        // the implementation should adjust op2's index to account for op1's net change in array size
+        // When splice ranges don't overlap and op2's index is after op1's
+        // range, the implementation should adjust op2's index to
+        // account for op1's net change in array size
         assert_eq!(Some(op2.clone()), op_ot(&content, &op1, op2))
     }
 
     #[test]
     fn op_ot_splice_splice_before_base() {
         // Rule: Splice/Splice where op2 operates on a position before op1
-        // Using a fixed test because QuickCheck would make it hard to ensure valid relative positions
+        // Using a fixed test because QuickCheck would make it hard to ensure
+        // valid relative positions
         let content = json!({"array": [1, 2, 3, 4, 5]});
 
         // op1 splices later in array
@@ -631,14 +671,16 @@ mod tests {
             insert: json!([20]),
         };
 
-        // When op2's range is entirely before op1's range, op2 is returned unchanged
+        // When op2's range is entirely before op1's range, op2 is returned
+        // unchanged
         assert_eq!(Some(op2.clone()), op_ot(&content, &op1, op2))
     }
 
     #[test]
     fn op_ot_splice_splice_overlapping() {
         // Rule: Splice/Splice with overlapping ranges, which causes a conflict
-        // Using a fixed test because QuickCheck would make it hard to ensure valid overlapping ranges
+        // Using a fixed test because QuickCheck would make it hard to ensure
+        // valid overlapping ranges
         let content = json!({"array": [1, 2, 3, 4, 5]});
 
         // op1 removes elements 1-3
@@ -663,8 +705,9 @@ mod tests {
 
     #[test]
     fn op_ot_splice_splice_after_adjustment() {
-        // Rule: Splice/Splice with appropriate index adjustment for a following operation
-        // Using a fixed test because QuickCheck would make index adjustment verification too complex
+        // Rule: Splice/Splice with appropriate index adjustment for a following
+        // operation Using a fixed test because QuickCheck would make
+        // index adjustment verification too complex
         let content = json!({"array": [1, 2, 3, 4, 5]});
 
         // op1 removes first element and inserts two

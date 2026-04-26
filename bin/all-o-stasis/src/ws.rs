@@ -1,18 +1,23 @@
-use crate::types::Patch;
-use axum::body::Bytes;
-use axum::extract::ws::{Message, Utf8Bytes, WebSocket};
+use std::{error::Error, net::SocketAddr, sync::Arc};
+
+use axum::{
+    body::Bytes,
+    extract::ws::{Message, Utf8Bytes, WebSocket},
+};
 use chrono::{DateTime, Utc};
 use firestore::{FirestoreDb, FirestoreListenEvent, ParentPathBuilder};
-use futures::stream::{SplitSink, SplitStream};
-use futures::{SinkExt, StreamExt, TryStreamExt};
+use futures::{
+    SinkExt, StreamExt, TryStreamExt,
+    stream::{SplitSink, SplitStream},
+};
 use otp::ObjectId;
 use serde::Serialize;
-use std::error::Error;
-use std::net::SocketAddr;
-use std::sync::Arc;
-use tokio::sync::{Mutex, mpsc, mpsc::Receiver, mpsc::Sender};
+use tokio::sync::{
+    Mutex, mpsc,
+    mpsc::{Receiver, Sender},
+};
 
-use crate::{AppError, AppState};
+use crate::{AppError, AppState, types::Patch};
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -33,7 +38,8 @@ async fn handle_listener_event(
 
             if let Some(doc) = &doc_change.document {
                 // here we need the object id so we need to parse
-                let patch: Patch = FirestoreDb::deserialize_doc_to::<Patch>(doc)?;
+                let patch: Patch =
+                    FirestoreDb::deserialize_doc_to::<Patch>(doc)?;
                 let msg = Message::Text(serde_json::to_string(&patch)?.into());
                 let ps = send_tx_patch.send(msg).await;
                 if let Err(err) = ps {
@@ -42,7 +48,9 @@ async fn handle_listener_event(
             }
         }
         _ => {
-            tracing::error!("received a listen response event to handle: {event:?}");
+            tracing::error!(
+                "received a listen response event to handle: {event:?}"
+            );
         }
     }
 
@@ -83,10 +91,12 @@ async fn drain_channel(
                             }
                         };
 
-                        // only send patches that came in after we started the listener
+                        // only send patches that came in after we started the
+                        // listener
                         if let Some(created) = patch.created_at {
                             if created < listener_start_time {
-                                // tracing::debug!("skipping patch {}", patch.revision_id);
+                                // tracing::debug!("skipping patch {}",
+                                // patch.revision_id);
                                 continue;
                             }
                         } else {
@@ -102,10 +112,14 @@ async fn drain_channel(
                                         content: patch,
                                         ot_type: String::from("patch"),
                                     };
-                                    let json = match serde_json::to_string(&reply) {
+                                    let json = match serde_json::to_string(
+                                        &reply,
+                                    ) {
                                         Ok(json) => json,
                                         Err(e) => {
-                                            tracing::error!("failed to serialize reply: {e}");
+                                            tracing::error!(
+                                                "failed to serialize reply: {e}"
+                                            );
                                             continue;
                                         }
                                     };
@@ -115,21 +129,30 @@ async fn drain_channel(
                                 }
                             }
                             Err(_) => {
-                                tracing::debug!("failed to lock subscriptions.. retrying");
-                                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                                tracing::debug!(
+                                    "failed to lock subscriptions.. retrying"
+                                );
+                                tokio::time::sleep(
+                                    std::time::Duration::from_millis(10),
+                                )
+                                .await;
                                 continue;
                             }
                         }
                     }
                     Message::Ping(bytes) => Message::Ping(bytes),
                     t => {
-                        tracing::error!("received unexpected message on ws_send: {t:?}");
+                        tracing::error!(
+                            "received unexpected message on ws_send: {t:?}"
+                        );
                         continue;
                     }
                 };
 
                 if let Err(err) = sender.send(processed_msg).await {
-                    tracing::error!("failed send message over websocket with {err}");
+                    tracing::error!(
+                        "failed send message over websocket with {err}"
+                    );
                     break;
                 }
             }
@@ -140,7 +163,9 @@ async fn drain_channel(
 fn handle_subscribe(t: &Utf8Bytes) -> Result<String, AppError> {
     // we expect the text to have the format: "["+", id]"
     let json: Vec<String> = serde_json::from_str(t).map_err(|e| {
-        AppError::ParseError(format!("unexpected text: {t}, parsing failed with {e:?}"))
+        AppError::ParseError(format!(
+            "unexpected text: {t}, parsing failed with {e:?}"
+        ))
     })?;
 
     match &json[..] {
@@ -159,9 +184,10 @@ async fn sub(
     loop {
         match receiver.try_next().await {
             Err(e) => {
-                // Protocol(ResetWithoutClosingHandshake) means client closed connection
-                // or some other failure and we should exit
-                // TODO what other errors can we expect here?
+                // Protocol(ResetWithoutClosingHandshake) means client closed
+                // connection or some other failure and we
+                // should exit TODO what other errors can we
+                // expect here?
                 tracing::error!("while receiving: {e:?}");
                 break;
             }
@@ -173,19 +199,26 @@ async fn sub(
                 Message::Text(t) => match handle_subscribe(&t) {
                     Ok(object_id) => {
                         subscriptions.lock().await.push(object_id.clone());
-                        // tracing::debug!("+++ {who} subscribing to {object_id}");
+                        // tracing::debug!("+++ {who} subscribing to
+                        // {object_id}");
                     }
                     Err(e) => {
                         tracing::error!("{who} sent unexpected message: {e:?}");
                     }
                 },
-                Message::Binary(_) => tracing::debug!(">>> {who} send binary data!"),
+                Message::Binary(_) => {
+                    tracing::debug!(">>> {who} send binary data!")
+                }
                 Message::Close(_c) => {
                     tracing::debug!(">>> {who} sent close");
                     break;
                 }
-                Message::Pong(v) => tracing::debug!(">>> {who} sent pong with {v:?}"),
-                Message::Ping(v) => tracing::debug!(">>> {who} sent ping with {v:?}"),
+                Message::Pong(v) => {
+                    tracing::debug!(">>> {who} sent pong with {v:?}")
+                }
+                Message::Ping(v) => {
+                    tracing::debug!(">>> {who} sent ping with {v:?}")
+                }
             },
         }
     }
@@ -206,7 +239,8 @@ pub(crate) async fn handle_socket(
     let ws_tx_listener = ws_tx.clone();
 
     // collect all objects ids the client wants to get notified about changes
-    let subscriptions: Arc<Mutex<Vec<ObjectId>>> = Arc::new(Mutex::new(Vec::new()));
+    let subscriptions: Arc<Mutex<Vec<ObjectId>>> =
+        Arc::new(Mutex::new(Vec::new()));
 
     let mut listener = match Patch::listener(&state, &parent_path, who).await {
         Some(listener) => listener,
@@ -216,17 +250,21 @@ pub(crate) async fn handle_socket(
     // so this calls tokio::spawn
     // starting the listener_loop: https://docs.rs/firestore/0.44.1/src/firestore/db/listen_changes.rs.html#360
     let _ = listener
-        .start(move |event| handle_listener_event(event, ws_tx_listener.clone()))
+        .start(move |event| {
+            handle_listener_event(event, ws_tx_listener.clone())
+        })
         .await;
-    // hack to only send out patches that are added to the collection after we start the listener
+    // hack to only send out patches that are added to the collection after we
+    // start the listener
     let listener_start_time = Utc::now();
 
     // ping the client every 10 seconds
     let mut ping = tokio::spawn(async move { ping_client(ws_tx).await });
 
     // keep on sending out what we get on the send channel
-    // we expect and rely patches (Text) for subscribed object ids and Pings on this channel
-    // sender needs to know about subscriptions of object ids - it implements the filtering
+    // we expect and rely patches (Text) for subscribed object ids and Pings on
+    // this channel sender needs to know about subscriptions of object ids -
+    // it implements the filtering
     let subs_for_sender = Arc::clone(&subscriptions);
     let mut ws_send = tokio::spawn(async move {
         drain_channel(
@@ -240,7 +278,9 @@ pub(crate) async fn handle_socket(
 
     // recieve object ids the client wants to subscibe
     let mut handle_obj_subs =
-        tokio::spawn(async move { sub(&mut receiver, subscriptions, who).await });
+        tokio::spawn(
+            async move { sub(&mut receiver, subscriptions, who).await },
+        );
 
     tokio::select! {
         _ = &mut ping => { tracing::debug!(">>> ping aborted") },

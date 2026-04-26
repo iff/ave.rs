@@ -13,11 +13,15 @@ mod built_info {
     include!(concat!(env!("OUT_DIR"), "/built.rs"));
 }
 
-async fn revision(State(_state): State<AppState>) -> Result<&'static str, AppError> {
+async fn revision(
+    State(_state): State<AppState>,
+) -> Result<&'static str, AppError> {
     Ok(built_info::GIT_COMMIT_HASH.unwrap_or("no git revision found"))
 }
 
-async fn healthz(State(state): State<AppState>) -> Result<&'static str, AppError> {
+async fn healthz(
+    State(state): State<AppState>,
+) -> Result<&'static str, AppError> {
     let _db_is_alive = state
         .db
         .fluent()

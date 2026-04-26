@@ -23,10 +23,13 @@ use crate::{
 };
 
 mod maileroo {
-    use crate::AppError;
-    use reqwest::blocking::Client;
-    use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue};
+    use reqwest::{
+        blocking::Client,
+        header::{CONTENT_TYPE, HeaderMap, HeaderValue},
+    };
     use serde::{Deserialize, Serialize};
+
+    use crate::AppError;
 
     const MAILEROO_API_BASE_URL: &str = "https://smtp.maileroo.com/api/v2";
 
@@ -81,13 +84,18 @@ mod maileroo {
         }
 
         pub fn send(self) -> Result<(), AppError> {
-            let api_key = ::std::env::var("MAILEROO_API_KEY")
-                .or(Err(AppError::Passport(String::from("no maileroo api key"))))?;
-            let request = serde_json::to_string(&self.data)
-                .map_err(|e| AppError::Internal(format!("serialisation failed: {e}")))?;
+            let api_key = ::std::env::var("MAILEROO_API_KEY").or(Err(
+                AppError::Passport(String::from("no maileroo api key")),
+            ))?;
+            let request = serde_json::to_string(&self.data).map_err(|e| {
+                AppError::Internal(format!("serialisation failed: {e}"))
+            })?;
             let client = Client::new();
             let mut headers = HeaderMap::new();
-            headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+            headers.insert(
+                CONTENT_TYPE,
+                HeaderValue::from_static("application/json"),
+            );
             let response = client
                 .post(format!("{MAILEROO_API_BASE_URL}/emails"))
                 .headers(headers)
@@ -97,7 +105,9 @@ mod maileroo {
             match response {
                 Ok(response) => {
                     let r = response.json::<Response>().map_err(|e| {
-                        AppError::Passport(format!("failed to parse response: {e:?}"))
+                        AppError::Passport(format!(
+                            "failed to parse response: {e:?}"
+                        ))
                     })?;
                     if r.success {
                         Ok(())
@@ -196,13 +206,19 @@ impl Session {
                 Ok(p)
             }
             None => {
-                tracing::warn!("failed to update session: {self} (no such object exists");
+                tracing::warn!(
+                    "failed to update session: {self} (no such object exists"
+                );
                 Err(AppError::NoSession())
             }
         }
     }
 
-    pub async fn delete(state: &AppState, gym: &String, session_id: &str) -> Result<(), AppError> {
+    pub async fn delete(
+        state: &AppState,
+        gym: &String,
+        session_id: &str,
+    ) -> Result<(), AppError> {
         let parent_path = state.db.parent_path("gyms", gym)?;
         state
             .db
@@ -294,7 +310,8 @@ async fn send_email(
     let confirmation_url = format!(
         "{api_host}/{api_domain}/login/confirm?passportId={passport_id}&confirmationToken={confirmation_token}",
     );
-    let subject = format!("{api_domain} Login Verification (code: \"{security_code}\")",);
+    let subject =
+        format!("{api_domain} Login Verification (code: \"{security_code}\")",);
     let body = [
         format!("Verify your email to log on to the {api_domain}"),
         "<br/>".to_string(),
@@ -318,12 +335,13 @@ async fn create_passport(
     Json(payload): axum::extract::Json<CreatePassportBody>,
 ) -> Result<Json<CreatePassportResponse>, AppError> {
     // 1. Lookup account by email. If no such account exists, create a new one
-    let account = AccountsView::with_email(&state, gym.clone(), payload.email.clone()).await?;
+    let account =
+        AccountsView::with_email(&state, gym.clone(), payload.email.clone())
+            .await?;
     let maybe_account_id: Result<ObjectId, AppError> = match account {
-        Some(account) => account
-            .id
-            .clone()
-            .ok_or(AppError::Internal("existing account has no id".to_string())),
+        Some(account) => account.id.clone().ok_or(AppError::Internal(
+            "existing account has no id".to_string(),
+        )),
         None => {
             let account = Account {
                 id: None,
@@ -332,12 +350,18 @@ async fn create_passport(
                 login: "to be removed".to_string(),
                 name: None,
             };
-            let value = serde_json::to_value(account)
-                .map_err(|e| AppError::Internal(format!("serialising account: {e}")))?;
+            let value = serde_json::to_value(account).map_err(|e| {
+                AppError::Internal(format!("serialising account: {e}"))
+            })?;
             // TODO: author? root?
-            let obj =
-                Object::from_value(&state, &gym, String::from(""), ObjectType::Account, &value)
-                    .await?;
+            let obj = Object::from_value(
+                &state,
+                &gym,
+                String::from(""),
+                ObjectType::Account,
+                &value,
+            )
+            .await?;
             Ok(obj.id.clone())
         }
     };
@@ -357,9 +381,17 @@ async fn create_passport(
         confirmation_token: confirmation_token.clone(),
         validity: PassportValidity::Unconfirmed,
     };
-    let value = serde_json::to_value(passport)
-        .map_err(|e| AppError::Internal(format!("serialising passport: {e}")))?;
-    let obj = Object::from_value(&state, &gym, account_id, ObjectType::Passport, &value).await?;
+    let value = serde_json::to_value(passport).map_err(|e| {
+        AppError::Internal(format!("serialising passport: {e}"))
+    })?;
+    let obj = Object::from_value(
+        &state,
+        &gym,
+        account_id,
+        ObjectType::Passport,
+        &value,
+    )
+    .await?;
 
     let passport_id = obj.id.clone();
 
@@ -387,10 +419,14 @@ async fn confirm_passport(
     Query(pport): Query<ConfirmPassport>,
     jar: CookieJar,
 ) -> Result<impl IntoResponse, AppError> {
-    let snapshot = Snapshot::lookup_latest(&state, &gym, &pport.passport_id.clone()).await?;
-    let passport: Passport = serde_json::from_value(snapshot.content).or(Err(
-        AppError::ParseError("failed to parse object into Passport".to_string()),
-    ))?;
+    let snapshot =
+        Snapshot::lookup_latest(&state, &gym, &pport.passport_id.clone())
+            .await?;
+    let passport: Passport = serde_json::from_value(snapshot.content).or(
+        Err(AppError::ParseError(
+            "failed to parse object into Passport".to_string(),
+        )),
+    )?;
 
     if pport.confirmation_token != passport.confirmation_token {
         Err(AppError::NotAuthorized())
@@ -406,8 +442,10 @@ async fn confirm_passport(
         .await?;
 
         // mark as valid
-        let validity = serde_json::to_value(&PassportValidity::Valid)
-            .map_err(|e| AppError::Internal(format!("serialising validity: {e}")))?;
+        let validity =
+            serde_json::to_value(&PassportValidity::Valid).map_err(|e| {
+                AppError::Internal(format!("serialising validity: {e}"))
+            })?;
         let op = Operation::try_new_set("validity", Some(validity))?;
         let _ = apply_object_updates(
             &state,
@@ -441,7 +479,9 @@ async fn confirm_passport(
         };
         Ok((
             jar.add(cookie),
-            Redirect::permanent(format!("{redirect_host}/email-confirmed").as_str()),
+            Redirect::permanent(
+                format!("{redirect_host}/email-confirmed").as_str(),
+            ),
         ))
     }
 }
@@ -453,10 +493,14 @@ async fn await_passport_confirmation(
     jar: CookieJar,
 ) -> Result<impl IntoResponse, AppError> {
     let (account_id, revision_id) = loop {
-        let snapshot = Snapshot::lookup_latest(&state, &gym, &pport.passport_id.clone()).await?;
-        let passport: Passport = serde_json::from_value(snapshot.content).or(Err(
-            AppError::ParseError("failed to parse object into Passport".to_string()),
-        ))?;
+        let snapshot =
+            Snapshot::lookup_latest(&state, &gym, &pport.passport_id.clone())
+                .await?;
+        let passport: Passport = serde_json::from_value(snapshot.content).or(
+            Err(AppError::ParseError(
+                "failed to parse object into Passport".to_string(),
+            )),
+        )?;
 
         match passport.validity {
             PassportValidity::Valid => {
@@ -472,8 +516,10 @@ async fn await_passport_confirmation(
         }
     };
 
-    let validity = serde_json::to_value(&PassportValidity::Expired)
-        .map_err(|e| AppError::Internal(format!("serialising validity: {e}")))?;
+    let validity =
+        serde_json::to_value(&PassportValidity::Expired).map_err(|e| {
+            AppError::Internal(format!("serialising validity: {e}"))
+        })?;
     let op = Operation::try_new_set("validity", Some(validity))?;
     let _ = apply_object_updates(
         &state,

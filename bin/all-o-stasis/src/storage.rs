@@ -1,11 +1,12 @@
+use axum::Json;
+use otp::{ObjectId, Operation, RevId, rebase};
+use serde_json::Value;
+
 use crate::{
     AppError, AppState,
     routes::PatchObjectResponse,
     types::{AccountsView, BouldersView, Object, ObjectType, Patch, Snapshot},
 };
-use axum::Json;
-use otp::{ObjectId, Operation, RevId, rebase};
-use serde_json::Value;
 
 struct SaveOp {
     patch: Patch,
@@ -30,8 +31,12 @@ pub(crate) async fn update_view_typed(
     content: &Value,
 ) -> Result<(), AppError> {
     match object_type {
-        ObjectType::Account => AccountsView::store(state, gym, object_id, content).await?,
-        ObjectType::Boulder => BouldersView::store(state, gym, object_id, content).await?,
+        ObjectType::Account => {
+            AccountsView::store(state, gym, object_id, content).await?
+        }
+        ObjectType::Boulder => {
+            BouldersView::store(state, gym, object_id, content).await?
+        }
         ObjectType::Passport => {
             // no view table
         }
@@ -54,7 +59,8 @@ pub async fn apply_object_updates(
 
     // if there are any patches which the client doesn't know about we need
     // to let her know
-    let previous_patches = Patch::after_revision(state, gym, &obj_id, rev_id).await?;
+    let previous_patches =
+        Patch::after_revision(state, gym, &obj_id, rev_id).await?;
     let latest_snapshot = base_snapshot.apply_patches(&previous_patches)?;
 
     let (patches, num_processed, snapshot) = {
@@ -96,8 +102,8 @@ pub async fn apply_object_updates(
 }
 
 /// Rebase and then apply the operation to the snapshot to get a new snapshot
-/// Returns `None` if the rebasing fails or applying the (rebased) operation yields the same
-/// snapshot.
+/// Returns `None` if the rebasing fails or applying the (rebased) operation
+/// yields the same snapshot.
 async fn save_operation(
     state: &AppState,
     gym: &String,
@@ -107,7 +113,11 @@ async fn save_operation(
     previous_patches: impl Iterator<Item = &Patch>,
     op: Operation,
 ) -> Result<Option<SaveOp>, AppError> {
-    let rebased_op = match rebase(base_content, op, previous_patches.map(|p| &p.operation)) {
+    let rebased_op = match rebase(
+        base_content,
+        op,
+        previous_patches.map(|p| &p.operation),
+    ) {
         Ok(Some(rebased_op)) => rebased_op,
         Ok(None) => {
             // TODO better error, log op, base_content

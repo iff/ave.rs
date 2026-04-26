@@ -1,1 +1,12 @@
-edition="2024"
+edition = "2024"
+# imports sorting (nightly)
+imports_granularity = "Crate"
+group_imports = "StdExternalCrate"
+# line width
+max_width = 80
+comment_width = 80
+wrap_comments = true
+doc_comment_code_block_width = 80
+format_code_in_doc_comments = true
+# TODO remove once we inlined this submodule
+ignore = ["eda-infra-rs"]

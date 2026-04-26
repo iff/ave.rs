@@ -1,26 +1,32 @@
 use std::net::SocketAddr;
 
-use crate::passport::{Session, author_from_session};
-use crate::storage::apply_object_updates;
-use crate::types::{AccountRole, AccountsView, Boulder, Object, ObjectType, Patch, Snapshot};
-use crate::ws::handle_socket;
-use crate::{AppError, AppState};
 use axum::{
     Router,
-    extract::ws::WebSocketUpgrade,
-    extract::{Path, State, connect_info::ConnectInfo},
+    extract::{Path, State, connect_info::ConnectInfo, ws::WebSocketUpgrade},
     response::{IntoResponse, Json},
     routing::{any, delete, get, patch, post},
 };
-use axum_extra::TypedHeader;
-use axum_extra::extract::{CookieJar, cookie::Cookie};
-use axum_extra::headers::UserAgent;
+use axum_extra::{
+    TypedHeader,
+    extract::{CookieJar, cookie::Cookie},
+    headers::UserAgent,
+};
 use chrono::{DateTime, Utc};
 use cookie::time::Duration;
 use otp::{ObjectId, Operation, RevId};
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+use crate::{
+    AppError, AppState,
+    passport::{Session, author_from_session},
+    storage::apply_object_updates,
+    types::{
+        AccountRole, AccountsView, Boulder, Object, ObjectType, Patch, Snapshot,
+    },
+    ws::handle_socket,
+};
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -51,7 +57,11 @@ pub struct LookupObjectResponse {
 }
 
 impl LookupObjectResponse {
-    pub async fn build(state: &AppState, gym: &String, id: ObjectId) -> Result<Self, AppError> {
+    pub async fn build(
+        state: &AppState,
+        gym: &String,
+        id: ObjectId,
+    ) -> Result<Self, AppError> {
         let obj = Object::lookup(state, gym, &id).await?;
         let snapshot = Snapshot::lookup_latest(state, gym, &id.clone()).await?;
 
@@ -201,7 +211,9 @@ async fn new_object(
     let ot_type = payload.ot_type;
     let content = payload.content;
     // changing this to also add the object to the view
-    let obj = Object::from_value(&state, &gym, created_by, ot_type.clone(), &content).await?;
+    let obj =
+        Object::from_value(&state, &gym, created_by, ot_type.clone(), &content)
+            .await?;
 
     Ok(Json(CreateObjectResponse {
         id: obj.id,
@@ -249,7 +261,8 @@ async fn patch_object(
     let created_by = author_from_session(&state, &gym, session_id).await?;
 
     // users cant patch atm
-    // TODO should be able to patch their account? (probably not implemented in the client?)
+    // TODO should be able to patch their account? (probably not implemented in
+    // the client?)
     let role = account_role(&state, &gym, &created_by).await?;
     if role == AccountRole::User {
         return Err(AppError::NotAuthorized());
@@ -283,8 +296,12 @@ async fn patch_object(
                 // admin and setter of boulder or created by
                 #[allow(clippy::collapsible_if)]
                 if role == AccountRole::Setter {
-                    if !(id.clone() == created_by || boulder.in_setter(&created_by.clone())) {
-                        tracing::debug!("PATCH: setter cant patch this boulder");
+                    if !(id.clone() == created_by
+                        || boulder.in_setter(&created_by.clone()))
+                    {
+                        tracing::debug!(
+                            "PATCH: setter cant patch this boulder"
+                        );
                         return Err(AppError::NotAuthorized());
                     }
                 }

@@ -1,12 +1,13 @@
-use axum::Router;
-use axum::extract::{Path, State};
-use axum::response::Json;
-use axum::routing::get;
+use axum::{
+    Router,
+    extract::{Path, State},
+    response::Json,
+    routing::get,
+};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::types::BouldersView;
-use crate::{AppError, AppState};
+use crate::{AppError, AppState, types::BouldersView};
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -27,7 +28,9 @@ async fn stats_boulders(
     Path(gym): Path<String>,
 ) -> Result<Json<Vec<BoulderStat>>, AppError> {
     let transform_date = |epoch_millis: usize| {
-        let date = if let Some(date) = DateTime::from_timestamp_millis(epoch_millis as i64) {
+        let date = if let Some(date) =
+            DateTime::from_timestamp_millis(epoch_millis as i64)
+        {
             date
         } else {
             // fall back to today?
