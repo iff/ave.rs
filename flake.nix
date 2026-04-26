@@ -1,5 +1,5 @@
 {
-  description = "generic rust env";
+  description = "ave.rs";
 
   inputs = {
     flake-utils.url = "github:numtide/flake-utils";

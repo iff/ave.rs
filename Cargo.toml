@@ -12,3 +12,8 @@ lto = "fat"
 codegen-units = 1
 opt-level = 3
 strip = true
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+indexing_slicing = "deny"

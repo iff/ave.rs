@@ -235,18 +235,26 @@ fn check_type_consistency(a: &[Value], b: &[Value]) -> Result<(), OtError> {
 
 fn follow_path(value: &mut Value, path: impl Into<Path>) -> Result<(&mut Value, String), OtError> {
     let path = path.into();
+    if path.is_empty() {
+        return Err(OtError::Path(format!(
+            "path needs at least a key: {}",
+            path.to_owned()
+        )));
+    }
+
     let paths: Vec<&str> = path.split('.').collect();
-    let key_to_change = *paths.last().ok_or(OtError::Path(path.to_owned()))?;
+    let (paths, key_to_change) = paths.split_at(paths.len() - 1);
 
     let mut content = value;
-    for key in &paths[..(paths.len() - 1)] {
+    for key in paths {
         match content.get_mut(key) {
             Some(value) => content = value,
             None => return Err(OtError::Key(key.to_string())),
         }
     }
 
-    Ok((content, key_to_change.to_owned()))
+    #[allow(clippy::indexing_slicing)] // we return an error if the string is empty
+    Ok((content, String::from(key_to_change[0])))
 }
 
 /// Travers the path and then either insert or delete at the very end
