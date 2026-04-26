@@ -408,7 +408,7 @@ impl BouldersView {
     //             q.for_all(
     //                 [
     //                     removed.map(|r|
-    // q.field(path_camel_case!(Boulder::removed)).eq(r)),                  
+    // q.field(path_camel_case!(Boulder::removed)).eq(r)),
     // is_draft.map(|d| q.field(path_camel_case!(Boulder::is_draft)).eq(d)),
     //                 ]
     //                 .into_iter()
