@@ -44,15 +44,16 @@
           set -eux -o pipefail
 
           PROJECT_ID=all-o-stasis
+          IMAGE=europe-west1-docker.pkg.dev/$PROJECT_ID/all-o-stasis/api:dev
+
+          nix build
+          ${pkgs.skopeo}/bin/skopeo copy \
+            --dest-creds=oauth2accesstoken:$(gcloud auth print-access-token) \
+            docker-archive:result \
+            docker://$IMAGE
+
           CLOUD_RUN_SERVICE_NAME=api-dev
           MAILEROO_API_KEY=$(op read "op://personal/maileroo boulderapp/credential" --no-newline)
-
-          # TODO: try skopeo and imageId (see cruel world)
-          nix build
-          TAG=$(docker load < result | awk '{print $3}')
-          IMAGE=europe-west1-docker.pkg.dev/$PROJECT_ID/all-o-stasis/api:dev
-          docker tag $TAG $IMAGE
-          docker push $IMAGE
 
           gcloud --project $PROJECT_ID run deploy $CLOUD_RUN_SERVICE_NAME --image=$IMAGE --region=europe-west1 \
             --set-env-vars MAILEROO_API_KEY=$MAILEROO_API_KEY,FIRESTORE_DATABASE_ID=dev-db
@@ -61,13 +62,23 @@
         app = pkgs.rustPlatform.buildRustPackage {
           pname = "all-o-stasis";
           version = "0.0.1";
-          src = ./.;
+          src = pkgs.lib.cleanSourceWith {
+            src = ./.;
+            filter =
+              path: type: (pkgs.lib.cleanSourceFilter path type) && (builtins.baseNameOf path != "target");
+          };
 
           cargoLock = {
             lockFile = ./Cargo.lock;
           };
 
-          nativeBuildInputs = [ pkgs.pkg-config ];
+          GIT_HASH = self.rev or "dirty";
+
+          nativeBuildInputs = [
+            pkgs.pkg-config
+            pkgs.git
+          ];
+          buildInputs = [ pkgs.libgit2 ];
           # TODO needed here?
           PKG_CONFIG_PATH = "${pkgs.openssl.dev}/lib/pkgconfig";
         };
@@ -88,8 +99,15 @@
         };
       in
       {
-        # TODO expose container.imageId
-        defaultPackage = container;
+        packages = {
+          default = container;
+          container = container;
+          app = app;
+          imageId = pkgs.writeTextFile {
+            name = "image-id";
+            text = "${container.imageTag}\n";
+          };
+        };
 
         devShells.default = pkgs.mkShell {
           nativeBuildInputs = with pkgs; [

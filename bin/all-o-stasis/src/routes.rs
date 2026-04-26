@@ -16,7 +16,7 @@ mod built_info {
 async fn revision(
     State(_state): State<AppState>,
 ) -> Result<&'static str, AppError> {
-    Ok(built_info::GIT_COMMIT_HASH.unwrap_or("no git revision found"))
+    Ok(option_env!("GIT_HASH").or(built_info::GIT_COMMIT_HASH).unwrap_or("no git revision found"))
 }
 
 async fn healthz(
