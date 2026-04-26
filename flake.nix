@@ -27,8 +27,9 @@
                 (super.rust-bin.stable.latest.minimal.override {
                   extensions = [
                     "clippy"
+                    "rust-analyzer"
                     "rust-docs"
-                    # "rust-src"
+                    "rust-src"
                   ];
                 })
                 (super.rust-bin.selectLatestNightlyWith (toolchain: toolchain.rustfmt))
@@ -118,7 +119,6 @@
             cargo-deny
             cargo-edit
             cargo-watch
-            rust-analyzer
             (google-cloud-sdk.withExtraComponents [
               google-cloud-sdk.components.gke-gcloud-auth-plugin
               google-cloud-sdk.components.log-streaming
