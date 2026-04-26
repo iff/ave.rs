@@ -83,7 +83,8 @@ mod maileroo {
         pub fn send(self) -> Result<(), AppError> {
             let api_key = ::std::env::var("MAILEROO_API_KEY")
                 .or(Err(AppError::Passport(String::from("no maileroo api key"))))?;
-            let request = serde_json::to_string(&self.data).expect("serialisation to json");
+            let request = serde_json::to_string(&self.data)
+                .map_err(|e| AppError::Internal(format!("serialisation failed: {e}")))?;
             let client = Client::new();
             let mut headers = HeaderMap::new();
             headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
@@ -144,7 +145,7 @@ impl fmt::Display for Session {
         write!(
             f,
             "Session: {} obj_id={}",
-            self.id.clone().expect("id cant be missing"),
+            self.id.as_deref().unwrap_or("<no id>"),
             self.obj_id
         )
     }
@@ -272,6 +273,8 @@ fn new_id(len: usize) -> String {
                              0123456789";
     let mut rng = rand::rng();
 
+    // idx is always in bounds: random_range guarantees 0 <= idx < CHARSET.len()
+    #[allow(clippy::indexing_slicing)]
     (0..len)
         .map(|_| {
             let idx = rng.random_range(0..CHARSET.len());
@@ -317,7 +320,10 @@ async fn create_passport(
     // 1. Lookup account by email. If no such account exists, create a new one
     let account = AccountsView::with_email(&state, gym.clone(), payload.email.clone()).await?;
     let maybe_account_id: Result<ObjectId, AppError> = match account {
-        Some(account) => Ok(account.id.clone().expect("existing accounts have an id")),
+        Some(account) => account
+            .id
+            .clone()
+            .ok_or(AppError::Internal("existing account has no id".to_string())),
         None => {
             let account = Account {
                 id: None,
@@ -326,7 +332,8 @@ async fn create_passport(
                 login: "to be removed".to_string(),
                 name: None,
             };
-            let value = serde_json::to_value(account).expect("serialising account");
+            let value = serde_json::to_value(account)
+                .map_err(|e| AppError::Internal(format!("serialising account: {e}")))?;
             // TODO: author? root?
             let obj =
                 Object::from_value(&state, &gym, String::from(""), ObjectType::Account, &value)
@@ -339,7 +346,9 @@ async fn create_passport(
     )))?;
 
     // 2. Create a new Passport object.
-    let security_code = make_security_code().expect("security code creation failed");
+    let security_code = make_security_code().ok_or(AppError::Internal(
+        "security code creation failed".to_string(),
+    ))?;
     let confirmation_token = new_id(16);
 
     let passport = Passport {
@@ -348,7 +357,8 @@ async fn create_passport(
         confirmation_token: confirmation_token.clone(),
         validity: PassportValidity::Unconfirmed,
     };
-    let value = serde_json::to_value(passport).expect("serialising passport");
+    let value = serde_json::to_value(passport)
+        .map_err(|e| AppError::Internal(format!("serialising passport: {e}")))?;
     let obj = Object::from_value(&state, &gym, account_id, ObjectType::Passport, &value).await?;
 
     let passport_id = obj.id.clone();
@@ -396,10 +406,9 @@ async fn confirm_passport(
         .await?;
 
         // mark as valid
-        let op = Operation::try_new_set(
-            "validity",
-            Some(serde_json::to_value(&PassportValidity::Valid).expect("serialising PVValid")),
-        )?;
+        let validity = serde_json::to_value(&PassportValidity::Valid)
+            .map_err(|e| AppError::Internal(format!("serialising validity: {e}")))?;
+        let op = Operation::try_new_set("validity", Some(validity))?;
         let _ = apply_object_updates(
             &state,
             &gym,
@@ -410,7 +419,10 @@ async fn confirm_passport(
         )
         .await?;
 
-        let cookie = Cookie::build(("session", session.id.expect("session has id")))
+        let session_id = session.id.ok_or(AppError::Internal(
+            "session missing id after store".to_string(),
+        ))?;
+        let cookie = Cookie::build(("session", session_id))
             .path("/")
             .max_age(Duration::weeks(52))
             .secure(true) // TODO not sure about this
@@ -460,10 +472,9 @@ async fn await_passport_confirmation(
         }
     };
 
-    let op = Operation::try_new_set(
-        "validity",
-        Some(serde_json::to_value(&PassportValidity::Expired).expect("serialising PVExpired")),
-    )?;
+    let validity = serde_json::to_value(&PassportValidity::Expired)
+        .map_err(|e| AppError::Internal(format!("serialising validity: {e}")))?;
+    let op = Operation::try_new_set("validity", Some(validity))?;
     let _ = apply_object_updates(
         &state,
         &gym,
@@ -494,7 +505,10 @@ async fn await_passport_confirmation(
 
     let sessions: Vec<Session> = sessions_stream.try_collect().await?;
     let session_id = match sessions.first() {
-        Some(session) => Ok(session.id.clone().expect("session has id")),
+        Some(session) => session
+            .id
+            .clone()
+            .ok_or(AppError::Internal("session missing id".to_string())),
         None => Err(AppError::NotAuthorized()),
     }?;
 

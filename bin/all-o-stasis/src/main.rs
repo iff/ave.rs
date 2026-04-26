@@ -39,6 +39,8 @@ pub enum AppError {
     Query(String), // TODO split and more meaningful name
     // unable to parse json content into type
     ParseError(String),
+    // unexpected internal failure (bug or invariant violation)
+    Internal(String),
     // No session found
     NoSession(),
     NotAuthorized(),
@@ -106,6 +108,10 @@ impl IntoResponse for AppError {
             ),
             AppError::NoSession() => (StatusCode::NOT_FOUND, "session not found".to_string()),
             AppError::NotAuthorized() => (StatusCode::BAD_REQUEST, "not authorized".to_string()),
+            AppError::Internal(e) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("internal error: {e}"),
+            ),
             AppError::Passport(e) => (StatusCode::BAD_REQUEST, format!("passport failure: {e}")),
         };
 
@@ -155,13 +161,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     };
     tracing::debug!("connected to firestore");
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await.unwrap();
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await?;
     axum::serve(
         listener,
         app(state).into_make_service_with_connect_info::<SocketAddr>(),
     )
-    .await
-    .unwrap();
+    .await?;
     tracing::debug!("listening on http://localhost:8080");
 
     Ok(())

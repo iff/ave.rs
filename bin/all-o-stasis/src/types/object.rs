@@ -55,7 +55,7 @@ impl ObjectDoc {
 
     pub async fn store(&self, state: &AppState, gym: &String) -> Result<Self, AppError> {
         let s: Option<Self> = store!(state, gym, self, Self::COLLECTION);
-        s.ok_or(AppError::Query("storing object failed".to_string()))
+        s.ok_or(AppError::Internal("storing object failed".to_string()))
     }
 }
 
@@ -82,10 +82,10 @@ impl TryFrom<ObjectDoc> for Object {
 
     fn try_from(doc: ObjectDoc) -> Result<Self, Self::Error> {
         Ok(Object {
-            id: doc
-                .id
-                .ok_or(AppError::Query("object doc is missing an id".to_string()))?,
-            created_at: doc.created_at.ok_or(AppError::Query(
+            id: doc.id.ok_or(AppError::Internal(
+                "object doc is missing an id".to_string(),
+            ))?,
+            created_at: doc.created_at.ok_or(AppError::Internal(
                 "object doc is missing created_at".to_string(),
             ))?,
             object_type: doc.object_type,

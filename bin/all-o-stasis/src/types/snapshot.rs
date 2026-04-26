@@ -87,7 +87,7 @@ impl Snapshot {
 
     pub async fn store(&self, state: &AppState, gym: &String) -> Result<Self, AppError> {
         let s: Option<Snapshot> = store!(state, gym, self, Self::COLLECTION);
-        s.ok_or(AppError::Query("storing snapshot failed".to_string()))
+        s.ok_or(AppError::Internal("storing snapshot failed".to_string()))
     }
 
     /// lookup a snapshot with rev_id or lower and apply patches with revision <= rev_id if necessary
