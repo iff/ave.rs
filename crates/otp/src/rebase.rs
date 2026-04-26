@@ -188,6 +188,14 @@ mod tests {
                 maybe: bool::arbitrary(g),
             }
         }
+
+        fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
+            Box::new(
+                (self.name.clone(), self.num, self.maybe)
+                    .shrink()
+                    .map(|(name, num, maybe)| TestObject { name, num, maybe }),
+            )
+        }
     }
 
     // rebase
