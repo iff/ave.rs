@@ -87,7 +87,7 @@ impl Patch {
 
     pub async fn store(&self, state: &AppState, gym: &String) -> Result<Self, AppError> {
         let s: Option<Self> = store!(state, gym, self, Self::COLLECTION);
-        s.ok_or(AppError::Query("storing patch failed".to_string()))
+        s.ok_or(AppError::Internal("storing patch failed".to_string()))
     }
 
     /// lookup a patch with rev_id
@@ -118,12 +118,14 @@ impl Patch {
 
         let mut patches: Vec<Patch> = patch_stream.try_collect().await?;
         if patches.len() != 1 {
-            return Err(AppError::Query(format!(
+            return Err(AppError::Internal(format!(
                 "lookup_patch found {} patches, expecting only 1",
                 patches.len()
             )));
         }
-        let patch = patches.pop().unwrap();
+        let patch = patches.pop().ok_or(AppError::Internal(
+            "patch vec empty after length check".to_string(),
+        ))?;
         Ok(patch)
     }
 

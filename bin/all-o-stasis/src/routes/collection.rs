@@ -72,8 +72,10 @@ async fn active_boulders(
     Ok(Json(
         boulders
             .into_iter()
-            .map(|b| b.id.expect("object in view has no id")) // TODO no panic
-            .collect(),
+            .map(|b| {
+                b.id.ok_or(AppError::Internal("object in view has no id".to_string()))
+            })
+            .collect::<Result<Vec<_>, _>>()?,
     ))
 }
 
@@ -85,8 +87,10 @@ async fn draft_boulders(
     Ok(Json(
         as_vec
             .into_iter()
-            .map(|b| b.id.expect("object in view always has an id"))
-            .collect(),
+            .map(|b| {
+                b.id.ok_or(AppError::Internal("object in view has no id".to_string()))
+            })
+            .collect::<Result<Vec<_>, _>>()?,
     ))
 }
 
@@ -106,8 +110,10 @@ async fn own_boulders(
     Ok(Json(
         as_vec
             .into_iter()
-            .map(|b| b.id.expect("object in view always has an id"))
-            .collect(),
+            .map(|b| {
+                b.id.ok_or(AppError::Internal("object in view has no id".to_string()))
+            })
+            .collect::<Result<Vec<_>, _>>()?,
     ))
 }
 
@@ -119,8 +125,10 @@ async fn accounts(
     Ok(Json(
         as_vec
             .into_iter()
-            .map(|b| b.id.expect("object in view always has an id"))
-            .collect(),
+            .map(|b| {
+                b.id.ok_or(AppError::Internal("object in view has no id".to_string()))
+            })
+            .collect::<Result<Vec<_>, _>>()?,
     ))
 }
 
@@ -132,7 +140,9 @@ async fn admin_accounts(
     Ok(Json(
         as_vec
             .into_iter()
-            .map(|b| b.id.expect("object in view always has an id"))
-            .collect(),
+            .map(|b| {
+                b.id.ok_or(AppError::Internal("object in view has no id".to_string()))
+            })
+            .collect::<Result<Vec<_>, _>>()?,
     ))
 }

@@ -168,7 +168,9 @@ async fn lookup_session(
     Ok((
         jar.add(cookie),
         Json(LookupSessionResponse {
-            id: session.id.expect("session has id"),
+            id: session
+                .id
+                .ok_or(AppError::Internal("session missing id".to_string()))?,
             obj_id: session.obj_id,
         }),
     ))

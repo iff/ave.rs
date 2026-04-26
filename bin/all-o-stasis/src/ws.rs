@@ -33,14 +33,8 @@ async fn handle_listener_event(
 
             if let Some(doc) = &doc_change.document {
                 // here we need the object id so we need to parse
-                let patch: Patch =
-                    FirestoreDb::deserialize_doc_to::<Patch>(doc).expect("deserialized object");
-
-                let msg = Message::Text(
-                    serde_json::to_string(&patch)
-                        .expect("encode message")
-                        .into(),
-                );
+                let patch: Patch = FirestoreDb::deserialize_doc_to::<Patch>(doc)?;
+                let msg = Message::Text(serde_json::to_string(&patch)?.into());
                 let ps = send_tx_patch.send(msg).await;
                 if let Err(err) = ps {
                     tracing::error!("failed to sent patch with {err}");
@@ -81,7 +75,13 @@ async fn drain_channel(
             Some(msg) => {
                 let processed_msg = match msg {
                     Message::Text(t) => {
-                        let patch: Patch = serde_json::from_str(&t).expect("parsing patch");
+                        let patch: Patch = match serde_json::from_str(&t) {
+                            Ok(patch) => patch,
+                            Err(e) => {
+                                tracing::error!("failed to parse patch: {e}");
+                                continue;
+                            }
+                        };
 
                         // only send patches that came in after we started the listener
                         if let Some(created) = patch.created_at {
@@ -102,11 +102,14 @@ async fn drain_channel(
                                         content: patch,
                                         ot_type: String::from("patch"),
                                     };
-                                    Message::Text(
-                                        serde_json::to_string(&reply)
-                                            .expect("serialize reply")
-                                            .into(),
-                                    )
+                                    let json = match serde_json::to_string(&reply) {
+                                        Ok(json) => json,
+                                        Err(e) => {
+                                            tracing::error!("failed to serialize reply: {e}");
+                                            continue;
+                                        }
+                                    };
+                                    Message::Text(json.into())
                                 } else {
                                     continue;
                                 }

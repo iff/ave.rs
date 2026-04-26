@@ -26,5 +26,5 @@ tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 [build-dependencies]
 built = { version = "0.8", features = ["git2"] }
 
-[lint]
+[lints]
 workspace = true
