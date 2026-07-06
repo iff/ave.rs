@@ -8,7 +8,7 @@ otp = { path = "../../crates/otp", version = "0.1.0" }
 built = { version = "0.8", features = ["git2"] }
 axum = { version = "0.8.9", features = ["ws"] }
 axum-extra = { version = "0.12.6", features = ["cookie", "typed-header"] }
-chrono = "0.4.38"
+chrono = "0.4.45"
 cookie = "0.18"
 firestore = "0.48"
 futures = "0.3"
