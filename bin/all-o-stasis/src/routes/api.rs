@@ -112,7 +112,7 @@ struct LookupSessionResponse {
     obj_id: ObjectId,
 }
 
-async fn account_role(
+pub(crate) async fn account_role(
     state: &AppState,
     gym: &String,
     object_id: &ObjectId,
