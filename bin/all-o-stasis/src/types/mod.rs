@@ -368,12 +368,16 @@ impl BouldersView {
         Ok(as_vec)
     }
 
+    /// - dont include boulders that are removed (and therefore set) before the
+    ///   history_start_millis
+    /// - only get boulders that are not REMOVED yet or SET or REMOVED after
+    ///   start
     pub async fn stats(
         state: &AppState,
         gym: &String,
+        history_start_millis: usize,
     ) -> Result<Vec<Boulder>, AppError> {
         let parent_path = state.db.parent_path("gyms", gym)?;
-        // TODO this is too expensive: we read all records to compute the stats
         let object_stream: BoxStream<FirestoreResult<Boulder>> = state
             .db
             .fluent()
@@ -381,7 +385,19 @@ impl BouldersView {
             .from(Self::COLLECTION)
             .parent(&parent_path)
             .filter(|q| {
-                q.for_all([q.field(path_camel_case!(Boulder::is_draft)).eq(0)])
+                q.for_all([
+                    // is_draft == 0  AND
+                    //   ( removed == 0  OR  set_date >= cutoff  OR  removed >=
+                    // cutoff )
+                    q.field(path_camel_case!(Boulder::is_draft)).eq(0),
+                    q.for_any([
+                        q.field(path_camel_case!(Boulder::removed)).eq(0),
+                        q.field(path_camel_case!(Boulder::set_date))
+                            .greater_than_or_equal(history_start_millis),
+                        q.field(path_camel_case!(Boulder::removed))
+                            .greater_than_or_equal(history_start_millis),
+                    ]),
+                ])
             })
             .obj()
             .stream_query_with_errors()
@@ -390,36 +406,4 @@ impl BouldersView {
         let as_vec: Vec<Boulder> = object_stream.try_collect().await?;
         Ok(as_vec)
     }
-
-    // pub async fn collect(
-    //     state: &AppState,
-    //     gym: &String,
-    //     removed: Option<Bool>,
-    //     is_draft: Option<Bool>,
-    // ) -> Result<Vec<Boulder>, AppError> {
-    //     let parent_path = state.db.parent_path("gyms", gym)?;
-    //     let object_stream: BoxStream<FirestoreResult<Boulder>> = state
-    //         .db
-    //         .fluent()
-    //         .select()
-    //         .from(Self::COLLECTION)
-    //         .parent(&parent_path)
-    //         .filter(|q| {
-    //             q.for_all(
-    //                 [
-    //                     removed.map(|r|
-    // q.field(path_camel_case!(Boulder::removed)).eq(r)),
-    // is_draft.map(|d| q.field(path_camel_case!(Boulder::is_draft)).eq(d)),
-    //                 ]
-    //                 .into_iter()
-    //                 .flatten(),
-    //             )
-    //         })
-    //         .obj()
-    //         .stream_query_with_errors()
-    //         .await?;
-    //
-    //     let as_vec: Vec<Boulder> = object_stream.try_collect().await?;
-    //     Ok(as_vec)
-    // }
 }

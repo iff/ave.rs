@@ -34,9 +34,6 @@ async fn stats_boulders(
     Path(gym): Path<String>,
     jar: CookieJar,
 ) -> Result<Json<Vec<BoulderStat>>, AppError> {
-    // restrict stats for cost reasons to admins and setters
-    // TODO fix stat computation (checkpointing) to make the query cheaper.
-    // currently each stat call retrieves lots of documents.
     let session_id = jar.get("session").ok_or(AppError::NoSession())?;
     let created_by = author_from_session(&state, &gym, session_id).await?;
     let role = account_role(&state, &gym, &created_by).await?;
@@ -56,7 +53,11 @@ async fn stats_boulders(
         date.format("%Y-%m-%d").to_string()
     };
 
-    let as_vec = BouldersView::stats(&state, &gym).await?;
+    // TODO expose this as a query parameter
+    let history_start_millis =
+        (Utc::now() - chrono::Duration::days(120)).timestamp_millis() as usize;
+    let as_vec =
+        BouldersView::stats(&state, &gym, history_start_millis).await?;
     let stats: Vec<BoulderStat> = as_vec
         .into_iter()
         .map(|b| BoulderStat {
