@@ -531,12 +531,18 @@ async fn confirm_passport(
     }
 }
 
+const CONFIRMATION_POLL_INTERVAL: std::time::Duration =
+    std::time::Duration::from_secs(1);
+const CONFIRMATION_TIMEOUT: std::time::Duration =
+    std::time::Duration::from_secs(3 * 60);
+
 async fn await_passport_confirmation(
     State(state): State<AppState>,
     Path(gym): Path<String>,
     Query(pport): Query<AwaitPassportConfirmation>,
     jar: CookieJar,
 ) -> Result<impl IntoResponse, AppError> {
+    let deadline = tokio::time::Instant::now() + CONFIRMATION_TIMEOUT;
     let (account_id, revision_id) = loop {
         let snapshot =
             Snapshot::lookup_latest(&state, &gym, &pport.passport_id.clone())
@@ -552,8 +558,15 @@ async fn await_passport_confirmation(
                 break (passport.account_id, snapshot.revision_id);
             }
             PassportValidity::Unconfirmed => {
-                // TODO should we stop trying after some time?
-                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                if tokio::time::Instant::now() + CONFIRMATION_POLL_INTERVAL
+                    > deadline
+                {
+                    return Err(AppError::Passport(
+                        "timed out waiting for passport confirmation"
+                            .to_string(),
+                    ));
+                }
+                tokio::time::sleep(CONFIRMATION_POLL_INTERVAL).await;
             }
             PassportValidity::Expired => {
                 return Err(AppError::NotAuthorized());
