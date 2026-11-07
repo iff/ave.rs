@@ -18,7 +18,10 @@ use serde::{Deserialize, Serialize};
 use crate::{
     AppError, AppState,
     storage::apply_object_updates,
-    types::{Account, AccountRole, AccountsView, Object, ObjectType, Snapshot},
+    types::{
+        Account, AccountRole, AccountsView, Object, ObjectType, Snapshot,
+        record_docs_returned,
+    },
     word_list::make_security_code,
 };
 
@@ -164,13 +167,20 @@ impl fmt::Display for Session {
 impl Session {
     const COLLECTION: &str = "sessions";
 
+    #[tracing::instrument(name = "Session::lookup", skip_all, fields(
+        sentry.op = "db.query",
+        db.system = "firestore",
+        db.collection.name = Self::COLLECTION,
+        gym = %gym,
+        db.docs_returned = tracing::field::Empty,
+    ))]
     pub async fn lookup(
         state: &AppState,
         gym: &String,
         object_id: ObjectId,
     ) -> Result<Self, AppError> {
         let parent_path = state.db.parent_path("gyms", gym)?;
-        state
+        let session: Option<Self> = state
             .db
             .fluent()
             .select()
@@ -178,8 +188,43 @@ impl Session {
             .parent(&parent_path)
             .obj()
             .one(&object_id)
-            .await?
-            .ok_or(AppError::NoSession())
+            .await?;
+        record_docs_returned(usize::from(session.is_some()));
+        session.ok_or(AppError::NoSession())
+    }
+
+    #[tracing::instrument(name = "Session::with_obj_id", skip_all, fields(
+        sentry.op = "db.query",
+        db.system = "firestore",
+        db.collection.name = Self::COLLECTION,
+        gym = %gym,
+        db.docs_returned = tracing::field::Empty,
+    ))]
+    async fn with_obj_id(
+        state: &AppState,
+        gym: &String,
+        obj_id: ObjectId,
+    ) -> Result<Vec<Self>, AppError> {
+        let parent_path = state.db.parent_path("gyms", gym)?;
+        let sessions_stream: BoxStream<FirestoreResult<Self>> = state
+            .db
+            .fluent()
+            .select()
+            .from(Self::COLLECTION)
+            .parent(&parent_path)
+            .filter(|q| {
+                q.for_all([q
+                    .field(path_camel_case!(Session::obj_id))
+                    .eq(obj_id.clone())])
+            })
+            .limit(1)
+            .obj()
+            .stream_query_with_errors()
+            .await?;
+
+        let sessions: Vec<Self> = sessions_stream.try_collect().await?;
+        record_docs_returned(sessions.len());
+        Ok(sessions)
     }
 
     pub async fn store(
@@ -532,24 +577,7 @@ async fn await_passport_confirmation(
     .await?;
 
     // find session created in confirmation
-    let parent_path = state.db.parent_path("gyms", gym)?;
-    let sessions_stream: BoxStream<FirestoreResult<Session>> = state
-        .db
-        .fluent()
-        .select()
-        .from(Session::COLLECTION)
-        .parent(&parent_path)
-        .filter(|q| {
-            q.for_all([q
-                .field(path_camel_case!(Session::obj_id))
-                .eq(account_id.clone())])
-        })
-        .limit(1)
-        .obj()
-        .stream_query_with_errors()
-        .await?;
-
-    let sessions: Vec<Session> = sessions_stream.try_collect().await?;
+    let sessions = Session::with_obj_id(&state, &gym, account_id).await?;
     let session_id = match sessions.first() {
         Some(session) => session
             .id

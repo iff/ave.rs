@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 
 use crate::{
     AppError, AppState,
-    types::{patch::Patch, store},
+    types::{patch::Patch, record_docs_returned, store},
 };
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -165,6 +165,13 @@ impl Snapshot {
     }
 
     /// get or create a latest snapshot between low and high (inclusive)
+    #[tracing::instrument(name = "Snapshot::lookup_between", skip_all, fields(
+        sentry.op = "db.query",
+        db.system = "firestore",
+        db.collection.name = Self::COLLECTION,
+        gym = %gym,
+        db.docs_returned = tracing::field::Empty,
+    ))]
     async fn lookup_between(
         state: &AppState,
         gym: &String,
@@ -208,6 +215,7 @@ impl Snapshot {
             .await?;
 
         let snapshots: Vec<Snapshot> = object_stream.try_collect().await?;
+        record_docs_returned(snapshots.len());
         tracing::debug!(
             "snapshots ({} <= s <= {:?}): {} snapshots, obj={object_id}",
             range.0,

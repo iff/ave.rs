@@ -40,6 +40,11 @@ macro_rules! store {
 }
 pub(crate) use store;
 
+/// Track returned document (minimum one per query)
+pub(crate) fn record_docs_returned(count: usize) {
+    tracing::Span::current().record("db.docs_returned", count);
+}
+
 #[derive(Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub enum AccountRole {
@@ -117,13 +122,20 @@ impl Boulder {
         self.setter.contains(setter)
     }
 
+    #[tracing::instrument(name = "Boulder::lookup", skip_all, fields(
+        sentry.op = "db.query",
+        db.system = "firestore",
+        db.collection.name = BouldersView::COLLECTION,
+        gym = %gym,
+        db.docs_returned = tracing::field::Empty,
+    ))]
     pub async fn lookup(
         state: &AppState,
         gym: &String,
         object_id: &ObjectId,
     ) -> Result<Boulder, AppError> {
         let parent_path = state.db.parent_path("gyms", gym)?;
-        state
+        let boulder: Option<Boulder> = state
             .db
             .fluent()
             .select()
@@ -131,10 +143,11 @@ impl Boulder {
             .parent(&parent_path)
             .obj()
             .one(&object_id)
-            .await?
-            .ok_or(AppError::Query(format!(
-                "lookup_boulder: failed to get boulder {object_id}"
-            )))
+            .await?;
+        record_docs_returned(usize::from(boulder.is_some()));
+        boulder.ok_or(AppError::Query(format!(
+            "lookup_boulder: failed to get boulder {object_id}"
+        )))
     }
 }
 
@@ -167,6 +180,13 @@ impl AccountsView {
         Ok(())
     }
 
+    #[tracing::instrument(name = "AccountsView::all", skip_all, fields(
+        sentry.op = "db.query",
+        db.system = "firestore",
+        db.collection.name = Self::COLLECTION,
+        gym = %gym,
+        db.docs_returned = tracing::field::Empty,
+    ))]
     pub async fn all(
         state: &AppState,
         gym: &String,
@@ -181,10 +201,18 @@ impl AccountsView {
             .obj()
             .stream_query_with_errors()
             .await?;
-        let as_vec = object_stream.try_collect().await?;
+        let as_vec: Vec<Account> = object_stream.try_collect().await?;
+        record_docs_returned(as_vec.len());
         Ok(as_vec)
     }
 
+    #[tracing::instrument(name = "AccountsView::admins", skip_all, fields(
+        sentry.op = "db.query",
+        db.system = "firestore",
+        db.collection.name = Self::COLLECTION,
+        gym = %gym,
+        db.docs_returned = tracing::field::Empty,
+    ))]
     pub async fn admins(
         state: &AppState,
         gym: &String,
@@ -204,10 +232,18 @@ impl AccountsView {
             .obj()
             .stream_query_with_errors()
             .await?;
-        let as_vec = object_stream.try_collect().await?;
+        let as_vec: Vec<Account> = object_stream.try_collect().await?;
+        record_docs_returned(as_vec.len());
         Ok(as_vec)
     }
 
+    #[tracing::instrument(name = "AccountsView::with_email", skip_all, fields(
+        sentry.op = "db.query",
+        db.system = "firestore",
+        db.collection.name = Self::COLLECTION,
+        gym = %gym,
+        db.docs_returned = tracing::field::Empty,
+    ))]
     pub async fn with_email(
         state: &AppState,
         gym: String,
@@ -232,16 +268,24 @@ impl AccountsView {
             .await?;
 
         let mut accounts: Vec<Account> = account_stream.try_collect().await?;
+        record_docs_returned(accounts.len());
         Ok(accounts.pop())
     }
 
+    #[tracing::instrument(name = "AccountsView::with_id", skip_all, fields(
+        sentry.op = "db.query",
+        db.system = "firestore",
+        db.collection.name = Self::COLLECTION,
+        gym = %gym,
+        db.docs_returned = tracing::field::Empty,
+    ))]
     pub async fn with_id(
         state: &AppState,
         gym: &String,
         object_id: ObjectId,
     ) -> Result<Account, AppError> {
         let parent_path = state.db.parent_path("gyms", gym)?;
-        state
+        let account: Option<Account> = state
             .db
             .fluent()
             .select()
@@ -249,10 +293,11 @@ impl AccountsView {
             .parent(&parent_path)
             .obj()
             .one(object_id.clone())
-            .await?
-            .ok_or(AppError::Query(format!(
-                "lookup accounts view: failed to get object {object_id}"
-            )))
+            .await?;
+        record_docs_returned(usize::from(account.is_some()));
+        account.ok_or(AppError::Query(format!(
+            "lookup accounts view: failed to get object {object_id}"
+        )))
     }
 }
 
@@ -285,6 +330,13 @@ impl BouldersView {
         Ok(())
     }
 
+    #[tracing::instrument(name = "BouldersView::active", skip_all, fields(
+        sentry.op = "db.query",
+        db.system = "firestore",
+        db.collection.name = Self::COLLECTION,
+        gym = %gym,
+        db.docs_returned = tracing::field::Empty,
+    ))]
     pub async fn active(
         state: &AppState,
         gym: &String,
@@ -311,9 +363,17 @@ impl BouldersView {
             .await?;
 
         let boulders: Vec<Boulder> = object_stream.try_collect().await?;
+        record_docs_returned(boulders.len());
         Ok(boulders)
     }
 
+    #[tracing::instrument(name = "BouldersView::with_id", skip_all, fields(
+        sentry.op = "db.query",
+        db.system = "firestore",
+        db.collection.name = Self::COLLECTION,
+        gym = %gym,
+        db.docs_returned = tracing::field::Empty,
+    ))]
     pub async fn with_id(
         state: &AppState,
         gym: &String,
@@ -336,9 +396,17 @@ impl BouldersView {
             .await?;
 
         let as_vec: Vec<Boulder> = object_stream.try_collect().await?;
+        record_docs_returned(as_vec.len());
         Ok(as_vec)
     }
 
+    #[tracing::instrument(name = "BouldersView::drafts", skip_all, fields(
+        sentry.op = "db.query",
+        db.system = "firestore",
+        db.collection.name = Self::COLLECTION,
+        gym = %gym,
+        db.docs_returned = tracing::field::Empty,
+    ))]
     pub async fn drafts(
         state: &AppState,
         gym: &String,
@@ -365,6 +433,7 @@ impl BouldersView {
             .await?;
 
         let as_vec: Vec<Boulder> = object_stream.try_collect().await?;
+        record_docs_returned(as_vec.len());
         Ok(as_vec)
     }
 
@@ -372,6 +441,13 @@ impl BouldersView {
     ///   history_start_millis
     /// - only get boulders that are not REMOVED yet or SET or REMOVED after
     ///   start
+    #[tracing::instrument(name = "BouldersView::stats", skip_all, fields(
+        sentry.op = "db.query",
+        db.system = "firestore",
+        db.collection.name = Self::COLLECTION,
+        gym = %gym,
+        db.docs_returned = tracing::field::Empty,
+    ))]
     pub async fn stats(
         state: &AppState,
         gym: &String,
@@ -404,6 +480,7 @@ impl BouldersView {
             .await?;
 
         let as_vec: Vec<Boulder> = object_stream.try_collect().await?;
+        record_docs_returned(as_vec.len());
         Ok(as_vec)
     }
 }

@@ -18,7 +18,7 @@ use serde_json::Value;
 
 use crate::{
     AppError, AppState,
-    types::{Snapshot, store},
+    types::{Snapshot, record_docs_returned, store},
 };
 
 fn hash_addr(addr: &SocketAddr) -> u64 {
@@ -100,6 +100,13 @@ impl Patch {
     }
 
     /// lookup a patch with rev_id
+    #[tracing::instrument(name = "Patch::lookup", skip_all, fields(
+        sentry.op = "db.query",
+        db.system = "firestore",
+        db.collection.name = Self::COLLECTION,
+        gym = %gym,
+        db.docs_returned = tracing::field::Empty,
+    ))]
     pub async fn lookup(
         state: &AppState,
         gym: &String,
@@ -126,6 +133,7 @@ impl Patch {
             .await?;
 
         let mut patches: Vec<Patch> = patch_stream.try_collect().await?;
+        record_docs_returned(patches.len());
         if patches.len() != 1 {
             return Err(AppError::Internal(format!(
                 "lookup_patch found {} patches, expecting only 1",
@@ -139,6 +147,13 @@ impl Patch {
     }
 
     /// get all patches for an object with revision id > rev_id
+    #[tracing::instrument(name = "Patch::after_revision", skip_all, fields(
+        sentry.op = "db.query",
+        db.system = "firestore",
+        db.collection.name = Self::COLLECTION,
+        gym = %gym,
+        db.docs_returned = tracing::field::Empty,
+    ))]
     pub async fn after_revision(
         state: &AppState,
         gym: &String,
@@ -168,6 +183,7 @@ impl Patch {
             .await?;
 
         let patches: Vec<Patch> = object_stream.try_collect().await?;
+        record_docs_returned(patches.len());
         tracing::debug!(
             "patches after rev ({rev_id}): {}, obj = {obj_id}",
             patches.len()

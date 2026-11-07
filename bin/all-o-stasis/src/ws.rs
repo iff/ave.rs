@@ -1,4 +1,11 @@
-use std::{error::Error, net::SocketAddr, sync::Arc};
+use std::{
+    error::Error,
+    net::SocketAddr,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
+};
 
 use axum::{
     body::Bytes,
@@ -17,7 +24,10 @@ use tokio::sync::{
     mpsc::{Receiver, Sender},
 };
 
-use crate::{AppError, AppState, types::Patch};
+use crate::{
+    AppError, AppState,
+    types::{Patch, record_docs_returned},
+};
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -30,6 +40,7 @@ struct WsPatchResponse {
 async fn handle_listener_event(
     event: FirestoreListenEvent,
     send_tx_patch: Sender<Message>,
+    docs_received: Arc<AtomicUsize>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     // tracing::debug!("got listener change: {event:?}");
     match event {
@@ -37,6 +48,7 @@ async fn handle_listener_event(
             tracing::debug!("document changed: {doc_change:?}");
 
             if let Some(doc) = &doc_change.document {
+                docs_received.fetch_add(1, Ordering::Relaxed);
                 // here we need the object id so we need to parse
                 let patch: Patch =
                     FirestoreDb::deserialize_doc_to::<Patch>(doc)?;
@@ -224,10 +236,17 @@ async fn sub(
     }
 }
 
+// own root span to get all listeners reads
+#[tracing::instrument(name = "feed", skip_all, fields(
+    sentry.op = "websocket.feed",
+    gym = %gym,
+    db.docs_returned = tracing::field::Empty,
+))]
 pub(crate) async fn handle_socket(
     socket: WebSocket,
     who: SocketAddr,
     state: AppState,
+    gym: String,
     parent_path: ParentPathBuilder,
 ) {
     let (mut sender, mut receiver) = socket.split();
@@ -237,6 +256,7 @@ pub(crate) async fn handle_socket(
     let (ws_tx, mut ws_rx) = mpsc::channel(1000);
     // firestore listener also needs to be able to sned on the channel
     let ws_tx_listener = ws_tx.clone();
+    let docs_received = Arc::new(AtomicUsize::new(0));
 
     // collect all objects ids the client wants to get notified about changes
     let subscriptions: Arc<Mutex<Vec<ObjectId>>> =
@@ -250,8 +270,15 @@ pub(crate) async fn handle_socket(
     // so this calls tokio::spawn
     // starting the listener_loop: https://docs.rs/firestore/0.44.1/src/firestore/db/listen_changes.rs.html#360
     let _ = listener
-        .start(move |event| {
-            handle_listener_event(event, ws_tx_listener.clone())
+        .start({
+            let docs_received = docs_received.clone();
+            move |event| {
+                handle_listener_event(
+                    event,
+                    ws_tx_listener.clone(),
+                    docs_received.clone(),
+                )
+            }
         })
         .await;
     // hack to only send out patches that are added to the collection after we
@@ -292,4 +319,8 @@ pub(crate) async fn handle_socket(
     ping.abort();
     ws_send.abort();
     handle_obj_subs.abort();
+
+    let docs_received = docs_received.load(Ordering::Relaxed);
+    record_docs_returned(docs_received);
+    tracing::info!(docs_received, "feed closed");
 }
