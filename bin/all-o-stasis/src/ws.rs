@@ -262,7 +262,16 @@ pub(crate) async fn handle_socket(
     let subscriptions: Arc<Mutex<Vec<ObjectId>>> =
         Arc::new(Mutex::new(Vec::new()));
 
-    let mut listener = match Patch::listener(&state, &parent_path, who).await {
+    // also used below to drop patches older than the listener
+    let listener_start_time = Utc::now();
+    let mut listener = match Patch::listener(
+        &state,
+        &parent_path,
+        who,
+        Some(listener_start_time),
+    )
+    .await
+    {
         Some(listener) => listener,
         None => return,
     };
@@ -281,9 +290,6 @@ pub(crate) async fn handle_socket(
             }
         })
         .await;
-    // hack to only send out patches that are added to the collection after we
-    // start the listener
-    let listener_start_time = Utc::now();
 
     // ping the client every 10 seconds
     let mut ping = tokio::spawn(async move { ping_client(ws_tx).await });
