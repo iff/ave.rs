@@ -1,5 +1,5 @@
 use std::{
-    collections::hash_map::DefaultHasher,
+    collections::{HashMap, hash_map::DefaultHasher},
     fmt,
     hash::{Hash, Hasher},
     net::SocketAddr,
@@ -8,8 +8,10 @@ use std::{
 use chrono::{DateTime, Utc};
 use firestore::{
     FirestoreDb, FirestoreListener, FirestoreListenerTarget,
-    FirestoreMemListenStateStorage, FirestoreQueryDirection, FirestoreResult,
-    ParentPathBuilder, path_camel_case,
+    FirestoreListenerTargetParams, FirestoreListenerTargetResumeType,
+    FirestoreMemListenStateStorage, FirestoreQueryDirection,
+    FirestoreQueryParams, FirestoreResult, FirestoreTargetType,
+    ParentPathBuilder, jiff, path_camel_case,
 };
 use futures::{TryStreamExt, stream::BoxStream};
 use otp::{ObjectId, Operation, RevId};
@@ -18,7 +20,7 @@ use serde_json::Value;
 
 use crate::{
     AppError, AppState,
-    types::{Snapshot, store},
+    types::{Snapshot, record_docs_returned, store},
 };
 
 fn hash_addr(addr: &SocketAddr) -> u64 {
@@ -100,6 +102,13 @@ impl Patch {
     }
 
     /// lookup a patch with rev_id
+    #[tracing::instrument(name = "Patch::lookup", skip_all, fields(
+        sentry.op = "db.query",
+        db.system = "firestore",
+        db.collection.name = Self::COLLECTION,
+        gym = %gym,
+        db.docs_returned = tracing::field::Empty,
+    ))]
     pub async fn lookup(
         state: &AppState,
         gym: &String,
@@ -126,6 +135,7 @@ impl Patch {
             .await?;
 
         let mut patches: Vec<Patch> = patch_stream.try_collect().await?;
+        record_docs_returned(patches.len());
         if patches.len() != 1 {
             return Err(AppError::Internal(format!(
                 "lookup_patch found {} patches, expecting only 1",
@@ -139,6 +149,13 @@ impl Patch {
     }
 
     /// get all patches for an object with revision id > rev_id
+    #[tracing::instrument(name = "Patch::after_revision", skip_all, fields(
+        sentry.op = "db.query",
+        db.system = "firestore",
+        db.collection.name = Self::COLLECTION,
+        gym = %gym,
+        db.docs_returned = tracing::field::Empty,
+    ))]
     pub async fn after_revision(
         state: &AppState,
         gym: &String,
@@ -168,6 +185,7 @@ impl Patch {
             .await?;
 
         let patches: Vec<Patch> = object_stream.try_collect().await?;
+        record_docs_returned(patches.len());
         tracing::debug!(
             "patches after rev ({rev_id}): {}, obj = {obj_id}",
             patches.len()
@@ -175,10 +193,13 @@ impl Patch {
         Ok(patches)
     }
 
+    /// listen for patches written after `read_time`, or for all patches if
+    /// `None`
     pub async fn listener(
         state: &AppState,
         parent_path: &ParentPathBuilder,
         who: SocketAddr,
+        read_time: Option<DateTime<Utc>>,
     ) -> Option<FirestoreListener<FirestoreDb, FirestoreMemListenStateStorage>>
     {
         let client_id = hash_addr(&who) as u32;
@@ -198,14 +219,35 @@ impl Patch {
             Err(..) => return None,
         };
 
-        let _ = state
-            .db
-            .fluent()
-            .select()
-            .from(Patch::COLLECTION)
-            .parent(parent_path)
-            .listen()
-            .add_target(listener_id, &mut listener);
+        let resume_type = match read_time {
+            None => None,
+            Some(read_time) => match jiff::Timestamp::from_millisecond(
+                read_time.timestamp_millis(),
+            ) {
+                Ok(read_time) => {
+                    Some(FirestoreListenerTargetResumeType::ReadTime(read_time))
+                }
+                Err(e) => {
+                    tracing::error!("listener read time {read_time}: {e}");
+                    return None;
+                }
+            },
+        };
+        // the fluent builder cannot set a resume type, so we manually set the
+        // target
+        let target = FirestoreListenerTargetParams::new(
+            listener_id,
+            FirestoreTargetType::Query(
+                FirestoreQueryParams::new(Patch::COLLECTION.into())
+                    .with_parent(parent_path.clone().into()),
+            ),
+            HashMap::new(),
+        )
+        .opt_resume_type(resume_type);
+        if let Err(e) = listener.add_target(target) {
+            tracing::error!("adding firestore listener target: {e}");
+            return None;
+        }
 
         Some(listener)
     }

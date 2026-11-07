@@ -52,4 +52,12 @@ pub fn app(state: AppState) -> Router {
         //
         .with_state(state)
         .layer(cors)
+        // lets try to batch by route (grouping by endpoint)
+        // TODO maybe per gym/object id
+        .layer(
+            sentry::integrations::tower::SentryHttpLayer::new()
+                .enable_transaction(),
+        )
+        // must be last
+        .layer(sentry::integrations::tower::NewSentryLayer::new_from_top())
 }

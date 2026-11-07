@@ -353,7 +353,9 @@ async fn feed(
 
     match state.db.parent_path("gyms", &gym) {
         Ok(path) => ws
-            .on_upgrade(move |socket| handle_socket(socket, addr, state, path))
+            .on_upgrade(move |socket| {
+                handle_socket(socket, addr, state, gym, path)
+            })
             .into_response(),
         Err(e) => {
             tracing::error!("firestore parent_path {gym}: {e:?}");

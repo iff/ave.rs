@@ -8,7 +8,7 @@ use serde_json::Value;
 use crate::{
     AppError, AppState,
     storage::update_view_typed,
-    types::{ObjectType, Patch, store},
+    types::{ObjectType, Patch, record_docs_returned, store},
 };
 
 // Object storage representation - used for Firestore serialization
@@ -37,13 +37,20 @@ impl ObjectDoc {
         }
     }
 
+    #[tracing::instrument(name = "ObjectDoc::lookup", skip_all, fields(
+        sentry.op = "db.query",
+        db.system = "firestore",
+        db.collection.name = Self::COLLECTION,
+        gym = %gym,
+        db.docs_returned = tracing::field::Empty,
+    ))]
     async fn lookup(
         state: &AppState,
         gym: &String,
         object_id: ObjectId,
     ) -> Result<Self, AppError> {
         let parent_path = state.db.parent_path("gyms", gym)?;
-        state
+        let object: Option<Self> = state
             .db
             .fluent()
             .select()
@@ -51,10 +58,11 @@ impl ObjectDoc {
             .parent(&parent_path)
             .obj()
             .one(&object_id)
-            .await?
-            .ok_or(AppError::Query(format!(
-                "lookup_object: failed to get object {object_id}"
-            )))
+            .await?;
+        record_docs_returned(usize::from(object.is_some()));
+        object.ok_or(AppError::Query(format!(
+            "lookup_object: failed to get object {object_id}"
+        )))
     }
 
     pub async fn store(

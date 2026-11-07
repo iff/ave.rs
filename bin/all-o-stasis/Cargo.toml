@@ -22,6 +22,15 @@ tokio = { version = "1.52.3", features = ["full", "macros", "rt-multi-thread"] }
 tower-http = { version = "0.7", features = ["cors"] }
 tracing = "0.1.39"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
+sentry = { version = "0.49.5", default-features = false, features = [
+    "backtrace",
+    "contexts",
+    "panic",
+    "reqwest",
+    "rustls",
+    "tracing",
+    "tower-axum-matched-path",
+] }
 
 [build-dependencies]
 built = { version = "0.8", features = ["git2"] }

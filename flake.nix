@@ -57,7 +57,7 @@
           MAILEROO_API_KEY=$(op read "op://personal/maileroo boulderapp/credential" --no-newline)
 
           gcloud --project $PROJECT_ID run deploy $CLOUD_RUN_SERVICE_NAME --image=$IMAGE --region=europe-west1 \
-            --set-env-vars MAILEROO_API_KEY=$MAILEROO_API_KEY,FIRESTORE_DATABASE_ID=dev-db
+            --set-env-vars MAILEROO_API_KEY=$MAILEROO_API_KEY,FIRESTORE_DATABASE_ID=dev-db,SENTRY_ENVIRONMENT=dev
         '';
 
         app = pkgs.rustPlatform.buildRustPackage {
@@ -90,6 +90,7 @@
           config = {
             Env = [
               "PROJECT_ID=all-o-stasis"
+              "SENTRY_DSN=https://260861941874958f8757e6d70c792bb8@o4512390467420160.ingest.de.sentry.io/4512390476464208"
               "SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt" # for firestore
             ];
             Cmd = [ "${app}/bin/all-o-stasis" ];
