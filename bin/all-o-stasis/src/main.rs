@@ -150,8 +150,9 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         )
         .into());
     }
-    let mut sentry_options =
-        sentry::ClientOptions::new().traces_sample_rate(traces_sample_rate);
+    let mut sentry_options = sentry::ClientOptions::new()
+        .traces_sample_rate(traces_sample_rate)
+        .transport_channel_capacity(1000);
     if let Some(git_hash) = option_env!("GIT_HASH") {
         sentry_options = sentry_options.release(git_hash);
     }
